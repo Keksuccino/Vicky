@@ -547,6 +547,44 @@ select {
   color: var(--text-secondary);
 }
 
+.markdown-body p {
+  margin: 0.9rem 0;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+  margin: 0.9rem 0;
+  padding-inline-start: 1.5rem;
+}
+
+.markdown-body li {
+  margin: 0.24rem 0;
+}
+
+.markdown-body ul {
+  list-style: disc;
+}
+
+.markdown-body ul ul {
+  list-style: circle;
+}
+
+.markdown-body ul ul ul {
+  list-style: square;
+}
+
+.markdown-body ol {
+  list-style: decimal;
+}
+
+.markdown-body ol ol {
+  list-style: lower-alpha;
+}
+
+.markdown-body ol ol ol {
+  list-style: lower-roman;
+}
+
 .markdown-body a {
   color: var(--accent);
 }
