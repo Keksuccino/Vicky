@@ -1,0 +1,21 @@
+services:
+  vicky:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vicky-docs:latest
+    container_name: vicky-docs
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      AUTH_JWT_SECRET: ${AUTH_JWT_SECRET}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ENCRYPTION_SECRET: ${ENCRYPTION_SECRET}
+      WIKI_STORE_FILE_PATH: /app/data/wiki-store.json
+    volumes:
+      - vicky_data:/app/data
+
+volumes:
+  vicky_data:
