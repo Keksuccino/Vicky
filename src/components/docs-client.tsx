@@ -68,6 +68,35 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [searchResults, setSearchResults] = useState<DocSearchResult[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  const scrollToHashTarget = useCallback(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const rawHash = window.location.hash;
+    if (!rawHash || rawHash === "#") {
+      return;
+    }
+
+    const targetId = decodeURIComponent(rawHash.slice(1));
+    if (!targetId) {
+      return;
+    }
+
+    const targetElement = document.getElementById(targetId);
+    if (!targetElement) {
+      return;
+    }
+
+    targetElement.scrollIntoView({ block: "start", behavior: "auto" });
+    const headerHeightVar = getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim();
+    const headerHeight = Number.parseInt(headerHeightVar, 10);
+
+    if (Number.isFinite(headerHeight) && headerHeight > 0) {
+      window.scrollBy({ top: -(headerHeight + 12), left: 0, behavior: "auto" });
+    }
+  }, []);
+
   useEffect(() => {
     setCurrentPath(normalizePath(initialPath));
   }, [initialPath]);
@@ -120,6 +149,31 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     }
     void loadPage(currentPath);
   }, [currentPath, loadPage]);
+
+  useEffect(() => {
+    if (pageLoading || pageError || !page) {
+      return;
+    }
+
+    const handle = window.requestAnimationFrame(() => {
+      scrollToHashTarget();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(handle);
+    };
+  }, [pageLoading, pageError, page, scrollToHashTarget]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      scrollToHashTarget();
+    };
+
+    window.addEventListener("hashchange", onHashChange);
+    return () => {
+      window.removeEventListener("hashchange", onHashChange);
+    };
+  }, [scrollToHashTarget]);
 
   useEffect(() => {
     const controller = new AbortController();

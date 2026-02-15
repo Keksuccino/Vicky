@@ -515,6 +515,7 @@ select {
   font-family: var(--font-display), "Segoe UI", sans-serif;
   margin: 1.3rem 0 0.6rem;
   line-height: 1.22;
+  scroll-margin-top: calc(var(--header-height) + 1rem);
 }
 
 .markdown-body p,
