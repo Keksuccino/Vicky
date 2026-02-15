@@ -52,6 +52,16 @@ function formatDate(value?: string): string {
   return parsed.toLocaleString();
 }
 
+function normalizeComparableText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function getHeadingTextForMatch(element: HTMLElement): string {
+  const clone = element.cloneNode(true) as HTMLElement;
+  clone.querySelectorAll(".heading-anchor").forEach((node) => node.remove());
+  return normalizeComparableText(clone.textContent ?? "");
+}
+
 export function DocsClient({ initialPath }: DocsClientProps) {
   const router = useRouter();
   const [tree, setTree] = useState<DocTreeNode[]>([]);
@@ -83,11 +93,23 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       return false;
     }
 
-    let targetElement = document.getElementById(targetId);
+    const candidateIds = [targetId, `user-content-${targetId}`];
+    let targetElement: HTMLElement | null = null;
+
+    for (const candidateId of candidateIds) {
+      const candidate = document.getElementById(candidateId);
+      if (candidate) {
+        targetElement = candidate;
+        break;
+      }
+    }
 
     if (!targetElement) {
       const escaped = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(targetId) : targetId;
-      const found = document.querySelector<HTMLElement>(`[id="${escaped}"]`);
+      const found =
+        document.querySelector<HTMLElement>(`#${escaped}`) ||
+        document.querySelector<HTMLElement>(`[id="${escaped}"]`) ||
+        document.querySelector<HTMLElement>(`[id="user-content-${escaped}"]`);
       if (found) {
         targetElement = found;
       }
@@ -96,7 +118,8 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     if (!targetElement) {
       const normalizedTarget = targetId.toLowerCase();
       const fallback = Array.from(document.querySelectorAll<HTMLElement>("[id]")).find(
-        (element) => element.id.toLowerCase() === normalizedTarget,
+        (element) =>
+          element.id.toLowerCase() === normalizedTarget || element.id.toLowerCase() === `user-content-${normalizedTarget}`,
       );
       if (fallback) {
         targetElement = fallback;
@@ -104,10 +127,14 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     }
 
     if (!targetElement && page?.headings.length) {
-      const headingMatch = page.headings.find((heading) => heading.slug === targetId);
+      const headingMatch = page.headings.find((heading) => normalizeComparableText(heading.slug) === normalizeComparableText(targetId));
       if (headingMatch) {
+        const expectedText = normalizeComparableText(headingMatch.text);
         const byText = Array.from(document.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")).find(
-          (headingElement) => headingElement.textContent?.trim() === headingMatch.text,
+          (headingElement) => {
+            const headingText = getHeadingTextForMatch(headingElement);
+            return headingText === expectedText || headingText.startsWith(expectedText);
+          },
         );
         if (byText) {
           targetElement = byText;

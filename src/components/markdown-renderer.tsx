@@ -14,6 +14,7 @@ type MarkdownRendererProps = {
 
 const sanitizeSchema = {
   ...defaultSchema,
+  clobberPrefix: "",
   tagNames: [...(defaultSchema.tagNames || []), "aside"],
   attributes: {
     ...(defaultSchema.attributes || {}),
