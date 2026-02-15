@@ -4,6 +4,7 @@ import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { remarkGitHubAlerts } from "@/lib/remark-github-alerts";
@@ -32,7 +33,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <article className="markdown-body">
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkGitHubAlerts]}
+        remarkPlugins={[remarkGfm, remarkBreaks, remarkGitHubAlerts]}
         rehypePlugins={[
           rehypeRaw,
           rehypeSlug,

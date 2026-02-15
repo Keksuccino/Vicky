@@ -16,4 +16,10 @@ describe("MarkdownRenderer", () => {
 
     expect(heading.getAttribute("id")).toBe("adding-elements-to-layouts");
   });
+
+  it("renders single newlines as line breaks", () => {
+    const { container } = render(<MarkdownRenderer content={"First line\nSecond line"} />);
+
+    expect(container.querySelector("br")).toBeTruthy();
+  });
 });
