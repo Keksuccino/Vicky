@@ -62,6 +62,22 @@ function getHeadingTextForMatch(element: HTMLElement): string {
   return normalizeComparableText(clone.textContent ?? "");
 }
 
+function scrollToElement(element: HTMLElement): void {
+  const headerHeightVar = getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim();
+  const headerHeight = Number.parseInt(headerHeightVar, 10);
+  const offset = Number.isFinite(headerHeight) && headerHeight > 0 ? headerHeight + 12 : 0;
+  const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - offset);
+
+  // Force instant positioning to avoid racing with global smooth scroll behavior.
+  const htmlBehavior = document.documentElement.style.scrollBehavior;
+  const bodyBehavior = document.body.style.scrollBehavior;
+  document.documentElement.style.scrollBehavior = "auto";
+  document.body.style.scrollBehavior = "auto";
+  window.scrollTo({ top, left: 0, behavior: "auto" });
+  document.documentElement.style.scrollBehavior = htmlBehavior;
+  document.body.style.scrollBehavior = bodyBehavior;
+}
+
 export function DocsClient({ initialPath }: DocsClientProps) {
   const router = useRouter();
   const [tree, setTree] = useState<DocTreeNode[]>([]);
@@ -146,13 +162,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       return false;
     }
 
-    targetElement.scrollIntoView({ block: "start", behavior: "auto" });
-    const headerHeightVar = getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim();
-    const headerHeight = Number.parseInt(headerHeightVar, 10);
-
-    if (Number.isFinite(headerHeight) && headerHeight > 0) {
-      window.scrollBy({ top: -(headerHeight + 12), left: 0, behavior: "auto" });
-    }
+    scrollToElement(targetElement);
 
     return true;
   }, [page?.headings]);
@@ -257,6 +267,52 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       window.removeEventListener("hashchange", onHashChange);
     };
   }, [scrollToHashTarget]);
+
+  useEffect(() => {
+    const mainElement = document.getElementById("main-content");
+    if (!mainElement) {
+      return;
+    }
+
+    const onClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const eventTarget = event.target;
+      if (!(eventTarget instanceof Element)) {
+        return;
+      }
+
+      const anchor = eventTarget.closest<HTMLAnchorElement>('a[href^="#"]');
+      if (!anchor) {
+        return;
+      }
+
+      const href = anchor.getAttribute("href");
+      if (!href || href === "#") {
+        return;
+      }
+
+      event.preventDefault();
+
+      if (window.location.hash !== href) {
+        window.history.pushState(null, "", href);
+      }
+
+      const runScroll = () => {
+        scrollToHashTarget();
+      };
+
+      runScroll();
+      window.setTimeout(runScroll, 80);
+    };
+
+    mainElement.addEventListener("click", onClick);
+    return () => {
+      mainElement.removeEventListener("click", onClick);
+    };
+  }, [scrollToHashTarget, page?.slug]);
 
   useEffect(() => {
     const controller = new AbortController();
