@@ -19,9 +19,15 @@ type MarkdownTextNode = {
   value: string;
 };
 
+type MarkdownBreakNode = {
+  type: "break";
+};
+
+type MarkdownInlineNode = MarkdownTextNode | MarkdownBreakNode | Record<string, unknown>;
+
 type MarkdownParagraphNode = {
   type: "paragraph";
-  children: MarkdownTextNode[];
+  children: MarkdownInlineNode[];
   data?: {
     hProperties?: Record<string, unknown>;
   };
@@ -63,6 +69,15 @@ function isTextNode(value: unknown): value is MarkdownTextNode {
   return record.type === "text" && typeof record.value === "string";
 }
 
+function isBreakNode(value: unknown): value is MarkdownBreakNode {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return record.type === "break";
+}
+
 export function remarkGitHubAlerts() {
   return (tree: unknown) => {
     visit(tree as Node, (node) => {
@@ -91,8 +106,19 @@ export function remarkGitHubAlerts() {
       // Remove only the `[!TYPE]` marker and keep remaining user-authored text.
       firstTextNode.value = firstTextNode.value.replace(MARKER_REGEX, "$2").trimStart();
 
-      if (!firstTextNode.value) {
-        firstParagraph.children.shift();
+      while (firstParagraph.children.length > 0) {
+        const leadingNode = firstParagraph.children[0];
+        if (isBreakNode(leadingNode)) {
+          firstParagraph.children.shift();
+          continue;
+        }
+
+        if (isTextNode(leadingNode) && leadingNode.value.trim().length === 0) {
+          firstParagraph.children.shift();
+          continue;
+        }
+
+        break;
       }
 
       if (firstParagraph.children.length === 0) {

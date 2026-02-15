@@ -686,7 +686,6 @@ select {
   margin: 0.9rem 0;
   border-radius: 12px;
   border: 1px solid var(--border);
-  border-left-width: 4px;
   padding: 0.65rem 0.85rem;
   background: var(--surface-muted);
 }
@@ -706,23 +705,28 @@ select {
 }
 
 .md-alert-info {
-  border-left-color: color-mix(in srgb, var(--accent) 72%, #4b90ff);
+  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-muted));
 }
 
 .md-alert-success {
-  border-left-color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 44%, var(--border));
+  background: color-mix(in srgb, var(--success) 13%, var(--surface-muted));
 }
 
 .md-alert-warning {
-  border-left-color: #d99800;
+  border-color: color-mix(in srgb, #d99800 52%, var(--border));
+  background: color-mix(in srgb, #d99800 14%, var(--surface-muted));
 }
 
 .md-alert-error {
-  border-left-color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 44%, var(--border));
+  background: color-mix(in srgb, var(--danger) 13%, var(--surface-muted));
 }
 
 .md-alert-important {
-  border-left-color: #8e5bff;
+  border-color: color-mix(in srgb, #8e5bff 45%, var(--border));
+  background: color-mix(in srgb, #8e5bff 13%, var(--surface-muted));
 }
 
 .heading-anchor {

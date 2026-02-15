@@ -22,4 +22,12 @@ describe("MarkdownRenderer", () => {
 
     expect(container.querySelector("br")).toBeTruthy();
   });
+
+  it("does not render an empty first line in GitHub alert blocks", () => {
+    const { container } = render(<MarkdownRenderer content={"> [!INFO]\n> First line\n> Second line"} />);
+
+    const alertParagraph = container.querySelector(".md-alert p");
+    expect(alertParagraph).toBeTruthy();
+    expect(alertParagraph?.innerHTML.startsWith("<br")).toBe(false);
+  });
 });
