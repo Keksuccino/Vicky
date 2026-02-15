@@ -68,24 +68,55 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [searchResults, setSearchResults] = useState<DocSearchResult[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const scrollToHashTarget = useCallback(() => {
+  const scrollToHashTarget = useCallback((): boolean => {
     if (typeof window === "undefined") {
-      return;
+      return false;
     }
 
     const rawHash = window.location.hash;
     if (!rawHash || rawHash === "#") {
-      return;
+      return false;
     }
 
     const targetId = decodeURIComponent(rawHash.slice(1));
     if (!targetId) {
-      return;
+      return false;
     }
 
-    const targetElement = document.getElementById(targetId);
+    let targetElement = document.getElementById(targetId);
+
     if (!targetElement) {
-      return;
+      const escaped = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(targetId) : targetId;
+      const found = document.querySelector<HTMLElement>(`[id="${escaped}"]`);
+      if (found) {
+        targetElement = found;
+      }
+    }
+
+    if (!targetElement) {
+      const normalizedTarget = targetId.toLowerCase();
+      const fallback = Array.from(document.querySelectorAll<HTMLElement>("[id]")).find(
+        (element) => element.id.toLowerCase() === normalizedTarget,
+      );
+      if (fallback) {
+        targetElement = fallback;
+      }
+    }
+
+    if (!targetElement && page?.headings.length) {
+      const headingMatch = page.headings.find((heading) => heading.slug === targetId);
+      if (headingMatch) {
+        const byText = Array.from(document.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")).find(
+          (headingElement) => headingElement.textContent?.trim() === headingMatch.text,
+        );
+        if (byText) {
+          targetElement = byText;
+        }
+      }
+    }
+
+    if (!targetElement) {
+      return false;
     }
 
     targetElement.scrollIntoView({ block: "start", behavior: "auto" });
@@ -95,7 +126,9 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     if (Number.isFinite(headerHeight) && headerHeight > 0) {
       window.scrollBy({ top: -(headerHeight + 12), left: 0, behavior: "auto" });
     }
-  }, []);
+
+    return true;
+  }, [page?.headings]);
 
   useEffect(() => {
     setCurrentPath(normalizePath(initialPath));
@@ -155,12 +188,35 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       return;
     }
 
-    const handle = window.requestAnimationFrame(() => {
-      scrollToHashTarget();
+    let cancelled = false;
+    const timers: number[] = [];
+
+    const attemptScroll = (attempt = 0) => {
+      if (cancelled) {
+        return;
+      }
+
+      const scrolled = scrollToHashTarget();
+      if (scrolled || attempt >= 20) {
+        return;
+      }
+
+      const timer = window.setTimeout(() => {
+        attemptScroll(attempt + 1);
+      }, 50);
+      timers.push(timer);
+    };
+
+    const frame = window.requestAnimationFrame(() => {
+      attemptScroll();
     });
 
     return () => {
-      window.cancelAnimationFrame(handle);
+      cancelled = true;
+      window.cancelAnimationFrame(frame);
+      for (const timer of timers) {
+        window.clearTimeout(timer);
+      }
     };
   }, [pageLoading, pageError, page, scrollToHashTarget]);
 
