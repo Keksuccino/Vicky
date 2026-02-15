@@ -225,32 +225,70 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       return;
     }
 
+    const initialHash = window.location.hash;
+    if (!initialHash || initialHash === "#") {
+      return;
+    }
+
     let cancelled = false;
+    let assetTimer: number | null = null;
     const timers: number[] = [];
 
-    const attemptScroll = (attempt = 0) => {
-      if (cancelled) {
+    const runScroll = () => {
+      if (cancelled || window.location.hash !== initialHash) {
         return;
       }
+      scrollToHashTarget();
+    };
 
-      const scrolled = scrollToHashTarget();
-      if (scrolled || attempt >= 20) {
-        return;
-      }
-
+    const schedule = (delay: number) => {
       const timer = window.setTimeout(() => {
-        attemptScroll(attempt + 1);
-      }, 50);
+        runScroll();
+      }, delay);
       timers.push(timer);
     };
 
-    const frame = window.requestAnimationFrame(() => {
-      attemptScroll();
+    // Run immediately and then re-align for common delayed layout shifts.
+    runScroll();
+    [40, 110, 220, 360, 520, 760, 1050, 1450, 1950, 2550].forEach((delay) => {
+      schedule(delay);
+    });
+
+    const onWindowLoad = () => {
+      runScroll();
+      schedule(100);
+    };
+    window.addEventListener("load", onWindowLoad);
+
+    const markdownRoot = document.querySelector(".markdown-body");
+    const onEmbeddedAssetLoad = () => {
+      if (assetTimer !== null) {
+        window.clearTimeout(assetTimer);
+      }
+
+      assetTimer = window.setTimeout(() => {
+        assetTimer = null;
+        runScroll();
+      }, 50);
+    };
+    markdownRoot?.addEventListener("load", onEmbeddedAssetLoad, true);
+
+    const fontSet = document.fonts;
+    void fontSet.ready.then(() => {
+      if (cancelled) {
+        return;
+      }
+      runScroll();
+      schedule(100);
     });
 
     return () => {
       cancelled = true;
-      window.cancelAnimationFrame(frame);
+      window.removeEventListener("load", onWindowLoad);
+      markdownRoot?.removeEventListener("load", onEmbeddedAssetLoad, true);
+      if (assetTimer !== null) {
+        window.clearTimeout(assetTimer);
+      }
       for (const timer of timers) {
         window.clearTimeout(timer);
       }
