@@ -88,7 +88,8 @@ export function remarkGitHubAlerts() {
       const rawType = match[1].toUpperCase();
       const variant = ALERT_TYPE_MAP[rawType] ?? "info";
 
-      firstTextNode.value = firstTextNode.value.replace(MARKER_REGEX, "").trimStart();
+      // Remove only the `[!TYPE]` marker and keep remaining user-authored text.
+      firstTextNode.value = firstTextNode.value.replace(MARKER_REGEX, "$2").trimStart();
 
       if (!firstTextNode.value) {
         firstParagraph.children.shift();
