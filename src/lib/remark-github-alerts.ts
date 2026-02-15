@@ -12,17 +12,6 @@ const ALERT_TYPE_MAP: Record<string, string> = {
   ERROR: "error",
 };
 
-const ALERT_LABEL_MAP: Record<string, string> = {
-  NOTE: "Note",
-  INFO: "Info",
-  TIP: "Tip",
-  SUCCESS: "Success",
-  IMPORTANT: "Important",
-  WARNING: "Warning",
-  CAUTION: "Caution",
-  ERROR: "Error",
-};
-
 const MARKER_REGEX = /^\s*\[!([A-Za-z]+)\]\s*(.*)$/;
 
 type MarkdownTextNode = {
@@ -30,14 +19,9 @@ type MarkdownTextNode = {
   value: string;
 };
 
-type MarkdownStrongNode = {
-  type: "strong";
-  children: MarkdownTextNode[];
-};
-
 type MarkdownParagraphNode = {
   type: "paragraph";
-  children: Array<MarkdownTextNode | MarkdownStrongNode>;
+  children: MarkdownTextNode[];
   data?: {
     hProperties?: Record<string, unknown>;
   };
@@ -103,8 +87,6 @@ export function remarkGitHubAlerts() {
 
       const rawType = match[1].toUpperCase();
       const variant = ALERT_TYPE_MAP[rawType] ?? "info";
-      const markerTitle = match[2].trim();
-      const label = markerTitle || ALERT_LABEL_MAP[rawType] || "Note";
 
       firstTextNode.value = firstTextNode.value.replace(MARKER_REGEX, "").trimStart();
 
@@ -115,23 +97,6 @@ export function remarkGitHubAlerts() {
       if (firstParagraph.children.length === 0) {
         node.children.shift();
       }
-
-      const titleParagraph: MarkdownParagraphNode = {
-        type: "paragraph",
-        data: {
-          hProperties: {
-            className: ["md-alert-title"],
-          },
-        },
-        children: [
-          {
-            type: "strong",
-            children: [{ type: "text", value: label }],
-          },
-        ],
-      };
-
-      node.children.unshift(titleParagraph);
 
       node.data = {
         ...(node.data ?? {}),
