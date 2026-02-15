@@ -7,7 +7,6 @@ import { type ThemeMode } from "@/components/types";
 const modeLabels: Array<{ mode: ThemeMode; label: string; icon: string }> = [
   { mode: "light", label: "Light", icon: "light_mode" },
   { mode: "dark", label: "Dark", icon: "dark_mode" },
-  { mode: "custom", label: "Custom", icon: "palette" },
 ];
 
 export function ThemeSwitcher() {
