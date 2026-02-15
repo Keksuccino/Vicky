@@ -2,6 +2,7 @@
 
 import { markdown } from "@codemirror/lang-markdown";
 import { oneDark } from "@codemirror/theme-one-dark";
+import { EditorView } from "@codemirror/view";
 import CodeMirror from "@uiw/react-codemirror";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -16,6 +17,7 @@ import {
   saveAdminDoc,
   toAbsoluteDocPath,
 } from "@/components/api";
+import { cn } from "@/components/cn";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
@@ -155,6 +157,7 @@ export function EditorWorkbench() {
   const [saveLoading, setSaveLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [editorView, setEditorView] = useState<"markdown" | "preview">("markdown");
 
   const loadTree = useCallback(async () => {
     setTreeLoading(true);
@@ -444,39 +447,64 @@ export function EditorWorkbench() {
             </label>
           </div>
 
+          <div className="editor-view-toggle" role="tablist" aria-label="Editor view">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={editorView === "markdown"}
+              className={cn("editor-view-button", editorView === "markdown" && "editor-view-button-active")}
+              onClick={() => setEditorView("markdown")}
+            >
+              <MaterialIcon name="code" />
+              <span>Markdown</span>
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={editorView === "preview"}
+              className={cn("editor-view-button", editorView === "preview" && "editor-view-button-active")}
+              onClick={() => setEditorView("preview")}
+            >
+              <MaterialIcon name="visibility" />
+              <span>Preview</span>
+            </button>
+          </div>
+
           <div className="editor-split">
-            <section className="editor-pane editor-pane-code" aria-label="Markdown editor">
-              <div className="editor-pane-header">
-                <MaterialIcon name="code" />
-                <span>Markdown</span>
-              </div>
+            {editorView === "markdown" ? (
+              <section className="editor-pane editor-pane-code" aria-label="Markdown editor">
+                <div className="editor-pane-header">
+                  <MaterialIcon name="code" />
+                  <span>Markdown</span>
+                </div>
 
-              {pageLoading ? <LoadingState label="Loading selected page..." /> : null}
+                {pageLoading ? <LoadingState label="Loading selected page..." /> : null}
 
-              <CodeMirror
-                value={draft.content}
-                height="100%"
-                extensions={[markdown()]}
-                theme={mode === "light" ? "light" : oneDark}
-                basicSetup={{
-                  lineNumbers: true,
-                  bracketMatching: true,
-                  highlightActiveLine: true,
-                  autocompletion: true,
-                }}
-                onChange={(value) => {
-                  setDraft((prev) => ({ ...prev, content: value }));
-                }}
-              />
-            </section>
-
-            <section className="editor-pane editor-pane-preview" aria-label="Live preview">
-              <div className="editor-pane-header">
-                <MaterialIcon name="visibility" />
-                <span>Preview</span>
-              </div>
-              <MarkdownRenderer content={draft.content} />
-            </section>
+                <CodeMirror
+                  value={draft.content}
+                  height="100%"
+                  extensions={[markdown(), EditorView.lineWrapping]}
+                  theme={mode === "light" ? "light" : oneDark}
+                  basicSetup={{
+                    lineNumbers: true,
+                    bracketMatching: true,
+                    highlightActiveLine: true,
+                    autocompletion: true,
+                  }}
+                  onChange={(value) => {
+                    setDraft((prev) => ({ ...prev, content: value }));
+                  }}
+                />
+              </section>
+            ) : (
+              <section className="editor-pane editor-pane-preview" aria-label="Live preview">
+                <div className="editor-pane-header">
+                  <MaterialIcon name="visibility" />
+                  <span>Preview</span>
+                </div>
+                <MarkdownRenderer content={draft.content} />
+              </section>
+            )}
           </div>
 
           {statusMessage ? <p className="success-text">{statusMessage}</p> : null}

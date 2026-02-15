@@ -1166,9 +1166,45 @@ select {
   gap: 0.65rem;
 }
 
+.editor-view-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.24rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-muted);
+  width: fit-content;
+}
+
+.editor-view-button {
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 0.4rem 0.72rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.editor-view-button:hover {
+  color: var(--text-primary);
+}
+
+.editor-view-button-active {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(22, 38, 66, 0.14);
+}
+
 .editor-split {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: 0.75rem;
   min-height: 58vh;
 }
@@ -1201,6 +1237,11 @@ select {
 
 .editor-pane-code .cm-scroller {
   min-height: 320px;
+  overflow-x: hidden;
+}
+
+.editor-pane-code .cm-content {
+  overflow-wrap: anywhere;
 }
 
 .editor-pane-preview {
