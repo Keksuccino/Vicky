@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { BUILTIN_THEME_IDS, DEFAULT_SETTINGS, DEFAULT_STORE, DEFAULT_THEMES, STORE_VERSION } from "@/lib/defaults";
+import { normalizeStartPage } from "@/lib/start-page";
 import type { AppSettings, DocsStore, ThemeDefinition, ThemeVariables } from "@/lib/types";
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
@@ -143,6 +144,7 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
     siteDescription: normalizeString(source.siteDescription, defaults.siteDescription),
+    startPage: normalizeStartPage(source.startPage),
     docsIcon: {
       png16Url: normalizeString(sourceDocsIcon.png16Url, defaults.docsIcon.png16Url),
       png32Url: normalizeString(sourceDocsIcon.png32Url, defaults.docsIcon.png32Url),
@@ -182,7 +184,7 @@ const normalizeStore = (value: unknown): DocsStore => {
 
 const writeStoreFile = async (store: DocsStore): Promise<void> => {
   await mkdir(path.dirname(STORE_PATH), { recursive: true });
-  const tempPath = `${STORE_PATH}.tmp`;
+  const tempPath = `${STORE_PATH}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
   await writeFile(tempPath, JSON.stringify(store, null, 2), "utf8");
   await rename(tempPath, STORE_PATH);
 };

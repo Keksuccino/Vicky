@@ -30,6 +30,7 @@ export interface DocsIconSettings {
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
+  startPage: string;
   docsIcon: DocsIconSettings;
   docsCacheTtlMs: number;
   github: GitHubSettings;

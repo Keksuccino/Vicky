@@ -43,6 +43,7 @@ export type AuthUser = {
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
+  startPage: string;
   docsIconPng16Url: string;
   docsIconPng32Url: string;
   docsIconPng180Url: string;

@@ -6,6 +6,7 @@ import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from 
 import { encryptSecret } from "@/lib/encryption";
 import { clearGitHubDocsCache } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
+import { normalizeStartPage } from "@/lib/start-page";
 import { getPublicSettings, getStore, updateStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -15,6 +16,7 @@ const settingsPatchSchema = z
   .object({
     siteTitle: z.string().min(1).optional(),
     siteDescription: z.string().min(1).optional(),
+    startPage: z.string().optional(),
     docsIcon: z
       .object({
         png16Url: z.string().optional(),
@@ -71,6 +73,10 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.siteDescription !== undefined) {
         store.settings.siteDescription = patch.siteDescription.trim() || store.settings.siteDescription;
+      }
+
+      if (patch.startPage !== undefined) {
+        store.settings.startPage = normalizeStartPage(patch.startPage);
       }
 
       if (patch.docsIcon) {

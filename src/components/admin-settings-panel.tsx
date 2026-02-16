@@ -23,6 +23,7 @@ import type { AdminSettings, ThemeDefinition, ThemeDraft } from "@/components/ty
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  startPage: "/home",
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
@@ -569,7 +570,7 @@ export function AdminSettingsPanel() {
             <h2>Site Settings</h2>
           </div>
 
-          <p className="panel-description">Configure site branding values and icon assets.</p>
+          <p className="panel-description">Configure site branding, start page behavior, and icon assets.</p>
 
           <form
             className="form-grid"
@@ -601,6 +602,18 @@ export function AdminSettingsPanel() {
                 />
               </label>
             </div>
+
+            <label className="field-row" htmlFor="site-start-page">
+              <span className="field-label">Start page (docs path)</span>
+              <input
+                id="site-start-page"
+                className="input"
+                value={settings.startPage}
+                onChange={(event) => setSettings((prev) => ({ ...prev, startPage: event.target.value }))}
+                placeholder="/home"
+                required
+              />
+            </label>
 
             <div className="form-separator" role="separator" aria-hidden="true" />
 

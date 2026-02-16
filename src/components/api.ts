@@ -21,6 +21,7 @@ type RawTreeItem = {
 export type PublicSiteSettings = {
   siteTitle: string;
   siteDescription: string;
+  startPage: string;
   docsIconPng16Url: string;
   docsIconPng32Url: string;
   docsIconPng180Url: string;
@@ -33,6 +34,7 @@ const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
 const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  startPage: "/home",
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
@@ -370,6 +372,7 @@ function normalizeSettings(source: unknown): AdminSettings {
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    startPage: asString(payload.startPage, DEFAULT_SETTINGS.startPage),
     docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
@@ -390,6 +393,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    startPage: asString(payload.startPage, DEFAULT_SETTINGS.startPage),
     docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
@@ -534,6 +538,7 @@ export async function saveAdminSettings(
   const payload: Record<string, unknown> = {
     siteTitle: settings.siteTitle,
     siteDescription: settings.siteDescription,
+    startPage: settings.startPage,
     docsIcon: {
       png16Url: settings.docsIconPng16Url,
       png32Url: settings.docsIconPng32Url,

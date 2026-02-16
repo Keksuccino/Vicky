@@ -1,4 +1,5 @@
 import { DOCS_CACHE_TTL_MS } from "@/lib/cache";
+import { DEFAULT_START_PAGE } from "@/lib/start-page";
 import type { AppSettings, DocsStore, ThemeDefinition } from "@/lib/types";
 
 export const STORE_VERSION = 1 as const;
@@ -76,6 +77,7 @@ export const DEFAULT_THEMES = (): ThemeDefinition[] => {
 export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  startPage: DEFAULT_START_PAGE,
   docsIcon: {
     png16Url: "",
     png32Url: "",
