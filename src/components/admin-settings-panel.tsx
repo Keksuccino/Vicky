@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -81,6 +81,30 @@ export function AdminSettingsPanel() {
 
   const activeTheme = useMemo(() => themes.find((theme) => theme.isActive) ?? null, [themes]);
 
+  const saveSettingsChanges = useCallback(
+    async (clearToken: boolean) => {
+      setSettingsSaving(true);
+      setSettingsMessage(null);
+      setLoadingError(null);
+
+      try {
+        const saved = await saveAdminSettings(settings, { clearToken });
+        setSettings({
+          ...saved,
+          githubToken: "",
+        });
+        setClearTokenOnSave(false);
+        setSettingsMessage("Settings saved.");
+        await refreshThemes();
+      } catch (error) {
+        setLoadingError(formatApiError(error));
+      } finally {
+        setSettingsSaving(false);
+      }
+    },
+    [refreshThemes, settings],
+  );
+
   useEffect(() => {
     let isActive = true;
 
@@ -141,7 +165,7 @@ export function AdminSettingsPanel() {
       <div className="panel-grid">
         <section className="panel-card">
           <div className="panel-header">
-            <h1>Repository settings</h1>
+            <h1>Repository Settings</h1>
             <button
               type="button"
               className="btn btn-secondary"
@@ -156,96 +180,16 @@ export function AdminSettingsPanel() {
           </div>
 
           <p className="panel-description">
-            Configure site details and the GitHub repository that stores your markdown pages.
+            Configure repository connectivity, write credentials, and docs cache behavior.
           </p>
 
           <form
             className="form-grid"
             onSubmit={async (event) => {
               event.preventDefault();
-              setSettingsSaving(true);
-              setSettingsMessage(null);
-              setLoadingError(null);
-
-              try {
-                const saved = await saveAdminSettings(settings, { clearToken: clearTokenOnSave });
-                setSettings({
-                  ...saved,
-                  githubToken: "",
-                });
-                setClearTokenOnSave(false);
-                setSettingsMessage("Settings saved.");
-                await refreshThemes();
-              } catch (error) {
-                setLoadingError(formatApiError(error));
-              } finally {
-                setSettingsSaving(false);
-              }
+              await saveSettingsChanges(clearTokenOnSave);
             }}
           >
-            <div className="field-inline">
-              <label className="field-row" htmlFor="site-title">
-                <span className="field-label">Site title</span>
-                <input
-                  id="site-title"
-                  className="input"
-                  value={settings.siteTitle}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, siteTitle: event.target.value }))}
-                  required
-                />
-              </label>
-
-              <label className="field-row" htmlFor="site-description">
-                <span className="field-label">Site description</span>
-                <input
-                  id="site-description"
-                  className="input"
-                  value={settings.siteDescription}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, siteDescription: event.target.value }))}
-                  required
-                />
-              </label>
-            </div>
-
-            <div className="form-separator" role="separator" aria-hidden="true" />
-
-            <div className="field-inline">
-              <label className="field-row" htmlFor="docs-icon-png-16">
-                <span className="field-label">Docs icon 16x16 PNG URL</span>
-                <input
-                  id="docs-icon-png-16"
-                  className="input"
-                  value={settings.docsIconPng16Url}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng16Url: event.target.value }))}
-                  placeholder="https://example.com/docs-icon-16.png"
-                />
-              </label>
-
-              <label className="field-row" htmlFor="docs-icon-png-32">
-                <span className="field-label">Docs icon 32x32 PNG URL</span>
-                <input
-                  id="docs-icon-png-32"
-                  className="input"
-                  value={settings.docsIconPng32Url}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng32Url: event.target.value }))}
-                  placeholder="https://example.com/docs-icon-32.png"
-                />
-              </label>
-            </div>
-
-            <label className="field-row" htmlFor="docs-icon-png-180">
-              <span className="field-label">Docs icon 180x180 PNG URL</span>
-              <input
-                id="docs-icon-png-180"
-                className="input"
-                value={settings.docsIconPng180Url}
-                onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng180Url: event.target.value }))}
-                placeholder="https://example.com/docs-icon-180.png"
-              />
-            </label>
-
-            <div className="form-separator" role="separator" aria-hidden="true" />
-
             <label className="field-row" htmlFor="docs-cache-ttl-seconds">
               <span className="field-label">Docs cache TTL (seconds)</span>
               <input
@@ -375,7 +319,7 @@ export function AdminSettingsPanel() {
 
         <section className="panel-card">
           <div className="panel-header">
-            <h2>Theme management</h2>
+            <h2>Theme Management</h2>
             <p className="panel-description">Create and activate custom variable-driven themes.</p>
           </div>
 
@@ -618,6 +562,90 @@ export function AdminSettingsPanel() {
 
           {themeMessage ? <p className="success-text">{themeMessage}</p> : null}
           {themeError ? <p className="error-text">{themeError}</p> : null}
+        </section>
+
+        <section className="panel-card">
+          <div className="panel-header">
+            <h2>Site Settings</h2>
+          </div>
+
+          <p className="panel-description">Configure site branding values and icon assets.</p>
+
+          <form
+            className="form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              await saveSettingsChanges(false);
+            }}
+          >
+            <div className="field-inline">
+              <label className="field-row" htmlFor="site-title">
+                <span className="field-label">Site title</span>
+                <input
+                  id="site-title"
+                  className="input"
+                  value={settings.siteTitle}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, siteTitle: event.target.value }))}
+                  required
+                />
+              </label>
+
+              <label className="field-row" htmlFor="site-description">
+                <span className="field-label">Site description</span>
+                <input
+                  id="site-description"
+                  className="input"
+                  value={settings.siteDescription}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, siteDescription: event.target.value }))}
+                  required
+                />
+              </label>
+            </div>
+
+            <div className="form-separator" role="separator" aria-hidden="true" />
+
+            <div className="field-inline">
+              <label className="field-row" htmlFor="docs-icon-png-16">
+                <span className="field-label">Docs icon 16x16 PNG URL</span>
+                <input
+                  id="docs-icon-png-16"
+                  className="input"
+                  value={settings.docsIconPng16Url}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng16Url: event.target.value }))}
+                  placeholder="https://example.com/docs-icon-16.png"
+                />
+              </label>
+
+              <label className="field-row" htmlFor="docs-icon-png-32">
+                <span className="field-label">Docs icon 32x32 PNG URL</span>
+                <input
+                  id="docs-icon-png-32"
+                  className="input"
+                  value={settings.docsIconPng32Url}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng32Url: event.target.value }))}
+                  placeholder="https://example.com/docs-icon-32.png"
+                />
+              </label>
+            </div>
+
+            <label className="field-row" htmlFor="docs-icon-png-180">
+              <span className="field-label">Docs icon 180x180 PNG URL</span>
+              <input
+                id="docs-icon-png-180"
+                className="input"
+                value={settings.docsIconPng180Url}
+                onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng180Url: event.target.value }))}
+                placeholder="https://example.com/docs-icon-180.png"
+              />
+            </label>
+
+            <div className="action-row">
+              <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
+                <MaterialIcon name={settingsSaving ? "sync" : "save"} />
+                <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
+              </button>
+            </div>
+          </form>
         </section>
       </div>
     </section>
