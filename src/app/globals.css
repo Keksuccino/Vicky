@@ -264,12 +264,52 @@ select {
   gap: 0.65rem;
 }
 
+.app-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  justify-self: end;
+}
+
 .mode-toggle {
   display: inline-flex;
   border-radius: 999px;
   padding: 0.2rem;
   background: var(--surface-muted);
   border: 1px solid var(--border);
+}
+
+.admin-icon-link {
+  width: 2.18rem;
+  height: 2.18rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.admin-icon-link:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface-elevated));
+}
+
+.admin-icon-link .material-icon {
+  font-size: 1.1rem;
+}
+
+.admin-icon-link-active {
+  color: var(--text-primary);
+  background: var(--surface-elevated);
+  box-shadow: 0 4px 14px rgba(22, 38, 66, 0.14);
 }
 
 .mode-button {
@@ -1631,6 +1671,16 @@ select {
   .theme-switcher {
     width: 100%;
     flex-wrap: wrap;
+  }
+
+  .app-header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  .app-header-actions .theme-switcher {
+    width: auto;
+    flex-wrap: nowrap;
   }
 
   .editor-layout {

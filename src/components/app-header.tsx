@@ -9,9 +9,6 @@ import { fetchPublicSiteSettings, getCurrentUser } from "@/components/api";
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import { startPageToDocsHref } from "@/lib/start-page";
-
-const DEFAULT_DOCS_HREF = startPageToDocsHref("/home");
 
 type NavigationItem = {
   href: string;
@@ -20,7 +17,7 @@ type NavigationItem = {
   activePrefix: string;
 };
 
-const ADMIN_NAVIGATION: NavigationItem = {
+const ADMIN_NAVIGATION = {
   href: "/admin/settings",
   label: "Admin",
   icon: "admin_panel_settings",
@@ -39,7 +36,6 @@ const DEFAULT_BRAND_TITLE = "Vicky Docs";
 export function AppHeader() {
   const pathname = usePathname();
   const [brandTitle, setBrandTitle] = useState(DEFAULT_BRAND_TITLE);
-  const [docsHref, setDocsHref] = useState(DEFAULT_DOCS_HREF);
   const [canAccessEditor, setCanAccessEditor] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState(false);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
@@ -55,7 +51,6 @@ export function AppHeader() {
         }
 
         setBrandTitle(settings.siteTitle.trim() || DEFAULT_BRAND_TITLE);
-        setDocsHref(startPageToDocsHref(settings.startPage));
         setHasConfiguredIcon(Boolean(settings.docsIconPng180Url.trim()));
         setIconLoadFailed(false);
       } catch {
@@ -64,7 +59,6 @@ export function AppHeader() {
         }
 
         setBrandTitle(DEFAULT_BRAND_TITLE);
-        setDocsHref(DEFAULT_DOCS_HREF);
         setHasConfiguredIcon(false);
         setIconLoadFailed(false);
       }
@@ -105,11 +99,8 @@ export function AppHeader() {
   }, [pathname]);
 
   const useCustomIcon = hasConfiguredIcon && !iconLoadFailed;
-  const navItems: NavigationItem[] = [
-    { href: docsHref, label: "Docs", icon: "menu_book", activePrefix: "/docs" },
-    ...(canAccessEditor ? [EDITOR_NAVIGATION] : []),
-    ADMIN_NAVIGATION,
-  ];
+  const navItems: NavigationItem[] = canAccessEditor ? [EDITOR_NAVIGATION] : [];
+  const adminIsActive = pathname === ADMIN_NAVIGATION.href || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
 
   return (
     <header className="app-header">
@@ -149,7 +140,17 @@ export function AppHeader() {
           })}
         </nav>
 
-        <ThemeSwitcher />
+        <div className="app-header-actions">
+          <ThemeSwitcher />
+          <Link
+            href={ADMIN_NAVIGATION.href}
+            className={cn("admin-icon-link", adminIsActive && "admin-icon-link-active")}
+            aria-label={ADMIN_NAVIGATION.label}
+            title={ADMIN_NAVIGATION.label}
+          >
+            <MaterialIcon name={ADMIN_NAVIGATION.icon} />
+          </Link>
+        </div>
       </div>
     </header>
   );
