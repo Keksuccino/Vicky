@@ -485,6 +485,10 @@ select {
   gap: 0.22rem;
 }
 
+.sidebar-toc-item {
+  min-width: 0;
+}
+
 .sidebar-toc-link {
   width: 100%;
   border: 0;

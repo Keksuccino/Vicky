@@ -224,11 +224,14 @@ export function DocsTree({
               <nav aria-label="Page content">
                 <ul className="sidebar-toc-list">
                   {tocHeadings.map((heading) => (
-                    <li key={heading.slug}>
+                    <li
+                      key={heading.slug}
+                      className="sidebar-toc-item"
+                      style={{ paddingInlineStart: `${(heading.depth - 1) * 10}px` }}
+                    >
                       <button
                         type="button"
                         className="sidebar-toc-link"
-                        style={{ marginInlineStart: `${(heading.depth - 1) * 10}px` }}
                         onClick={() => onSelectPath(currentPath, heading.slug)}
                       >
                         {heading.text}
