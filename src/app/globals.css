@@ -712,23 +712,29 @@ select {
 }
 
 .md-alert {
+  --md-alert-icon-size: 2.2rem;
+  --md-alert-icon-inline-start: 0.72rem;
+  --md-alert-icon-gap: 0.7rem;
   margin: 0.9rem 0;
   border-radius: 12px;
   border: 1px solid var(--border);
   position: relative;
-  padding: 0.68rem 0.85rem 0.68rem 5.9rem;
+  min-height: calc(var(--md-alert-icon-size) + 0.75rem);
+  padding: 0.68rem 0.85rem 0.68rem calc(
+    var(--md-alert-icon-inline-start) + var(--md-alert-icon-size) + var(--md-alert-icon-gap)
+  );
   background: var(--surface-muted);
 }
 
 .md-alert::before {
   position: absolute;
-  left: 0.72rem;
+  left: var(--md-alert-icon-inline-start);
   top: 50%;
   transform: translateY(-50%);
   font-family: "Material Symbols Outlined";
   font-style: normal;
   font-weight: 400;
-  font-size: 4.4rem;
+  font-size: var(--md-alert-icon-size);
   line-height: 1;
   letter-spacing: normal;
   text-transform: none;
