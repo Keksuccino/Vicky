@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -11,7 +11,6 @@ import {
   searchDocs,
   toAbsoluteDocPath,
 } from "@/components/api";
-import { Breadcrumbs, type BreadcrumbItem } from "@/components/breadcrumbs";
 import { cn } from "@/components/cn";
 import { DocsTree } from "@/components/docs-tree";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
@@ -33,10 +32,6 @@ function toDocsHref(path: string): string {
     return "/docs";
   }
   return `/docs/${normalized.slice(1)}`;
-}
-
-function prettySegment(segment: string): string {
-  return decodeURIComponent(segment).replace(/[-_]/g, " ");
 }
 
 function formatDate(value?: string): string {
@@ -397,23 +392,6 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     };
   }, [searchQuery]);
 
-  const breadcrumbItems = useMemo<BreadcrumbItem[]>(() => {
-    const path = page?.path ?? currentPath;
-    const segments = path.split("/").filter(Boolean);
-    const items: BreadcrumbItem[] = [{ label: "Docs", href: "/docs" }];
-    let runningPath = "";
-
-    segments.forEach((segment, index) => {
-      runningPath += `/${segment}`;
-      items.push({
-        label: prettySegment(segment),
-        href: index === segments.length - 1 ? undefined : toDocsHref(runningPath),
-      });
-    });
-
-    return items;
-  }, [currentPath, page]);
-
   const onSelectPath = (path: string, anchor?: string) => {
     const normalized = normalizePath(path);
     setCurrentPath(normalized);
@@ -479,8 +457,6 @@ export function DocsClient({ initialPath }: DocsClientProps) {
         </div>
 
         <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined}>
-          <Breadcrumbs items={breadcrumbItems} />
-
           {pageLoading ? <LoadingState label="Loading page..." /> : null}
 
           {pageError ? (
