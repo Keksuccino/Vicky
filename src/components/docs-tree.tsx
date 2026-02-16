@@ -159,7 +159,7 @@ export function DocsTree({
                 id="docs-search"
                 className="input"
                 aria-label="Search docs"
-                placeholder="Find pages, headings, or keywords"
+                placeholder="Search in pages"
                 value={searchQuery}
                 onChange={(event) => onSearchQueryChange(event.target.value)}
               />
