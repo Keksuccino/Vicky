@@ -9,11 +9,13 @@ import { fetchPublicSiteSettings } from "@/components/api";
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import { startPageToDocsHref } from "@/lib/start-page";
+
+const DEFAULT_DOCS_HREF = startPageToDocsHref("/home");
 
 const navigation = [
-  { href: "/docs", label: "Docs", icon: "menu_book" },
-  { href: "/editor", label: "Editor", icon: "edit_square" },
-  { href: "/admin/settings", label: "Admin", icon: "admin_panel_settings" },
+  { href: "/editor", label: "Editor", icon: "edit_square", activePrefix: "/editor" },
+  { href: "/admin/settings", label: "Admin", icon: "admin_panel_settings", activePrefix: "/admin/settings" },
 ];
 
 const DEFAULT_BRAND_TITLE = "Vicky Docs";
@@ -21,6 +23,7 @@ const DEFAULT_BRAND_TITLE = "Vicky Docs";
 export function AppHeader() {
   const pathname = usePathname();
   const [brandTitle, setBrandTitle] = useState(DEFAULT_BRAND_TITLE);
+  const [docsHref, setDocsHref] = useState(DEFAULT_DOCS_HREF);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState(false);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
@@ -35,6 +38,7 @@ export function AppHeader() {
         }
 
         setBrandTitle(settings.siteTitle.trim() || DEFAULT_BRAND_TITLE);
+        setDocsHref(startPageToDocsHref(settings.startPage));
         setHasConfiguredIcon(Boolean(settings.docsIconPng180Url.trim()));
         setIconLoadFailed(false);
       } catch {
@@ -43,6 +47,7 @@ export function AppHeader() {
         }
 
         setBrandTitle(DEFAULT_BRAND_TITLE);
+        setDocsHref(DEFAULT_DOCS_HREF);
         setHasConfiguredIcon(false);
         setIconLoadFailed(false);
       }
@@ -80,10 +85,14 @@ export function AppHeader() {
         </Link>
 
         <nav className="main-nav" aria-label="Main navigation">
-          {navigation.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          {[{ href: docsHref, label: "Docs", icon: "menu_book", activePrefix: "/docs" }, ...navigation].map((item) => {
+            const isActive =
+              pathname === item.activePrefix ||
+              pathname.startsWith(`${item.activePrefix}/`) ||
+              pathname === item.href ||
+              pathname.startsWith(`${item.href}/`);
             return (
-              <Link key={item.href} href={item.href} className={cn("nav-link", isActive && "nav-link-active")}>
+              <Link key={item.label} href={item.href} className={cn("nav-link", isActive && "nav-link-active")}>
                 <MaterialIcon name={item.icon} />
                 <span>{item.label}</span>
               </Link>
