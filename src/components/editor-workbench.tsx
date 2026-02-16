@@ -241,6 +241,60 @@ export function EditorWorkbench() {
     });
   };
 
+  const handleSaveDraft = useCallback(async () => {
+    if (saveLoading) {
+      return;
+    }
+
+    setSaveLoading(true);
+    setStatusMessage(null);
+    setSaveError(null);
+
+    const normalizedPath = toAbsoluteDocPath(pathFromInput(draft.path || draft.slug));
+    const commitMessage = draft.commitMessage.trim() || `docs: update ${toSlug(normalizedPath)}`;
+
+    try {
+      const saved = await saveAdminDoc({
+        ...draft,
+        path: normalizedPath,
+        slug: toSlug(normalizedPath),
+        commitMessage,
+      });
+
+      setDraft({
+        title: saved.title,
+        description: saved.description,
+        path: saved.path,
+        slug: saved.slug,
+        content: saved.content,
+        commitMessage,
+      });
+      setStatusMessage(`Saved ${saved.path}.`);
+      await loadTree();
+    } catch (error) {
+      setSaveError(formatApiError(error));
+    } finally {
+      setSaveLoading(false);
+    }
+  }, [draft, loadTree, saveLoading]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const isSaveShortcut = (event.ctrlKey || event.metaKey) && !event.altKey && event.key.toLowerCase() === "s";
+      if (!isSaveShortcut) {
+        return;
+      }
+
+      event.preventDefault();
+      void handleSaveDraft();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [handleSaveDraft]);
+
   return (
     <section className="editor-page" id="main-content">
       <div className="editor-topbar">
@@ -268,37 +322,8 @@ export function EditorWorkbench() {
             type="button"
             className="btn btn-primary"
             disabled={saveLoading}
-            onClick={async () => {
-              setSaveLoading(true);
-              setStatusMessage(null);
-              setSaveError(null);
-
-              const normalizedPath = toAbsoluteDocPath(pathFromInput(draft.path || draft.slug));
-              const commitMessage = draft.commitMessage.trim() || `docs: update ${toSlug(normalizedPath)}`;
-
-              try {
-                const saved = await saveAdminDoc({
-                  ...draft,
-                  path: normalizedPath,
-                  slug: toSlug(normalizedPath),
-                  commitMessage,
-                });
-
-                setDraft({
-                  title: saved.title,
-                  description: saved.description,
-                  path: saved.path,
-                  slug: saved.slug,
-                  content: saved.content,
-                  commitMessage,
-                });
-                setStatusMessage(`Saved ${saved.path}.`);
-                await loadTree();
-              } catch (error) {
-                setSaveError(formatApiError(error));
-              } finally {
-                setSaveLoading(false);
-              }
+            onClick={() => {
+              void handleSaveDraft();
             }}
           >
             <MaterialIcon name={saveLoading ? "sync" : "save"} />
