@@ -716,18 +716,19 @@ select {
   border-radius: 12px;
   border: 1px solid var(--border);
   position: relative;
-  padding: 0.68rem 0.85rem 0.68rem 2.35rem;
+  padding: 0.68rem 0.85rem 0.68rem 5.9rem;
   background: var(--surface-muted);
 }
 
 .md-alert::before {
   position: absolute;
   left: 0.72rem;
-  top: 0.68rem;
+  top: 50%;
+  transform: translateY(-50%);
   font-family: "Material Symbols Outlined";
   font-style: normal;
   font-weight: 400;
-  font-size: 1.1rem;
+  font-size: 4.4rem;
   line-height: 1;
   letter-spacing: normal;
   text-transform: none;
