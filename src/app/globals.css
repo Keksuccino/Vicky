@@ -1015,9 +1015,9 @@ select {
 .tree-row:hover:not(.tree-row-active) {
   background: linear-gradient(
     to bottom,
-    transparent 2.5px,
-    var(--surface-muted) 2.5px calc(100% - 2.5px),
-    transparent calc(100% - 2.5px)
+    transparent 5px,
+    var(--surface-muted) 5px calc(100% - 5px),
+    transparent calc(100% - 5px)
   );
 }
 
