@@ -472,21 +472,23 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
           {!pageLoading && !pageError && page ? (
             <>
-              <header className="page-heading">
-                <h1>{page.title}</h1>
-                {page.description ? <p>{page.description}</p> : null}
-              </header>
+              <section className="page-header-card" aria-label="Page header">
+                <header className="page-heading">
+                  <h1>{page.title}</h1>
+                  {page.description ? <p>{page.description}</p> : null}
+                </header>
 
-              <div className="metadata-row" aria-label="Page metadata">
-                <span className="meta-item">
-                  <MaterialIcon name="schedule" />
-                  Updated: {formatDate(page.updatedAt)}
-                </span>
-                <span className="meta-item">
-                  <MaterialIcon name="person" />
-                  Author: {page.updatedBy || "Unknown"}
-                </span>
-              </div>
+                <div className="metadata-row" aria-label="Page metadata">
+                  <span className="meta-item">
+                    <MaterialIcon name="schedule" />
+                    Updated: {formatDate(page.updatedAt)}
+                  </span>
+                  <span className="meta-item">
+                    <MaterialIcon name="person" />
+                    Author: {page.updatedBy || "Unknown"}
+                  </span>
+                </div>
+              </section>
 
               <MarkdownRenderer content={page.content} />
             </>

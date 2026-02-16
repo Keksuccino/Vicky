@@ -599,7 +599,7 @@ select {
 .page-heading {
   display: grid;
   gap: 0.3rem;
-  margin-bottom: 0.65rem;
+  margin-bottom: 0.72rem;
 }
 
 .page-heading h1 {
@@ -613,11 +613,21 @@ select {
   color: var(--text-secondary);
 }
 
+.page-header-card {
+  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 42%),
+    color-mix(in srgb, var(--surface-muted) 70%, var(--surface-elevated) 30%);
+  padding: clamp(0.85rem, 2vw, 1.1rem) clamp(0.9rem, 2.3vw, 1.25rem);
+  margin-bottom: clamp(1.3rem, 3.1vw, 1.9rem);
+}
+
 .metadata-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
-  margin-bottom: 0.9rem;
+  margin-bottom: 0;
 }
 
 .toc-panel {
