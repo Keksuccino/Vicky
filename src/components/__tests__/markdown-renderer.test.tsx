@@ -30,4 +30,21 @@ describe("MarkdownRenderer", () => {
     expect(alertParagraph).toBeTruthy();
     expect(alertParagraph?.innerHTML.startsWith("<br")).toBe(false);
   });
+
+  it("rewrites root short links to docs paths", () => {
+    render(<MarkdownRenderer content="[Home](/home)" />);
+
+    const link = screen.getByRole("link", { name: "Home" });
+    expect(link.getAttribute("href")).toBe("/docs/home");
+  });
+
+  it("does not rewrite links that already target nested paths", () => {
+    render(<MarkdownRenderer content="[Nested](/docs/home)\n\n[Deep](/foo/bar)" />);
+
+    const nestedLink = screen.getByRole("link", { name: "Nested" });
+    const deepLink = screen.getByRole("link", { name: "Deep" });
+
+    expect(nestedLink.getAttribute("href")).toBe("/docs/home");
+    expect(deepLink.getAttribute("href")).toBe("/foo/bar");
+  });
 });

@@ -13,6 +13,17 @@ type MarkdownRendererProps = {
   content: string;
 };
 
+const ALLOWED_HREF_REGEX = /^(https?:|mailto:|\/|#)/i;
+const ROOT_SHORT_LINK_REGEX = /^\/(?!docs(?:[/?#]|$))[^/?#]+(?:[?#].*)?$/;
+
+const normalizeInternalDocsLink = (href: string): string => {
+  if (!ROOT_SHORT_LINK_REGEX.test(href)) {
+    return href;
+  }
+
+  return `/docs${href}`;
+};
+
 const sanitizeSchema = {
   ...defaultSchema,
   clobberPrefix: "",
@@ -55,8 +66,9 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         ]}
         components={{
           a: ({ href, children, ...props }) => {
+            const normalizedHref = href ? normalizeInternalDocsLink(href.trim()) : "";
             const safeHref =
-              href && /^(https?:|mailto:|\/|#)/i.test(href.trim()) ? href : href ? "#" : undefined;
+              normalizedHref && ALLOWED_HREF_REGEX.test(normalizedHref) ? normalizedHref : normalizedHref ? "#" : undefined;
             const external = safeHref?.startsWith("http://") || safeHref?.startsWith("https://");
 
             return (
