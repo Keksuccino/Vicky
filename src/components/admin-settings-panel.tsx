@@ -163,7 +163,7 @@ export function AdminSettingsPanel() {
   return (
     <section className="admin-page">
       <div className="panel-grid">
-        <section className="panel-card">
+        <section className="panel-card panel-card-repo">
           <div className="panel-header">
             <h1>Repository Settings</h1>
             <button
@@ -317,7 +317,7 @@ export function AdminSettingsPanel() {
           {loadingError ? <p className="error-text">{loadingError}</p> : null}
         </section>
 
-        <section className="panel-card">
+        <section className="panel-card panel-card-theme">
           <div className="panel-header">
             <h2>Theme Management</h2>
             <p className="panel-description">Create and activate custom variable-driven themes.</p>
@@ -564,7 +564,7 @@ export function AdminSettingsPanel() {
           {themeError ? <p className="error-text">{themeError}</p> : null}
         </section>
 
-        <section className="panel-card">
+        <section className="panel-card panel-card-site">
           <div className="panel-header">
             <h2>Site Settings</h2>
           </div>

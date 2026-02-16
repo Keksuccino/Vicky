@@ -1086,6 +1086,21 @@ select {
   align-items: start;
 }
 
+.panel-card-repo {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.panel-card-site {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.panel-card-theme {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+
 .panel-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -1391,6 +1406,17 @@ select {
 
   .editor-split {
     grid-template-columns: 1fr;
+  }
+
+  .panel-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .panel-card-repo,
+  .panel-card-site,
+  .panel-card-theme {
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
