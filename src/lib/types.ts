@@ -21,9 +21,16 @@ export interface GitHubSettings {
   tokenEncrypted: string | null;
 }
 
+export interface DocsIconSettings {
+  png16Url: string;
+  png32Url: string;
+  png180Url: string;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
+  docsIcon: DocsIconSettings;
   docsCacheTtlMs: number;
   github: GitHubSettings;
   activeThemeId: string;

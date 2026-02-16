@@ -18,6 +18,14 @@ type RawTreeItem = {
   name: string;
 };
 
+export type PublicSiteSettings = {
+  siteTitle: string;
+  siteDescription: string;
+  docsIconPng16Url: string;
+  docsIconPng32Url: string;
+  docsIconPng180Url: string;
+};
+
 const DEFAULT_DOCS_CACHE_TTL_SECONDS = 30;
 const MIN_DOCS_CACHE_TTL_SECONDS = 1;
 const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
@@ -25,6 +33,9 @@ const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
 const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  docsIconPng16Url: "",
+  docsIconPng32Url: "",
+  docsIconPng180Url: "",
   docsCacheTtlSeconds: DEFAULT_DOCS_CACHE_TTL_SECONDS,
   githubOwner: "",
   githubRepo: "",
@@ -353,11 +364,15 @@ function normalizeSearchResults(source: unknown): DocSearchResult[] {
 function normalizeSettings(source: unknown): AdminSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const github = asRecord(payload.github);
+  const docsIcon = asRecord(payload.docsIcon);
   const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
+    docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
+    docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
     docsCacheTtlSeconds: msToSeconds(docsCacheTtlMs),
     githubOwner: asString(github.owner, DEFAULT_SETTINGS.githubOwner),
     githubRepo: asString(github.repo, DEFAULT_SETTINGS.githubRepo),
@@ -365,6 +380,19 @@ function normalizeSettings(source: unknown): AdminSettings {
     githubDocsPath: asString(github.docsPath, DEFAULT_SETTINGS.githubDocsPath),
     githubToken: "",
     tokenConfigured: asBoolean(github.tokenConfigured, false),
+  };
+}
+
+function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
+  const payload = asRecord(asRecord(source).settings ?? source);
+  const docsIcon = asRecord(payload.docsIcon);
+
+  return {
+    siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
+    siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
+    docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
+    docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
   };
 }
 
@@ -506,6 +534,11 @@ export async function saveAdminSettings(
   const payload: Record<string, unknown> = {
     siteTitle: settings.siteTitle,
     siteDescription: settings.siteDescription,
+    docsIcon: {
+      png16Url: settings.docsIconPng16Url,
+      png32Url: settings.docsIconPng32Url,
+      png180Url: settings.docsIconPng180Url,
+    },
     docsCacheTtlMs: secondsToMs(settings.docsCacheTtlSeconds),
     github: {
       owner: settings.githubOwner,
@@ -528,6 +561,11 @@ export async function saveAdminSettings(
   });
 
   return normalizeSettings(response);
+}
+
+export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {
+  const response = await requestJson<unknown>("/api/public/settings");
+  return normalizePublicSiteSettings(response);
 }
 
 export async function testAdminConnection(settings: AdminSettings): Promise<string> {

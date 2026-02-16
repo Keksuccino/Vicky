@@ -76,6 +76,11 @@ export const DEFAULT_THEMES = (): ThemeDefinition[] => {
 export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  docsIcon: {
+    png16Url: "",
+    png32Url: "",
+    png180Url: "",
+  },
   docsCacheTtlMs: DOCS_CACHE_TTL_MS,
   github: {
     owner: "",

@@ -23,6 +23,9 @@ import type { AdminSettings, ThemeDefinition, ThemeDraft } from "@/components/ty
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  docsIconPng16Url: "",
+  docsIconPng32Url: "",
+  docsIconPng180Url: "",
   docsCacheTtlSeconds: 30,
   githubOwner: "",
   githubRepo: "",
@@ -203,6 +206,41 @@ export function AdminSettingsPanel() {
                 />
               </label>
             </div>
+
+            <div className="field-inline">
+              <label className="field-row" htmlFor="docs-icon-png-16">
+                <span className="field-label">Docs icon 16x16 PNG URL</span>
+                <input
+                  id="docs-icon-png-16"
+                  className="input"
+                  value={settings.docsIconPng16Url}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng16Url: event.target.value }))}
+                  placeholder="https://example.com/docs-icon-16.png"
+                />
+              </label>
+
+              <label className="field-row" htmlFor="docs-icon-png-32">
+                <span className="field-label">Docs icon 32x32 PNG URL</span>
+                <input
+                  id="docs-icon-png-32"
+                  className="input"
+                  value={settings.docsIconPng32Url}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng32Url: event.target.value }))}
+                  placeholder="https://example.com/docs-icon-32.png"
+                />
+              </label>
+            </div>
+
+            <label className="field-row" htmlFor="docs-icon-png-180">
+              <span className="field-label">Docs icon 180x180 PNG URL</span>
+              <input
+                id="docs-icon-png-180"
+                className="input"
+                value={settings.docsIconPng180Url}
+                onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng180Url: event.target.value }))}
+                placeholder="https://example.com/docs-icon-180.png"
+              />
+            </label>
 
             <label className="field-row" htmlFor="docs-cache-ttl-seconds">
               <span className="field-label">Docs cache TTL (seconds)</span>

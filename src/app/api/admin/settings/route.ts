@@ -15,6 +15,13 @@ const settingsPatchSchema = z
   .object({
     siteTitle: z.string().min(1).optional(),
     siteDescription: z.string().min(1).optional(),
+    docsIcon: z
+      .object({
+        png16Url: z.string().optional(),
+        png32Url: z.string().optional(),
+        png180Url: z.string().optional(),
+      })
+      .optional(),
     docsCacheTtlMs: z.coerce.number().int().min(MIN_DOCS_CACHE_TTL_MS).max(MAX_DOCS_CACHE_TTL_MS).optional(),
     activeThemeId: z.string().min(1).optional(),
     github: z
@@ -64,6 +71,20 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.siteDescription !== undefined) {
         store.settings.siteDescription = patch.siteDescription.trim() || store.settings.siteDescription;
+      }
+
+      if (patch.docsIcon) {
+        if (patch.docsIcon.png16Url !== undefined) {
+          store.settings.docsIcon.png16Url = patch.docsIcon.png16Url.trim();
+        }
+
+        if (patch.docsIcon.png32Url !== undefined) {
+          store.settings.docsIcon.png32Url = patch.docsIcon.png32Url.trim();
+        }
+
+        if (patch.docsIcon.png180Url !== undefined) {
+          store.settings.docsIcon.png180Url = patch.docsIcon.png180Url.trim();
+        }
       }
 
       if (patch.docsCacheTtlMs !== undefined) {

@@ -28,6 +28,14 @@ export const metadata: Metadata = {
     template: "%s | Vicky Docs",
   },
   description: "Docs/wiki frontend with navigation, search, editor, and admin theme management.",
+  icons: {
+    icon: [
+      { url: "/api/public/icon/16", sizes: "16x16", type: "image/png" },
+      { url: "/api/public/icon/32", sizes: "32x32", type: "image/png" },
+    ],
+    shortcut: [{ url: "/api/public/icon/32", type: "image/png" }],
+    apple: [{ url: "/api/public/icon/180", sizes: "180x180", type: "image/png" }],
+  },
 };
 
 export default function RootLayout({

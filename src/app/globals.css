@@ -185,6 +185,19 @@ select {
   box-shadow: var(--shadow-soft);
 }
 
+.brand-mark-icon {
+  padding: 0;
+  overflow: hidden;
+  background: var(--surface-elevated);
+}
+
+.brand-mark-image {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
 .brand-text {
   letter-spacing: 0.01em;
 }

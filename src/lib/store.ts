@@ -135,10 +135,19 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
     typeof source.github === "object" && source.github !== null
       ? (source.github as Record<string, unknown>)
       : ({} as Record<string, unknown>);
+  const sourceDocsIcon =
+    typeof source.docsIcon === "object" && source.docsIcon !== null
+      ? (source.docsIcon as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
     siteDescription: normalizeString(source.siteDescription, defaults.siteDescription),
+    docsIcon: {
+      png16Url: normalizeString(sourceDocsIcon.png16Url, defaults.docsIcon.png16Url),
+      png32Url: normalizeString(sourceDocsIcon.png32Url, defaults.docsIcon.png32Url),
+      png180Url: normalizeString(sourceDocsIcon.png180Url, defaults.docsIcon.png180Url),
+    },
     docsCacheTtlMs: normalizeDocsCacheTtlMs(source.docsCacheTtlMs, defaults.docsCacheTtlMs),
     github: {
       owner: normalizeString(sourceGitHub.owner, defaults.github.owner),
