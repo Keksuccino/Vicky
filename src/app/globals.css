@@ -942,6 +942,10 @@ select {
   padding: 0.18rem 0.15rem 0.18rem 0;
 }
 
+.tree-row:hover {
+  background: var(--surface-muted);
+}
+
 .tree-row-active {
   background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
 }
@@ -973,10 +977,6 @@ select {
   border-radius: 8px;
   text-align: left;
   cursor: pointer;
-}
-
-.tree-link:hover {
-  background: var(--surface-muted);
 }
 
 .tree-icon {
