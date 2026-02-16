@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Google_Sans_Code, Manrope, Space_Grotesk } from "next/font/google";
+import { Manrope, Space_Grotesk } from "next/font/google";
+import localFont from "next/font/local";
 
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -17,10 +18,16 @@ const fontBody = Manrope({
   subsets: ["latin"],
 });
 
-const fontMono = Google_Sans_Code({
+const fontMono = localFont({
+  src: [
+    {
+      path: "./fonts/google-sans-code-latin.woff2",
+      weight: "300 800",
+      style: "normal",
+    },
+  ],
   variable: "--font-mono",
-  adjustFontFallback: false,
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
