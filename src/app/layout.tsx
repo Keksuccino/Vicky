@@ -1,9 +1,11 @@
 import type { Metadata } from "next";
+import { unstable_noStore as noStore } from "next/cache";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import localFont from "next/font/local";
 
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
+import { getStore } from "@/lib/store";
 
 import "@fontsource/material-symbols-outlined";
 import "./globals.css";
@@ -30,21 +32,39 @@ const fontMono = localFont({
   display: "swap",
 });
 
-export const metadata: Metadata = {
-  title: {
-    default: "Vicky Docs",
-    template: "%s | Vicky Docs",
-  },
-  description: "Docs/wiki frontend with navigation, search, editor, and admin theme management.",
-  icons: {
-    icon: [
-      { url: "/api/public/icon/16", sizes: "16x16", type: "image/png" },
-      { url: "/api/public/icon/32", sizes: "32x32", type: "image/png" },
-    ],
-    shortcut: [{ url: "/api/public/icon/32", type: "image/png" }],
-    apple: [{ url: "/api/public/icon/180", sizes: "180x180", type: "image/png" }],
-  },
-};
+const FALLBACK_SITE_TITLE = "Vicky Docs";
+const FALLBACK_SITE_DESCRIPTION = "Docs/wiki frontend with navigation, search, editor, and admin theme management.";
+
+export async function generateMetadata(): Promise<Metadata> {
+  noStore();
+
+  let siteTitle = FALLBACK_SITE_TITLE;
+  let siteDescription = FALLBACK_SITE_DESCRIPTION;
+
+  try {
+    const store = await getStore();
+    siteTitle = store.settings.siteTitle || FALLBACK_SITE_TITLE;
+    siteDescription = store.settings.siteDescription || FALLBACK_SITE_DESCRIPTION;
+  } catch {
+    // Keep fallback metadata when settings storage is temporarily unavailable.
+  }
+
+  return {
+    title: {
+      default: siteTitle,
+      template: `%s | ${siteTitle}`,
+    },
+    description: siteDescription,
+    icons: {
+      icon: [
+        { url: "/api/public/icon/16", sizes: "16x16", type: "image/png" },
+        { url: "/api/public/icon/32", sizes: "32x32", type: "image/png" },
+      ],
+      shortcut: [{ url: "/api/public/icon/32", type: "image/png" }],
+      apple: [{ url: "/api/public/icon/180", sizes: "180x180", type: "image/png" }],
+    },
+  };
+}
 
 export default function RootLayout({
   children,
