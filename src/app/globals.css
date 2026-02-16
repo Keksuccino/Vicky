@@ -1008,8 +1008,8 @@ select {
 .tree-row {
   display: flex;
   align-items: center;
-  border-radius: 10px;
-  padding: 0.18rem 0.15rem 0.18rem 0;
+  border-radius: 8px;
+  padding: 0.1rem 0.08rem 0.1rem 0;
 }
 
 .tree-row:hover {
@@ -1043,7 +1043,7 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.28rem 0.3rem;
+  padding: 0.22rem 0.24rem;
   border-radius: 8px;
   text-align: left;
   cursor: pointer;
