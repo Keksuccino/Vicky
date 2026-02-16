@@ -19,6 +19,18 @@
     linear-gradient(180deg, #eff6ff 0%, #f6faff 45%, #edf4ff 100%);
   --shadow-soft: 0 16px 40px rgba(25, 53, 98, 0.12);
   --shadow-strong: 0 24px 60px rgba(16, 36, 67, 0.18);
+  --code-token-plain: #334869;
+  --code-token-comment: #5f7393;
+  --code-token-keyword: #b4233a;
+  --code-token-string: #0f8a58;
+  --code-token-number: #0057b8;
+  --code-token-function: #8e5bff;
+  --code-token-type: #8f4a00;
+  --code-token-attribute: #0a7658;
+  --code-token-tag: #0057b8;
+  --code-token-meta: #5f7393;
+  --code-token-addition: #0f8a58;
+  --code-token-deletion: #ca3f54;
   --radius-sm: 10px;
   --radius-md: 16px;
   --radius-lg: 24px;
@@ -47,6 +59,18 @@ html[data-color-mode="custom"] {
     linear-gradient(180deg, #0a1526 0%, #0d1b30 50%, #091426 100%);
   --shadow-soft: 0 16px 44px rgba(2, 8, 18, 0.46);
   --shadow-strong: 0 30px 65px rgba(2, 8, 18, 0.65);
+  --code-token-plain: #bfd0eb;
+  --code-token-comment: #8ca0c1;
+  --code-token-keyword: #ff7b90;
+  --code-token-string: #57d89f;
+  --code-token-number: #74c7ff;
+  --code-token-function: #b695ff;
+  --code-token-type: #ffb56a;
+  --code-token-attribute: #6de5cb;
+  --code-token-tag: #74c7ff;
+  --code-token-meta: #8ca0c1;
+  --code-token-addition: #2bd08a;
+  --code-token-deletion: #ff6a7f;
 }
 
 * {
@@ -652,11 +676,73 @@ select {
   border: 0;
   background: transparent;
   padding: 0;
+  color: var(--code-token-plain);
+  display: block;
 }
 
-.markdown-body pre code,
-.markdown-body pre code span {
-  color: inherit !important;
+.markdown-body pre code .hljs-comment,
+.markdown-body pre code .hljs-quote {
+  color: var(--code-token-comment);
+}
+
+.markdown-body pre code .hljs-keyword,
+.markdown-body pre code .hljs-selector-tag,
+.markdown-body pre code .hljs-literal,
+.markdown-body pre code .hljs-section {
+  color: var(--code-token-keyword);
+}
+
+.markdown-body pre code .hljs-string,
+.markdown-body pre code .hljs-selector-class,
+.markdown-body pre code .hljs-selector-id,
+.markdown-body pre code .hljs-template-tag {
+  color: var(--code-token-string);
+}
+
+.markdown-body pre code .hljs-number,
+.markdown-body pre code .hljs-symbol,
+.markdown-body pre code .hljs-bullet {
+  color: var(--code-token-number);
+}
+
+.markdown-body pre code .hljs-title,
+.markdown-body pre code .hljs-title.function_,
+.markdown-body pre code .hljs-params {
+  color: var(--code-token-function);
+}
+
+.markdown-body pre code .hljs-type,
+.markdown-body pre code .hljs-class .hljs-title,
+.markdown-body pre code .hljs-built_in {
+  color: var(--code-token-type);
+}
+
+.markdown-body pre code .hljs-tag,
+.markdown-body pre code .hljs-name,
+.markdown-body pre code .hljs-selector-attr,
+.markdown-body pre code .hljs-attr,
+.markdown-body pre code .hljs-attribute {
+  color: var(--code-token-attribute);
+}
+
+.markdown-body pre code .hljs-meta,
+.markdown-body pre code .hljs-doctag,
+.markdown-body pre code .hljs-regexp {
+  color: var(--code-token-meta);
+}
+
+.markdown-body pre code .hljs-link {
+  color: var(--code-token-tag);
+}
+
+.markdown-body pre code .hljs-addition {
+  color: var(--code-token-addition);
+  background: color-mix(in srgb, var(--code-token-addition) 22%, transparent);
+}
+
+.markdown-body pre code .hljs-deletion {
+  color: var(--code-token-deletion);
+  background: color-mix(in srgb, var(--code-token-deletion) 22%, transparent);
 }
 
 .markdown-body table {

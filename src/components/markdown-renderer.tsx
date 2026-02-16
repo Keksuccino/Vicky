@@ -61,7 +61,24 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
               },
             },
           ],
-          rehypeHighlight,
+          [
+            rehypeHighlight,
+            {
+              detect: false,
+              ignoreMissing: true,
+              aliases: {
+                html: "xml",
+                js: "javascript",
+                jsx: "javascript",
+                mjs: "javascript",
+                patch: "diff",
+                plain: "plaintext",
+                text: "plaintext",
+                txt: "plaintext",
+              },
+              plainText: ["plain", "text", "txt", "plaintext"],
+            },
+          ],
           [rehypeSanitize, sanitizeSchema],
         ]}
         components={{
