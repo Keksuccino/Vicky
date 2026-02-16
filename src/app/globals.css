@@ -525,6 +525,7 @@ select {
 
 .markdown-body {
   color: var(--text-primary);
+  font-family: var(--font-docs), var(--font-body), "Segoe UI", sans-serif;
 }
 
 .markdown-body > *:first-child {
@@ -539,7 +540,7 @@ select {
 .markdown-body h2,
 .markdown-body h3,
 .markdown-body h4 {
-  font-family: var(--font-display), "Segoe UI", sans-serif;
+  font-family: var(--font-docs), var(--font-body), "Segoe UI", sans-serif;
   margin: 1.3rem 0 0.6rem;
   line-height: 1.22;
   scroll-margin-top: calc(var(--header-height) + 1rem);
