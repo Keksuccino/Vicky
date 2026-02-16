@@ -155,14 +155,12 @@ export function DocsTree({
 
         {sidebarView === "pages" ? (
           <>
-            <label htmlFor="docs-search" className="field-label">
-              Search docs
-            </label>
             <div className="search-input-wrap">
               <MaterialIcon name="search" className="search-icon" />
               <input
                 id="docs-search"
                 className="input"
+                aria-label="Search docs"
                 placeholder="Find pages, headings, or keywords"
                 value={searchQuery}
                 onChange={(event) => onSearchQueryChange(event.target.value)}
