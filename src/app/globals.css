@@ -630,7 +630,7 @@ select {
 }
 
 .markdown-body code {
-  font-family: var(--font-mono), "Fira Mono", monospace;
+  font-family: var(--font-mono), "Google Sans Code", monospace;
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1400,7 +1400,7 @@ select {
 
 .editor-pane-code .cm-editor {
   height: 100%;
-  font-family: var(--font-mono), "Fira Mono", monospace;
+  font-family: var(--font-mono), "Google Sans Code", monospace;
   font-size: 0.92rem;
 }
 

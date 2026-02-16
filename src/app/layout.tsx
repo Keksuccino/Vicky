@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fira_Code, Manrope, Space_Grotesk } from "next/font/google";
+import { Google_Sans_Code, Manrope, Space_Grotesk } from "next/font/google";
 
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -17,8 +17,9 @@ const fontBody = Manrope({
   subsets: ["latin"],
 });
 
-const fontMono = Fira_Code({
+const fontMono = Google_Sans_Code({
   variable: "--font-mono",
+  adjustFontFallback: false,
   subsets: ["latin"],
 });
 
