@@ -548,6 +548,8 @@ select {
 .markdown-body h1 {
   font-size: var(--headline-xl);
   margin-top: 1.5rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--text-primary) 20%, transparent);
+  padding-bottom: 0.22rem;
 }
 
 .markdown-body h2 {
