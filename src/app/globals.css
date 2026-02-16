@@ -1020,7 +1020,13 @@ select {
   inset-block: 5px;
   border-radius: inherit;
   background: var(--surface-muted);
+  z-index: 0;
   pointer-events: none;
+}
+
+.tree-row > * {
+  position: relative;
+  z-index: 1;
 }
 
 .tree-row-active {
