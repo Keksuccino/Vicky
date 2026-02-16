@@ -631,6 +631,7 @@ select {
 
 .markdown-body code {
   font-family: var(--font-mono), "Google Sans Code", monospace;
+  color: var(--text-secondary);
   background: var(--surface-muted);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -641,7 +642,8 @@ select {
   margin: 0.9rem 0;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--surface-muted) 72%, #05070d);
+  color: var(--text-secondary);
+  background: var(--surface-muted);
   overflow-x: auto;
   padding: 0.85rem;
 }
@@ -650,6 +652,11 @@ select {
   border: 0;
   background: transparent;
   padding: 0;
+}
+
+.markdown-body pre code,
+.markdown-body pre code span {
+  color: inherit !important;
 }
 
 .markdown-body table {
