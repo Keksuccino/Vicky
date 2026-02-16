@@ -57,9 +57,7 @@ function TreeNode({ node, currentPath, expanded, onToggle, onSelectPath, level }
           >
             <MaterialIcon name={isExpanded ? "expand_more" : "chevron_right"} />
           </button>
-        ) : (
-          <span className="tree-toggle tree-toggle-placeholder" aria-hidden="true" />
-        )}
+        ) : null}
 
         <button
           type="button"

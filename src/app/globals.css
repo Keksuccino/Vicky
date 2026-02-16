@@ -1031,10 +1031,6 @@ select {
   cursor: pointer;
 }
 
-.tree-toggle-placeholder {
-  pointer-events: none;
-}
-
 .tree-link {
   border: 0;
   background: transparent;
