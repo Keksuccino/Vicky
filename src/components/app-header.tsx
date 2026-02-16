@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
-import { fetchPublicSiteSettings } from "@/components/api";
+import { fetchPublicSiteSettings, getCurrentUser } from "@/components/api";
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
@@ -13,10 +13,26 @@ import { startPageToDocsHref } from "@/lib/start-page";
 
 const DEFAULT_DOCS_HREF = startPageToDocsHref("/home");
 
-const navigation = [
-  { href: "/editor", label: "Editor", icon: "edit_square", activePrefix: "/editor" },
-  { href: "/admin/settings", label: "Admin", icon: "admin_panel_settings", activePrefix: "/admin/settings" },
-];
+type NavigationItem = {
+  href: string;
+  label: string;
+  icon: string;
+  activePrefix: string;
+};
+
+const ADMIN_NAVIGATION: NavigationItem = {
+  href: "/admin/settings",
+  label: "Admin",
+  icon: "admin_panel_settings",
+  activePrefix: "/admin/settings",
+};
+
+const EDITOR_NAVIGATION: NavigationItem = {
+  href: "/editor",
+  label: "Editor",
+  icon: "edit_square",
+  activePrefix: "/editor",
+};
 
 const DEFAULT_BRAND_TITLE = "Vicky Docs";
 
@@ -24,6 +40,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const [brandTitle, setBrandTitle] = useState(DEFAULT_BRAND_TITLE);
   const [docsHref, setDocsHref] = useState(DEFAULT_DOCS_HREF);
+  const [canAccessEditor, setCanAccessEditor] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState(false);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
@@ -60,7 +77,39 @@ export function AppHeader() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+
+    const run = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (!active) {
+          return;
+        }
+
+        setCanAccessEditor(Boolean(user));
+      } catch {
+        if (!active) {
+          return;
+        }
+
+        setCanAccessEditor(false);
+      }
+    };
+
+    void run();
+
+    return () => {
+      active = false;
+    };
+  }, [pathname]);
+
   const useCustomIcon = hasConfiguredIcon && !iconLoadFailed;
+  const navItems: NavigationItem[] = [
+    { href: docsHref, label: "Docs", icon: "menu_book", activePrefix: "/docs" },
+    ...(canAccessEditor ? [EDITOR_NAVIGATION] : []),
+    ADMIN_NAVIGATION,
+  ];
 
   return (
     <header className="app-header">
@@ -85,7 +134,7 @@ export function AppHeader() {
         </Link>
 
         <nav className="main-nav" aria-label="Main navigation">
-          {[{ href: docsHref, label: "Docs", icon: "menu_book", activePrefix: "/docs" }, ...navigation].map((item) => {
+          {navItems.map((item) => {
             const isActive =
               pathname === item.activePrefix ||
               pathname.startsWith(`${item.activePrefix}/`) ||
