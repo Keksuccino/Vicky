@@ -1124,10 +1124,10 @@ select {
 }
 
 .form-separator {
-  height: 1px;
+  height: 3px;
   background: var(--border);
   width: 100%;
-  margin: 0.2rem 0;
+  margin: 0.7rem 0;
 }
 
 .action-row {
