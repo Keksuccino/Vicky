@@ -715,8 +715,32 @@ select {
   margin: 0.9rem 0;
   border-radius: 12px;
   border: 1px solid var(--border);
-  padding: 0.65rem 0.85rem;
+  position: relative;
+  padding: 0.68rem 0.85rem 0.68rem 2.35rem;
   background: var(--surface-muted);
+}
+
+.md-alert::before {
+  position: absolute;
+  left: 0.72rem;
+  top: 0.68rem;
+  font-family: "Material Symbols Outlined";
+  font-style: normal;
+  font-weight: 400;
+  font-size: 1.1rem;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
+  font-feature-settings: "liga";
+  -webkit-font-feature-settings: "liga";
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings:
+    "FILL" 0,
+    "wght" 560,
+    "GRAD" 0,
+    "opsz" 24;
 }
 
 .md-alert > :first-child {
@@ -738,9 +762,19 @@ select {
   background: color-mix(in srgb, var(--accent) 12%, var(--surface-muted));
 }
 
+.md-alert-info::before {
+  content: "info";
+  color: color-mix(in srgb, var(--accent) 74%, var(--text-primary));
+}
+
 .md-alert-success {
   border-color: color-mix(in srgb, var(--success) 44%, var(--border));
   background: color-mix(in srgb, var(--success) 13%, var(--surface-muted));
+}
+
+.md-alert-success::before {
+  content: "check_circle";
+  color: color-mix(in srgb, var(--success) 76%, var(--text-primary));
 }
 
 .md-alert-warning {
@@ -748,14 +782,29 @@ select {
   background: color-mix(in srgb, #d99800 14%, var(--surface-muted));
 }
 
+.md-alert-warning::before {
+  content: "warning";
+  color: color-mix(in srgb, #d99800 83%, var(--text-primary));
+}
+
 .md-alert-error {
   border-color: color-mix(in srgb, var(--danger) 44%, var(--border));
   background: color-mix(in srgb, var(--danger) 13%, var(--surface-muted));
 }
 
+.md-alert-error::before {
+  content: "error";
+  color: color-mix(in srgb, var(--danger) 74%, var(--text-primary));
+}
+
 .md-alert-important {
   border-color: color-mix(in srgb, #8e5bff 45%, var(--border));
   background: color-mix(in srgb, #8e5bff 13%, var(--surface-muted));
+}
+
+.md-alert-important::before {
+  content: "priority_high";
+  color: color-mix(in srgb, #8e5bff 78%, var(--text-primary));
 }
 
 .heading-anchor {
