@@ -79,10 +79,12 @@ export const DOCS_CACHE_TTL_MS = defaultTtlMs;
 
 export const docsTreeCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 export const docsPageCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
+export const docsSearchCorpusCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 
 export const setDocsCacheTtlMs = (ttlMs: number): number => {
   const normalized = normalizeDocsCacheTtlMs(ttlMs, docsTreeCache.getTtlMs());
   docsTreeCache.setTtlMs(normalized);
   docsPageCache.setTtlMs(normalized);
+  docsSearchCorpusCache.setTtlMs(normalized);
   return normalized;
 };

@@ -2,7 +2,7 @@ import path from "node:path";
 
 import { Octokit } from "@octokit/rest";
 
-import { docsPageCache, docsTreeCache } from "@/lib/cache";
+import { docsPageCache, docsSearchCorpusCache, docsTreeCache } from "@/lib/cache";
 import { decryptSecret } from "@/lib/encryption";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
@@ -76,11 +76,12 @@ const prettyNameFromPath = (relativePath: string): string => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const toRuntimeConfigKey = (config: GitHubRuntimeConfig): string =>
+export const toRuntimeConfigCacheKey = (config: GitHubRuntimeConfig): string =>
   [config.owner, config.repo, config.branch, normalizeDocsPath(config.docsPath)].join("|");
 
-const treeCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntimeConfigKey(config)}|tree`;
-const pageCacheKey = (config: GitHubRuntimeConfig, fullPath: string): string => `${toRuntimeConfigKey(config)}|page|${fullPath}`;
+const treeCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntimeConfigCacheKey(config)}|tree`;
+const pageCacheKey = (config: GitHubRuntimeConfig, fullPath: string): string =>
+  `${toRuntimeConfigCacheKey(config)}|page|${fullPath}`;
 
 const createOctokit = (config: GitHubRuntimeConfig): Octokit =>
   new Octokit({
@@ -175,12 +176,14 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   if (!config) {
     docsTreeCache.clear();
     docsPageCache.clear();
+    docsSearchCorpusCache.clear();
     return;
   }
 
-  const prefix = `${toRuntimeConfigKey(config)}|`;
+  const prefix = `${toRuntimeConfigCacheKey(config)}|`;
   docsTreeCache.deleteWhere((key) => key.startsWith(prefix));
   docsPageCache.deleteWhere((key) => key.startsWith(prefix));
+  docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
 };
 
 export const testGitHubConnection = async (
