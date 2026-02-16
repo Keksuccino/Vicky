@@ -141,7 +141,6 @@ export function AppHeader() {
         </nav>
 
         <div className="app-header-actions">
-          <ThemeSwitcher />
           <Link
             href={ADMIN_NAVIGATION.href}
             className={cn("admin-icon-link", adminIsActive && "admin-icon-link-active")}
@@ -150,6 +149,7 @@ export function AppHeader() {
           >
             <MaterialIcon name={ADMIN_NAVIGATION.icon} />
           </Link>
+          <ThemeSwitcher />
         </div>
       </div>
     </header>
