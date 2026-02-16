@@ -128,3 +128,7 @@ The persistent store is mounted at `/app/data`.
 - In production, `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` must be set.
 - Keep GitHub token scoped minimally (repo access only as needed).
 - Back up `data/wiki-store.json` regularly.
+- Admin login brute-force protection can be tuned with:
+  - `AUTH_LOGIN_MAX_FAILURES` (default `8`)
+  - `AUTH_LOGIN_WINDOW_SECONDS` (default `600`)
+  - `AUTH_LOGIN_BLOCK_SECONDS` (default `10800`)
