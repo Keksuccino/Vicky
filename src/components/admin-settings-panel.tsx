@@ -207,6 +207,8 @@ export function AdminSettingsPanel() {
               </label>
             </div>
 
+            <div className="form-separator" role="separator" aria-hidden="true" />
+
             <div className="field-inline">
               <label className="field-row" htmlFor="docs-icon-png-16">
                 <span className="field-label">Docs icon 16x16 PNG URL</span>
@@ -241,6 +243,8 @@ export function AdminSettingsPanel() {
                 placeholder="https://example.com/docs-icon-180.png"
               />
             </label>
+
+            <div className="form-separator" role="separator" aria-hidden="true" />
 
             <label className="field-row" htmlFor="docs-cache-ttl-seconds">
               <span className="field-label">Docs cache TTL (seconds)</span>

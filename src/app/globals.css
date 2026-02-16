@@ -1123,6 +1123,13 @@ select {
   gap: 0.72rem;
 }
 
+.form-separator {
+  height: 1px;
+  background: var(--border);
+  width: 100%;
+  margin: 0.2rem 0;
+}
+
 .action-row {
   display: flex;
   flex-wrap: wrap;
