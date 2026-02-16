@@ -14,7 +14,6 @@ export type LoginRateLimitStatus = {
 const DEFAULT_MAX_FAILED_ATTEMPTS = 8;
 const DEFAULT_WINDOW_SECONDS = 10 * 60;
 const DEFAULT_BLOCK_SECONDS = 3 * 60 * 60;
-const PRUNE_INTERVAL_MS = 60 * 1000;
 const MIN_POSITIVE_SECONDS = 1;
 
 const parsePositiveInt = (value: string | undefined, fallback: number): number => {
@@ -36,7 +35,6 @@ const BLOCK_MS = parsePositiveInt(process.env.AUTH_LOGIN_BLOCK_SECONDS, DEFAULT_
 const ENTRY_TTL_MS = Math.max(BLOCK_MS, WINDOW_MS) * 2;
 
 const attemptsByIp = new Map<string, LoginAttemptState>();
-let lastPruneAt = 0;
 
 const cleanIpHeaderValue = (value: string): string => value.trim().slice(0, 128);
 
@@ -70,10 +68,6 @@ export const getClientIp = (request: NextRequest): string => {
 };
 
 const pruneOldEntries = (now: number): void => {
-  if (now - lastPruneAt < PRUNE_INTERVAL_MS) {
-    return;
-  }
-
   for (const [key, value] of attemptsByIp.entries()) {
     const blockedExpired = value.blockedUntil <= now;
     const recentFailures = value.failedAt.filter((attemptAt) => now - attemptAt <= WINDOW_MS);
@@ -89,8 +83,6 @@ const pruneOldEntries = (now: number): void => {
       value.blockedUntil = 0;
     }
   }
-
-  lastPruneAt = now;
 };
 
 const getAttemptState = (ip: string, now: number): LoginAttemptState => {
