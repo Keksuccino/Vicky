@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/lib/auth";
+import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { encryptSecret } from "@/lib/encryption";
 import { clearGitHubDocsCache } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
@@ -14,6 +15,7 @@ const settingsPatchSchema = z
   .object({
     siteTitle: z.string().min(1).optional(),
     siteDescription: z.string().min(1).optional(),
+    docsCacheTtlMs: z.coerce.number().int().min(MIN_DOCS_CACHE_TTL_MS).max(MAX_DOCS_CACHE_TTL_MS).optional(),
     activeThemeId: z.string().min(1).optional(),
     github: z
       .object({
@@ -64,6 +66,10 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
         store.settings.siteDescription = patch.siteDescription.trim() || store.settings.siteDescription;
       }
 
+      if (patch.docsCacheTtlMs !== undefined) {
+        store.settings.docsCacheTtlMs = patch.docsCacheTtlMs;
+      }
+
       if (patch.activeThemeId !== undefined) {
         const exists = store.themes.some((theme) => theme.id === patch.activeThemeId);
         if (!exists) {
@@ -97,6 +103,7 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
       }
     });
 
+    setDocsCacheTtlMs(updatedStore.settings.docsCacheTtlMs);
     clearGitHubDocsCache();
 
     return NextResponse.json({

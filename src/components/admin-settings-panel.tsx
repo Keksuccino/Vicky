@@ -23,6 +23,7 @@ import type { AdminSettings, ThemeDefinition, ThemeDraft } from "@/components/ty
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  docsCacheTtlSeconds: 30,
   githubOwner: "",
   githubRepo: "",
   githubBranch: "main",
@@ -202,6 +203,25 @@ export function AdminSettingsPanel() {
                 />
               </label>
             </div>
+
+            <label className="field-row" htmlFor="docs-cache-ttl-seconds">
+              <span className="field-label">Docs cache TTL (seconds)</span>
+              <input
+                id="docs-cache-ttl-seconds"
+                className="input"
+                type="number"
+                min={1}
+                max={86400}
+                step={1}
+                value={settings.docsCacheTtlSeconds}
+                onChange={(event) => {
+                  const parsed = Number.parseInt(event.target.value, 10);
+                  const normalized = Number.isFinite(parsed) ? Math.min(86400, Math.max(1, parsed)) : 1;
+                  setSettings((prev) => ({ ...prev, docsCacheTtlSeconds: normalized }));
+                }}
+                required
+              />
+            </label>
 
             <label className="field-row" htmlFor="github-token">
               <span className="field-label">GitHub token</span>

@@ -18,9 +18,14 @@ type RawTreeItem = {
   name: string;
 };
 
+const DEFAULT_DOCS_CACHE_TTL_SECONDS = 30;
+const MIN_DOCS_CACHE_TTL_SECONDS = 1;
+const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
+
 const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  docsCacheTtlSeconds: DEFAULT_DOCS_CACHE_TTL_SECONDS,
   githubOwner: "",
   githubRepo: "",
   githubBranch: "main",
@@ -51,6 +56,22 @@ function asString(value: unknown, fallback = ""): string {
 
 function asBoolean(value: unknown, fallback = false): boolean {
   return typeof value === "boolean" ? value : fallback;
+}
+
+function asNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function clampInteger(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
+function msToSeconds(value: number): number {
+  return clampInteger(value / 1000, MIN_DOCS_CACHE_TTL_SECONDS, MAX_DOCS_CACHE_TTL_SECONDS);
+}
+
+function secondsToMs(value: number): number {
+  return clampInteger(value, MIN_DOCS_CACHE_TTL_SECONDS, MAX_DOCS_CACHE_TTL_SECONDS) * 1000;
 }
 
 function toAbsoluteDocPath(value: string): string {
@@ -330,10 +351,12 @@ function normalizeSearchResults(source: unknown): DocSearchResult[] {
 function normalizeSettings(source: unknown): AdminSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const github = asRecord(payload.github);
+  const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    docsCacheTtlSeconds: msToSeconds(docsCacheTtlMs),
     githubOwner: asString(github.owner, DEFAULT_SETTINGS.githubOwner),
     githubRepo: asString(github.repo, DEFAULT_SETTINGS.githubRepo),
     githubBranch: asString(github.branch, DEFAULT_SETTINGS.githubBranch),
@@ -481,6 +504,7 @@ export async function saveAdminSettings(
   const payload: Record<string, unknown> = {
     siteTitle: settings.siteTitle,
     siteDescription: settings.siteDescription,
+    docsCacheTtlMs: secondsToMs(settings.docsCacheTtlSeconds),
     github: {
       owner: settings.githubOwner,
       repo: settings.githubRepo,

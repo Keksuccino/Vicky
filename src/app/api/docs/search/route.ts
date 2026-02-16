@@ -1,6 +1,7 @@
 import Fuse from "fuse.js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { setDocsCacheTtlMs } from "@/lib/cache";
 import { listMarkdownDocsTree, resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
@@ -13,6 +14,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";
 
     const store = await getStore();
+    setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const items = await listMarkdownDocsTree(config);
 

@@ -2,6 +2,7 @@ import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/lib/auth";
+import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadGitHubDoc, resolveRuntimeConfig, saveGitHubDoc } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { getStore } from "@/lib/store";
@@ -36,6 +37,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     }
 
     const store = await getStore();
+    setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const page = await loadGitHubDoc(config, { slug, path });
 
@@ -60,6 +62,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     }
 
     const store = await getStore();
+    setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
 
     const saved = await saveGitHubDoc(config, payload);

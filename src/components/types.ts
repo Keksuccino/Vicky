@@ -42,6 +42,7 @@ export type AuthUser = {
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
+  docsCacheTtlSeconds: number;
   githubOwner: string;
   githubRepo: string;
   githubBranch: string;

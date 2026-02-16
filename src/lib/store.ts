@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { BUILTIN_THEME_IDS, DEFAULT_SETTINGS, DEFAULT_STORE, DEFAULT_THEMES, STORE_VERSION } from "@/lib/defaults";
 import type { AppSettings, DocsStore, ThemeDefinition, ThemeVariables } from "@/lib/types";
 
@@ -138,6 +139,7 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
     siteDescription: normalizeString(source.siteDescription, defaults.siteDescription),
+    docsCacheTtlMs: normalizeDocsCacheTtlMs(source.docsCacheTtlMs, defaults.docsCacheTtlMs),
     github: {
       owner: normalizeString(sourceGitHub.owner, defaults.github.owner),
       repo: normalizeString(sourceGitHub.repo, defaults.github.repo),

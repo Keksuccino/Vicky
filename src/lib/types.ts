@@ -24,6 +24,7 @@ export interface GitHubSettings {
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
+  docsCacheTtlMs: number;
   github: GitHubSettings;
   activeThemeId: string;
   updatedAt: string;

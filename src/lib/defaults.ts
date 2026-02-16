@@ -1,3 +1,4 @@
+import { DOCS_CACHE_TTL_MS } from "@/lib/cache";
 import type { AppSettings, DocsStore, ThemeDefinition } from "@/lib/types";
 
 export const STORE_VERSION = 1 as const;
@@ -75,6 +76,7 @@ export const DEFAULT_THEMES = (): ThemeDefinition[] => {
 export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  docsCacheTtlMs: DOCS_CACHE_TTL_MS,
   github: {
     owner: "",
     repo: "",

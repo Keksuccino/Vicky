@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadGitHubDoc, resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
@@ -17,6 +18,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     }
 
     const store = await getStore();
+    setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const page = await loadGitHubDoc(config, { slug, path });
 
