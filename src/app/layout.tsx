@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fira_Code, Manrope, Space_Grotesk, Varela_Round } from "next/font/google";
+import { Fira_Code, Manrope, Space_Grotesk } from "next/font/google";
 
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
@@ -20,12 +20,6 @@ const fontBody = Manrope({
 const fontMono = Fira_Code({
   variable: "--font-mono",
   subsets: ["latin"],
-});
-
-const fontDocs = Varela_Round({
-  variable: "--font-docs",
-  subsets: ["latin"],
-  weight: "400",
 });
 
 export const metadata: Metadata = {
@@ -51,7 +45,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" data-color-mode="light">
-      <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable} ${fontDocs.variable}`}>
+      <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}>
         <ThemeProvider>
           <a href="#main-content" className="skip-link">
             Skip to content
