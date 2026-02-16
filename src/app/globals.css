@@ -265,10 +265,15 @@ select {
 }
 
 .app-header-actions {
+  --header-control-size: 2.72rem;
   display: inline-flex;
-  align-items: stretch;
+  align-items: center;
   gap: 0.45rem;
   justify-self: end;
+}
+
+.app-header-actions .mode-toggle {
+  height: var(--header-control-size);
 }
 
 .mode-toggle {
@@ -280,8 +285,9 @@ select {
 }
 
 .admin-icon-link {
-  align-self: stretch;
-  aspect-ratio: 1 / 1;
+  width: var(--header-control-size);
+  height: var(--header-control-size);
+  flex: 0 0 var(--header-control-size);
   border-radius: 999px;
   border: 1px solid var(--border);
   background: var(--surface-muted);
@@ -304,7 +310,7 @@ select {
 }
 
 .admin-icon-link .material-icon {
-  font-size: 1.22rem;
+  font-size: 1.24rem;
 }
 
 .admin-icon-link-active {
