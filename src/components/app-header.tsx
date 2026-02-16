@@ -18,10 +18,11 @@ type NavigationItem = {
 };
 
 const ADMIN_NAVIGATION = {
-  href: "/admin/settings",
+  settingsHref: "/admin/settings",
+  loginHref: "/admin/login",
   label: "Admin",
   icon: "admin_panel_settings",
-  activePrefix: "/admin/settings",
+  activePrefix: "/admin",
 };
 
 const EDITOR_NAVIGATION: NavigationItem = {
@@ -36,7 +37,7 @@ const DEFAULT_BRAND_TITLE = "Vicky Docs";
 export function AppHeader() {
   const pathname = usePathname();
   const [brandTitle, setBrandTitle] = useState(DEFAULT_BRAND_TITLE);
-  const [canAccessEditor, setCanAccessEditor] = useState(false);
+  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState(false);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
@@ -81,13 +82,13 @@ export function AppHeader() {
           return;
         }
 
-        setCanAccessEditor(Boolean(user));
+        setIsAdminAuthenticated(Boolean(user));
       } catch {
         if (!active) {
           return;
         }
 
-        setCanAccessEditor(false);
+        setIsAdminAuthenticated(false);
       }
     };
 
@@ -99,8 +100,11 @@ export function AppHeader() {
   }, [pathname]);
 
   const useCustomIcon = hasConfiguredIcon && !iconLoadFailed;
-  const navItems: NavigationItem[] = canAccessEditor ? [EDITOR_NAVIGATION] : [];
-  const adminIsActive = pathname === ADMIN_NAVIGATION.href || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
+  const navItems: NavigationItem[] = isAdminAuthenticated ? [EDITOR_NAVIGATION] : [];
+  const adminIsActive = pathname === ADMIN_NAVIGATION.activePrefix || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
+  const adminHref = isAdminAuthenticated
+    ? ADMIN_NAVIGATION.settingsHref
+    : `${ADMIN_NAVIGATION.loginHref}?next=${encodeURIComponent(ADMIN_NAVIGATION.settingsHref)}`;
 
   return (
     <header className="app-header">
@@ -142,7 +146,7 @@ export function AppHeader() {
 
         <div className="app-header-actions">
           <Link
-            href={ADMIN_NAVIGATION.href}
+            href={adminHref}
             className={cn("admin-icon-link", adminIsActive && "admin-icon-link-active")}
             aria-label={ADMIN_NAVIGATION.label}
             title={ADMIN_NAVIGATION.label}
