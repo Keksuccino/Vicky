@@ -85,9 +85,16 @@ select {
 
 .material-symbols-outlined,
 .material-icon {
+  font-family: "Material Symbols Outlined";
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  font-style: normal;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: nowrap;
+  direction: ltr;
   font-variation-settings:
     "FILL" 0,
     "wght" 520,
