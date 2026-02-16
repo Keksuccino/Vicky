@@ -1442,7 +1442,8 @@ select {
 }
 
 .success-text,
-.error-text {
+.error-text,
+.warning-text {
   margin: 0;
   font-size: 0.9rem;
   padding: 0.48rem 0.62rem;
@@ -1457,6 +1458,11 @@ select {
 .error-text {
   color: var(--danger);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
+
+.warning-text {
+  color: var(--warning, var(--accent));
+  background: color-mix(in srgb, var(--warning, var(--accent)) 16%, transparent);
 }
 
 .theme-item {

@@ -11,6 +11,10 @@ export type LoginRateLimitStatus = {
   retryAfterSeconds: number;
 };
 
+export type FailedLoginAttemptStatus = LoginRateLimitStatus & {
+  attemptsLeft: number;
+};
+
 const DEFAULT_MAX_FAILED_ATTEMPTS = 8;
 const DEFAULT_WINDOW_SECONDS = 10 * 60;
 const DEFAULT_BLOCK_SECONDS = 3 * 60 * 60;
@@ -128,7 +132,7 @@ export const getLoginRateLimitStatus = (request: NextRequest): LoginRateLimitSta
   return toRateLimitStatus(state.blockedUntil, now);
 };
 
-export const registerFailedLoginAttempt = (request: NextRequest): LoginRateLimitStatus => {
+export const registerFailedLoginAttempt = (request: NextRequest): FailedLoginAttemptStatus => {
   const now = Date.now();
   pruneOldEntries(now);
 
@@ -137,7 +141,10 @@ export const registerFailedLoginAttempt = (request: NextRequest): LoginRateLimit
   state.lastSeenAt = now;
 
   if (state.blockedUntil > now) {
-    return toRateLimitStatus(state.blockedUntil, now);
+    return {
+      ...toRateLimitStatus(state.blockedUntil, now),
+      attemptsLeft: 0,
+    };
   }
 
   state.failedAt = state.failedAt.filter((attemptAt) => now - attemptAt <= WINDOW_MS);
@@ -146,10 +153,17 @@ export const registerFailedLoginAttempt = (request: NextRequest): LoginRateLimit
   if (state.failedAt.length >= MAX_FAILED_ATTEMPTS) {
     state.blockedUntil = now + BLOCK_MS;
     state.failedAt = [];
-    return toRateLimitStatus(state.blockedUntil, now);
+    return {
+      ...toRateLimitStatus(state.blockedUntil, now),
+      attemptsLeft: 0,
+    };
   }
 
-  return { blocked: false, retryAfterSeconds: 0 };
+  return {
+    blocked: false,
+    retryAfterSeconds: 0,
+    attemptsLeft: Math.max(0, MAX_FAILED_ATTEMPTS - state.failedAt.length),
+  };
 };
 
 export const clearFailedLoginAttempts = (request: NextRequest): void => {

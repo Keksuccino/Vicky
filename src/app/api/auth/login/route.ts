@@ -43,7 +43,13 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
         return blockedLoginResponse(nextRateLimit.retryAfterSeconds);
       }
 
-      return NextResponse.json({ error: "Invalid credentials." }, { status: 401 });
+      return NextResponse.json(
+        {
+          error: "Invalid credentials.",
+          attemptsLeft: nextRateLimit.attemptsLeft,
+        },
+        { status: 401 },
+      );
     }
 
     clearFailedLoginAttempts(request);

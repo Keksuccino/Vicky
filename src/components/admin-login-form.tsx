@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import { formatApiError, getCurrentUser, login } from "@/components/api";
+import { ApiError, formatApiError, getCurrentUser, login } from "@/components/api";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
 
@@ -16,12 +16,60 @@ const getNextPath = (): string => {
   return next && next.startsWith("/") ? next : "/admin/settings";
 };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+
+const formatBlockDuration = (seconds: number): string => {
+  if (seconds < 60) {
+    return `${seconds} second${seconds === 1 ? "" : "s"}`;
+  }
+
+  const minutes = Math.ceil(seconds / 60);
+  if (minutes < 60) {
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+
+  const hours = Math.ceil(minutes / 60);
+  return `${hours} hour${hours === 1 ? "" : "s"}`;
+};
+
+const extractLoginWarning = (error: unknown): string | null => {
+  if (!(error instanceof ApiError)) {
+    return null;
+  }
+
+  const payload = asRecord(error.payload);
+
+  if (error.status === 401) {
+    const rawAttemptsLeft = payload.attemptsLeft;
+    if (typeof rawAttemptsLeft === "number" && Number.isFinite(rawAttemptsLeft)) {
+      const attemptsLeft = Math.max(0, Math.floor(rawAttemptsLeft));
+      if (attemptsLeft > 0) {
+        return `${attemptsLeft} login attempt${attemptsLeft === 1 ? "" : "s"} left before temporary block.`;
+      }
+    }
+
+    return null;
+  }
+
+  if (error.status === 429) {
+    const rawRetryAfterSeconds = payload.retryAfterSeconds;
+    if (typeof rawRetryAfterSeconds === "number" && Number.isFinite(rawRetryAfterSeconds)) {
+      const retryAfterSeconds = Math.max(1, Math.floor(rawRetryAfterSeconds));
+      return `Too many failed attempts. Try again in about ${formatBlockDuration(retryAfterSeconds)}.`;
+    }
+  }
+
+  return null;
+};
+
 export function AdminLoginForm() {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   useEffect(() => {
     let isActive = true;
@@ -67,12 +115,14 @@ export function AdminLoginForm() {
             event.preventDefault();
             setLoading(true);
             setError(null);
+            setWarning(null);
 
             try {
               await login(password);
               router.replace(getNextPath());
             } catch (submitError) {
               setError(formatApiError(submitError));
+              setWarning(extractLoginWarning(submitError));
             } finally {
               setLoading(false);
             }
@@ -98,6 +148,7 @@ export function AdminLoginForm() {
         </form>
 
         {error ? <ErrorState title="Sign in failed" message={error} /> : null}
+        {warning ? <p className="warning-text">{warning}</p> : null}
       </div>
     </section>
   );
