@@ -14,7 +14,7 @@ type DocsTreeProps = {
   searching: boolean;
   searchResults: DocSearchResult[];
   onSearchQueryChange: (value: string) => void;
-  onSelectPath: (path: string) => void;
+  onSelectPath: (path: string, anchor?: string) => void;
 };
 
 type TreeNodeProps = {
@@ -22,7 +22,7 @@ type TreeNodeProps = {
   currentPath: string;
   expanded: Set<string>;
   onToggle: (id: string) => void;
-  onSelectPath: (path: string) => void;
+  onSelectPath: (path: string, anchor?: string) => void;
   level: number;
 };
 
@@ -175,7 +175,7 @@ export function DocsTree({
             <ul className="result-list">
               {searchResults.map((result) => (
                 <li key={result.path}>
-                  <button type="button" className="result-item" onClick={() => onSelectPath(result.path)}>
+                  <button type="button" className="result-item" onClick={() => onSelectPath(result.path, result.anchor)}>
                     <strong>{result.title}</strong>
                     <span>{result.path}</span>
                     {result.excerpt ? <p>{result.excerpt}</p> : null}

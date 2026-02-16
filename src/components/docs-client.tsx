@@ -414,13 +414,14 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     return items;
   }, [currentPath, page]);
 
-  const onSelectPath = (path: string) => {
+  const onSelectPath = (path: string, anchor?: string) => {
     const normalized = normalizePath(path);
     setCurrentPath(normalized);
     setSearchQuery("");
     setSearchResults([]);
     setSidebarOpen(false);
-    router.push(toDocsHref(normalized));
+    const hash = anchor ? `#${encodeURIComponent(anchor)}` : "";
+    router.push(`${toDocsHref(normalized)}${hash}`);
   };
 
   return (

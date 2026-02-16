@@ -33,6 +33,7 @@ export type DocSearchResult = {
   slug: string;
   score?: number;
   excerpt?: string;
+  anchor?: string;
 };
 
 export type AuthUser = {

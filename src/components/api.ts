@@ -334,12 +334,14 @@ function normalizeSearchResults(source: unknown): DocSearchResult[] {
 
     const score = typeof record.score === "number" ? record.score : undefined;
     const excerpt = asString(record.excerpt || record.description).trim() || undefined;
+    const anchor = asString(record.anchor).trim() || undefined;
     const result: DocSearchResult = {
       title: asString(record.title).trim() || asString(record.name).trim() || prettyFromSlug(slug),
       slug,
       path: slugToPath(slug),
       ...(score !== undefined ? { score } : {}),
       ...(excerpt ? { excerpt } : {}),
+      ...(anchor ? { anchor } : {}),
     };
 
     results.push(result);

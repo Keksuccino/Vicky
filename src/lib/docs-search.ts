@@ -1,11 +1,13 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
 import { listMarkdownDocsTree, loadGitHubDoc, toRuntimeConfigCacheKey } from "@/lib/github";
-import type { GitHubDocTreeItem, GitHubRuntimeConfig } from "@/lib/types";
+import type { GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
 const DEFAULT_SEARCH_LIMIT = 50;
 const MAX_SEARCH_LIMIT = 100;
 const PAGE_LOAD_CONCURRENCY = 6;
 const EXCERPT_LENGTH = 220;
+const headingRegex = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
+const fenceRegex = /^(```|~~~)/;
 
 type SearchField = "title" | "name" | "description" | "content";
 
@@ -18,6 +20,17 @@ type SearchableDoc = {
   contentText: string;
   normalized: Record<SearchField, string>;
   words: Record<SearchField, string[]>;
+  sections: SearchableDocSection[];
+};
+
+type SearchableDocSection = {
+  anchor?: string;
+  headingText: string;
+  headingNormalized: string;
+  headingWords: string[];
+  plainText: string;
+  normalized: string;
+  words: string[];
 };
 
 export type DocsSearchResult = {
@@ -27,6 +40,7 @@ export type DocsSearchResult = {
   title: string;
   description?: string;
   excerpt?: string;
+  anchor?: string;
   score: number;
 };
 
@@ -78,6 +92,58 @@ const toNormalizedWords = (normalized: string): string[] => {
   return normalized.split(" ").filter(Boolean);
 };
 
+const splitIntoSections = (content: string, headings: MarkdownHeading[]): SearchableDocSection[] => {
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const sections: SearchableDocSection[] = [];
+  let inFence = false;
+  let headingIndex = 0;
+  let currentHeading: MarkdownHeading | null = null;
+  let currentLines: string[] = [];
+
+  const flushSection = () => {
+    const headingText = currentHeading?.text ?? "";
+    const bodyText = collapseWhitespace(stripMarkdownForSearch(currentLines.join("\n")));
+    const merged = collapseWhitespace([headingText, bodyText].filter(Boolean).join(" "));
+
+    if (!merged) {
+      currentLines = [];
+      return;
+    }
+
+    sections.push({
+      anchor: currentHeading?.slug,
+      headingText,
+      headingNormalized: normalizeSearchText(headingText),
+      headingWords: toWords(headingText),
+      plainText: merged,
+      normalized: normalizeSearchText(merged),
+      words: toWords(merged),
+    });
+    currentLines = [];
+  };
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (fenceRegex.test(trimmed)) {
+      inFence = !inFence;
+      currentLines.push(line);
+      continue;
+    }
+
+    if (!inFence && headingRegex.test(trimmed)) {
+      flushSection();
+      currentHeading = headings[headingIndex] ?? null;
+      headingIndex += 1;
+      continue;
+    }
+
+    currentLines.push(line);
+  }
+
+  flushSection();
+  return sections;
+};
+
 const toSearchableDoc = async (
   config: GitHubRuntimeConfig,
   treeItem: GitHubDocTreeItem,
@@ -87,6 +153,7 @@ const toSearchableDoc = async (
     const title = page.title.trim() || treeItem.name;
     const description = page.description.trim();
     const contentText = collapseWhitespace(stripMarkdownForSearch(page.content));
+    const sections = splitIntoSections(page.content, page.headings);
 
     const normalized: Record<SearchField, string> = {
       name: normalizeSearchText(treeItem.name),
@@ -109,6 +176,7 @@ const toSearchableDoc = async (
         description: toNormalizedWords(normalized.description),
         content: toNormalizedWords(normalized.content),
       },
+      sections,
     };
   } catch {
     return null;
@@ -331,6 +399,41 @@ const scoreField = (
   };
 };
 
+const findBestSection = (
+  sections: SearchableDocSection[],
+  normalizedQuery: string,
+  queryTokens: string[],
+): SearchableDocSection | null => {
+  if (sections.length === 0) {
+    return null;
+  }
+
+  let best: SearchableDocSection | null = null;
+  let bestScore = 0;
+
+  for (const section of sections) {
+    if (!section.normalized || section.words.length === 0) {
+      continue;
+    }
+
+    const combinedMatch = scoreField(section.normalized, section.words, normalizedQuery, queryTokens);
+    const headingMatch = section.headingText
+      ? scoreField(section.headingNormalized, section.headingWords, normalizedQuery, queryTokens)
+      : { score: 0, exactPhrase: false };
+
+    const score = combinedMatch.score + headingMatch.score * 0.25 + (combinedMatch.exactPhrase ? 0.15 : 0);
+
+    if (score <= bestScore) {
+      continue;
+    }
+
+    bestScore = score;
+    best = section;
+  }
+
+  return best;
+};
+
 const truncate = (value: string, maxLength: number): string => {
   if (value.length <= maxLength) {
     return value;
@@ -420,6 +523,11 @@ export const searchDocsCorpus = async (
       content: scoreField(doc.normalized.content, doc.words.content, normalizedQuery, queryTokens),
     };
 
+    const matchedContent = fieldScores.content.score > 0;
+    const bestSection = matchedContent ? findBestSection(doc.sections, normalizedQuery, queryTokens) : null;
+    const contentAnchor = bestSection?.anchor;
+    const contentExcerptSource = bestSection?.plainText || doc.contentText;
+
     let score = 0;
     let matchedFields = 0;
     let exactPhraseMatches = 0;
@@ -461,7 +569,7 @@ export const searchDocsCorpus = async (
       bestField === "description"
         ? doc.description
         : bestField === "content"
-          ? doc.contentText
+          ? contentExcerptSource
           : doc.description || doc.contentText;
 
     results.push({
@@ -471,6 +579,7 @@ export const searchDocsCorpus = async (
       title: doc.title,
       description: doc.description || undefined,
       excerpt: buildExcerpt(excerptSource, query, queryTokens),
+      ...(contentAnchor ? { anchor: contentAnchor } : {}),
       score: toScore(score),
     });
   }
