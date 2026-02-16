@@ -5,11 +5,14 @@ import { useMemo, useState } from "react";
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import { EmptyState } from "@/components/states";
-import type { DocSearchResult, DocTreeNode } from "@/components/types";
+import type { DocSearchResult, DocTreeNode, MarkdownHeading } from "@/components/types";
+
+type SidebarView = "pages" | "content";
 
 type DocsTreeProps = {
   tree: DocTreeNode[];
   currentPath: string;
+  headings: MarkdownHeading[];
   searchQuery: string;
   searching: boolean;
   searchResults: DocSearchResult[];
@@ -96,6 +99,7 @@ function TreeNode({ node, currentPath, expanded, onToggle, onSelectPath, level }
 export function DocsTree({
   tree,
   currentPath,
+  headings,
   searchQuery,
   searching,
   searchResults,
@@ -103,6 +107,7 @@ export function DocsTree({
   onSelectPath,
 }: DocsTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [sidebarView, setSidebarView] = useState<SidebarView>("pages");
 
   const hasSearch = searchQuery.trim().length > 0;
   const showTree = !hasSearch;
@@ -112,6 +117,7 @@ export function DocsTree({
       nodes.reduce((acc, node) => acc + 1 + countNodes(node.children), 0);
     return countNodes(tree);
   }, [tree]);
+  const tocHeadings = useMemo(() => headings.filter((heading) => heading.depth <= 4), [headings]);
 
   const onToggle = (id: string) => {
     setExpanded((prev) => {
@@ -128,62 +134,113 @@ export function DocsTree({
   return (
     <aside className="docs-sidebar" aria-label="Documentation navigation">
       <div className="docs-sidebar-top">
-        <label htmlFor="docs-search" className="field-label">
-          Search docs
-        </label>
-        <div className="search-input-wrap">
-          <MaterialIcon name="search" className="search-icon" />
-          <input
-            id="docs-search"
-            className="input"
-            placeholder="Find pages, headings, or keywords"
-            value={searchQuery}
-            onChange={(event) => onSearchQueryChange(event.target.value)}
-          />
+        <div className="sidebar-view-toggle" role="group" aria-label="Sidebar view">
+          <button
+            type="button"
+            className={cn("sidebar-view-button", sidebarView === "pages" && "sidebar-view-button-active")}
+            onClick={() => setSidebarView("pages")}
+          >
+            <MaterialIcon name="menu_book" />
+            <span>Pages</span>
+          </button>
+          <button
+            type="button"
+            className={cn("sidebar-view-button", sidebarView === "content" && "sidebar-view-button-active")}
+            onClick={() => setSidebarView("content")}
+          >
+            <MaterialIcon name="subject" />
+            <span>Page Content</span>
+          </button>
         </div>
+
+        {sidebarView === "pages" ? (
+          <>
+            <label htmlFor="docs-search" className="field-label">
+              Search docs
+            </label>
+            <div className="search-input-wrap">
+              <MaterialIcon name="search" className="search-icon" />
+              <input
+                id="docs-search"
+                className="input"
+                placeholder="Find pages, headings, or keywords"
+                value={searchQuery}
+                onChange={(event) => onSearchQueryChange(event.target.value)}
+              />
+            </div>
+          </>
+        ) : null}
       </div>
 
-      {showTree ? (
-        tree.length > 0 ? (
-          <div className="docs-tree-wrap">
-            <p className="muted-caption">{treeCount} entries</p>
-            <ul className="tree-list" role="tree">
-              {tree.map((node) => (
-                <TreeNode
-                  key={node.id}
-                  node={node}
-                  currentPath={currentPath}
-                  expanded={expanded}
-                  onToggle={onToggle}
-                  onSelectPath={onSelectPath}
-                  level={0}
-                />
-              ))}
-            </ul>
-          </div>
+      {sidebarView === "pages" ? (
+        showTree ? (
+          tree.length > 0 ? (
+            <div className="docs-tree-wrap">
+              <p className="muted-caption">{treeCount} entries</p>
+              <ul className="tree-list" role="tree">
+                {tree.map((node) => (
+                  <TreeNode
+                    key={node.id}
+                    node={node}
+                    currentPath={currentPath}
+                    expanded={expanded}
+                    onToggle={onToggle}
+                    onSelectPath={onSelectPath}
+                    level={0}
+                  />
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <EmptyState title="No pages available" message="Docs tree is empty." />
+          )
         ) : (
-          <EmptyState title="No pages available" message="Docs tree is empty." />
+          <div className="search-results">
+            <p className="muted-caption">Search results</p>
+            {searching ? <p className="muted-caption">Searching...</p> : null}
+            {!searching && searchResults.length === 0 ? (
+              <EmptyState title="No matches" message="Try a different keyword." />
+            ) : null}
+            {searchResults.length > 0 ? (
+              <ul className="result-list">
+                {searchResults.map((result) => (
+                  <li key={result.path}>
+                    <button type="button" className="result-item" onClick={() => onSelectPath(result.path, result.anchor)}>
+                      <strong>{result.title}</strong>
+                      <span>{result.path}</span>
+                      {result.excerpt ? <p>{result.excerpt}</p> : null}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         )
       ) : (
-        <div className="search-results">
-          <p className="muted-caption">Search results</p>
-          {searching ? <p className="muted-caption">Searching...</p> : null}
-          {!searching && searchResults.length === 0 ? (
-            <EmptyState title="No matches" message="Try a different keyword." />
-          ) : null}
-          {searchResults.length > 0 ? (
-            <ul className="result-list">
-              {searchResults.map((result) => (
-                <li key={result.path}>
-                  <button type="button" className="result-item" onClick={() => onSelectPath(result.path, result.anchor)}>
-                    <strong>{result.title}</strong>
-                    <span>{result.path}</span>
-                    {result.excerpt ? <p>{result.excerpt}</p> : null}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+        <div className="sidebar-toc">
+          {tocHeadings.length > 0 ? (
+            <>
+              <p className="muted-caption">{tocHeadings.length} headings</p>
+              <nav aria-label="Page content">
+                <ul className="sidebar-toc-list">
+                  {tocHeadings.map((heading) => (
+                    <li key={heading.slug}>
+                      <button
+                        type="button"
+                        className="sidebar-toc-link"
+                        style={{ marginInlineStart: `${(heading.depth - 1) * 10}px` }}
+                        onClick={() => onSelectPath(currentPath, heading.slug)}
+                      >
+                        {heading.text}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </nav>
+            </>
+          ) : (
+            <EmptyState title="No headings found" message="This page does not have headings yet." />
+          )}
         </div>
       )}
     </aside>

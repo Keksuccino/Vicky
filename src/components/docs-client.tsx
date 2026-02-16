@@ -468,6 +468,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
             <DocsTree
               tree={tree}
               currentPath={currentPath}
+              headings={page?.headings ?? []}
               searchQuery={searchQuery}
               searching={searching}
               searchResults={searchResults}
@@ -510,21 +511,6 @@ export function DocsClient({ initialPath }: DocsClientProps) {
                   Author: {page.updatedBy || "Unknown"}
                 </span>
               </div>
-
-              {page.headings.length > 0 ? (
-                <nav className="toc-panel" aria-label="Table of contents">
-                  <p className="toc-title">On this page</p>
-                  <ul className="toc-list">
-                    {page.headings
-                      .filter((heading) => heading.depth <= 3)
-                      .map((heading) => (
-                        <li key={heading.slug} style={{ marginInlineStart: `${(heading.depth - 1) * 10}px` }}>
-                          <a href={`#${heading.slug}`}>{heading.text}</a>
-                        </li>
-                      ))}
-                  </ul>
-                </nav>
-              ) : null}
 
               <MarkdownRenderer content={page.content} />
             </>

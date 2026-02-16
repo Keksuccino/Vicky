@@ -428,14 +428,80 @@ select {
 
 .docs-sidebar-top {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.55rem;
+}
+
+.sidebar-view-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.25rem;
+  border-radius: 12px;
+  padding: 0.2rem;
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+}
+
+.sidebar-view-button {
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.36rem 0.54rem;
+  font-size: 0.86rem;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.sidebar-view-button .material-icon {
+  font-size: 1rem;
+}
+
+.sidebar-view-button-active {
+  background: var(--surface-elevated);
+  color: var(--text-primary);
+  box-shadow: 0 4px 14px rgba(22, 38, 66, 0.13);
 }
 
 .docs-tree-wrap,
-.search-results {
+.search-results,
+.sidebar-toc {
   display: grid;
   gap: 0.55rem;
   min-height: 0;
+}
+
+.sidebar-toc-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.sidebar-toc-link {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  text-align: left;
+  border-radius: 8px;
+  padding: 0.28rem 0.34rem;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
+}
+
+.sidebar-toc-link:hover {
+  background: var(--surface-muted);
+  color: var(--text-primary);
 }
 
 .docs-main {
