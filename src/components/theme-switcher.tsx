@@ -1,5 +1,7 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
+
 import { MaterialIcon } from "@/components/material-icon";
 import { useTheme } from "@/components/theme-provider";
 import { type ThemeMode } from "@/components/types";
@@ -9,8 +11,11 @@ const modeLabels: Array<{ mode: ThemeMode; label: string; icon: string }> = [
   { mode: "dark", label: "Dark", icon: "dark_mode" },
 ];
 
+const subscribe = () => () => {};
+
 export function ThemeSwitcher() {
   const { mode, themes, activeThemeId, setMode, setActiveThemeId } = useTheme();
+  const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
 
   return (
     <div className="theme-switcher" aria-label="Theme controls">
@@ -19,7 +24,7 @@ export function ThemeSwitcher() {
           <button
             key={item.mode}
             type="button"
-            className={`mode-button ${mode === item.mode ? "mode-button-active" : ""}`}
+            className={`mode-button ${hydrated && mode === item.mode ? "mode-button-active" : ""}`}
             onClick={() => setMode(item.mode)}
           >
             <MaterialIcon name={item.icon} />
@@ -28,7 +33,7 @@ export function ThemeSwitcher() {
         ))}
       </div>
 
-      {mode === "custom" ? (
+      {hydrated && mode === "custom" ? (
         <label className="theme-picker" htmlFor="custom-theme-select">
           <span className="field-label">Custom theme</span>
           <select
