@@ -46,7 +46,7 @@ function TreeNode({ node, currentPath, expanded, onToggle, onSelectPath, level }
     <li>
       <div
         className={cn("tree-row", isActive && "tree-row-active")}
-        style={{ paddingInlineStart: `${12 + level * 14}px` }}
+        style={{ paddingInlineStart: `${level * 14}px` }}
       >
         {node.isFolder ? (
           <button
