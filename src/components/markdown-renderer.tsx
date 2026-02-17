@@ -1,3 +1,6 @@
+"use client";
+
+import { isValidElement, useCallback, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeHighlight from "rehype-highlight";
@@ -7,6 +10,7 @@ import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
+import { cn } from "@/components/cn";
 import { remarkGitHubAlerts } from "@/lib/remark-github-alerts";
 
 type MarkdownRendererProps = {
@@ -15,6 +19,9 @@ type MarkdownRendererProps = {
 
 const ALLOWED_HREF_REGEX = /^(https?:|mailto:|\/|#)/i;
 const ROOT_SHORT_LINK_REGEX = /^\/(?!docs(?:[/?#]|$))[^/?#]+(?:[?#].*)?$/;
+const COPIED_STATE_DURATION_MS = 1400;
+
+type CodeBlockProps = ComponentPropsWithoutRef<"pre">;
 
 const normalizeInternalDocsLink = (href: string): string => {
   if (!ROOT_SHORT_LINK_REGEX.test(href)) {
@@ -23,6 +30,99 @@ const normalizeInternalDocsLink = (href: string): string => {
 
   return `/docs${href}`;
 };
+
+const getNodeText = (node: ReactNode): string => {
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(getNodeText).join("");
+  }
+
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return getNodeText(node.props.children);
+  }
+
+  return "";
+};
+
+const fallbackCopyText = (text: string): boolean => {
+  if (typeof document === "undefined") {
+    return false;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "absolute";
+  textarea.style.opacity = "0";
+  textarea.style.pointerEvents = "none";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  textarea.setSelectionRange(0, text.length);
+
+  try {
+    return document.execCommand("copy");
+  } finally {
+    textarea.remove();
+  }
+};
+
+function CodeBlock({ children, className, ...props }: CodeBlockProps) {
+  const [copied, setCopied] = useState(false);
+  const codeText = useMemo(() => getNodeText(children).replace(/\n$/, ""), [children]);
+
+  const handleCopy = useCallback(async () => {
+    if (!codeText) {
+      return;
+    }
+
+    try {
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(codeText);
+      } else if (!fallbackCopyText(codeText)) {
+        return;
+      }
+      setCopied(true);
+    } catch {
+      if (fallbackCopyText(codeText)) {
+        setCopied(true);
+      }
+    }
+  }, [codeText]);
+
+  useEffect(() => {
+    if (!copied) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setCopied(false);
+    }, COPIED_STATE_DURATION_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [copied]);
+
+  return (
+    <pre className={cn("markdown-code-block", className)} {...props}>
+      <button
+        type="button"
+        className={cn("markdown-code-copy-button", copied && "markdown-code-copy-button-success")}
+        onClick={handleCopy}
+        aria-label={copied ? "Code copied" : "Copy code"}
+      >
+        <span className={cn("material-symbols-outlined", "markdown-code-copy-icon", copied && "material-icon-filled")}>
+          {copied ? "check_circle" : "content_copy"}
+        </span>
+      </button>
+      {children}
+    </pre>
+  );
+}
 
 const sanitizeSchema = {
   ...defaultSchema,
@@ -106,6 +206,11 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
               </a>
             );
           },
+          pre: ({ children, className, ...props }) => (
+            <CodeBlock className={className} {...props}>
+              {children}
+            </CodeBlock>
+          ),
         }}
       >
         {content}

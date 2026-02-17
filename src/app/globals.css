@@ -933,12 +933,67 @@ select {
 
 .markdown-body pre {
   margin: 0.9rem 0;
+  position: relative;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   color: var(--text-secondary);
   background: var(--surface-muted);
   overflow-x: auto;
   padding: 0.85rem;
+}
+
+.markdown-body pre.markdown-code-block {
+  padding: 2.35rem 0.85rem 0.85rem;
+}
+
+.markdown-code-copy-button {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--border) 68%, transparent);
+  background: color-mix(in srgb, var(--surface-elevated) 34%, transparent);
+  color: color-mix(in srgb, var(--text-secondary) 74%, transparent);
+  opacity: 0.74;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    opacity 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    background 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.markdown-code-copy-button:hover,
+.markdown-code-copy-button:focus-visible {
+  opacity: 1;
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 65%, transparent);
+}
+
+.markdown-code-copy-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.markdown-code-copy-button-success,
+.markdown-code-copy-button-success:hover,
+.markdown-code-copy-button-success:focus-visible {
+  opacity: 1;
+  color: var(--success);
+  border-color: color-mix(in srgb, var(--success) 58%, var(--border));
+  background: color-mix(in srgb, var(--success) 14%, transparent);
+}
+
+.markdown-code-copy-icon {
+  font-size: 1.15rem;
+  line-height: 1;
 }
 
 .markdown-body pre code {
