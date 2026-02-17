@@ -811,7 +811,7 @@ select {
 }
 
 html[data-color-mode="light"] .meta-item {
-  background: color-mix(in srgb, var(--surface-elevated) 98%, var(--accent) 2%);
+  background: var(--surface-elevated);
 }
 
 .markdown-body {
