@@ -810,6 +810,10 @@ select {
   font-size: 0.87rem;
 }
 
+html[data-color-mode="light"] .meta-item {
+  background: color-mix(in srgb, var(--surface-elevated) 98%, var(--accent) 2%);
+}
+
 .markdown-body {
   color: var(--text-primary);
 }
