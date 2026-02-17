@@ -750,9 +750,11 @@ select {
 .page-header-card {
   border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
   border-radius: var(--radius-md);
-  background:
-    radial-gradient(circle at 88% 12%, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 42%),
-    color-mix(in srgb, var(--surface-muted) 70%, var(--surface-elevated) 30%);
+  background: color-mix(
+    in srgb,
+    var(--accent) 10%,
+    color-mix(in srgb, var(--surface-muted) 70%, var(--surface-elevated) 30%) 90%
+  );
   padding: clamp(0.85rem, 2vw, 1.1rem) clamp(0.9rem, 2.3vw, 1.25rem);
   margin-bottom: clamp(1.3rem, 3.1vw, 1.9rem);
 }
