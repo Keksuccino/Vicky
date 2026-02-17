@@ -137,11 +137,6 @@ Useful URLs:
 ## Validation Checklist Before Commit
 - Minimum: `npm run lint`
 - Optional as needed: manual smoke checks for touched flows
-- docs navigation
-- anchor links
-- admin login/auth redirects
-- editor save path
-- icon endpoints
 - `npm run typecheck` is useful but can fail from existing unrelated issues (for example stale `.next` type artifacts or existing test typing issues). If it fails, report clearly instead of silently ignoring.
 
 ## Generated/Ignored Files
