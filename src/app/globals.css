@@ -171,12 +171,29 @@ select {
 }
 
 .app-footer {
-  width: min(var(--page-max), calc(100% - 2.2rem));
-  margin: 0 auto;
-  padding: 0.85rem 0 1.2rem;
-  border-top: 1px solid var(--border);
+  margin-top: 1rem;
+}
+
+.app-footer-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-soft);
+  padding: 0.82rem 1rem;
   color: var(--text-muted);
   font-size: 0.86rem;
+  text-align: center;
+}
+
+.app-content > .docs-page + .app-footer {
+  display: grid;
+  grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
+  gap: 1rem;
+  margin-top: 0.7rem;
+}
+
+.app-content > .docs-page + .app-footer .app-footer-card {
+  grid-column: 2;
 }
 
 .app-header {
@@ -2047,8 +2064,12 @@ html[data-color-mode="light"] .meta-item {
     width: min(var(--page-max), calc(100% - 1.2rem));
   }
 
-  .app-footer {
-    width: min(var(--page-max), calc(100% - 1.2rem));
+  .app-content > .docs-page + .app-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .app-content > .docs-page + .app-footer .app-footer-card {
+    grid-column: 1;
   }
 
   .docs-layout {

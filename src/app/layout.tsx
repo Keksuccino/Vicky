@@ -126,8 +126,12 @@ export default async function RootLayout({
           </a>
           <div className="app-shell">
             <AppHeader />
-            <div className="app-content">{children}</div>
-            <footer className="app-footer">{footerText}</footer>
+            <div className="app-content">
+              {children}
+              <footer className="app-footer" aria-label="Site footer">
+                <div className="app-footer-card">{footerText}</div>
+              </footer>
+            </div>
           </div>
         </ThemeProvider>
       </body>
