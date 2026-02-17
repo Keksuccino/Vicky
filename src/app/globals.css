@@ -9,14 +9,19 @@
   --text-muted: #5f7393;
   --border: #d6e2f2;
   --accent: #006ecf;
+  --accent-alt: #2b6dff;
   --accent-soft: #d6ecff;
   --accent-contrast: #f8fbff;
+  --accent-gradient: linear-gradient(136deg, #006ecf 0%, #2b6dff 100%);
+  --panel-gradient: var(--surface-elevated);
+  --panel-highlight: 0 0 0 1px transparent;
   --success: #0f8a58;
   --danger: #ca3f54;
   --header-bg: rgba(248, 251, 255, 0.88);
   --page-gradient: radial-gradient(circle at 12% 0%, #e3f1ff 0%, transparent 35%),
     radial-gradient(circle at 88% 8%, #d8eaff 0%, transparent 25%),
     linear-gradient(180deg, #eff6ff 0%, #f6faff 45%, #edf4ff 100%);
+  --page-gradient-size: auto;
   --shadow-soft: 0 16px 40px rgba(25, 53, 98, 0.12);
   --shadow-strong: 0 24px 60px rgba(16, 36, 67, 0.18);
   --code-token-plain: #334869;
@@ -41,36 +46,45 @@
 
 html[data-color-mode="dark"],
 html[data-color-mode="custom"] {
-  --surface: #0f1828;
-  --surface-elevated: #152238;
-  --surface-muted: #1d2e4a;
-  --text-primary: #edf4ff;
-  --text-secondary: #bfd0eb;
-  --text-muted: #9cb0cf;
-  --border: #2a4061;
-  --accent: #53b5ff;
-  --accent-soft: #173a5d;
-  --accent-contrast: #031324;
-  --success: #2bd08a;
-  --danger: #ff6a7f;
-  --header-bg: rgba(14, 24, 41, 0.8);
-  --page-gradient: radial-gradient(circle at 10% 2%, #1c2f50 0%, transparent 32%),
-    radial-gradient(circle at 88% 6%, #123b54 0%, transparent 30%),
-    linear-gradient(180deg, #0a1526 0%, #0d1b30 50%, #091426 100%);
-  --shadow-soft: 0 16px 44px rgba(2, 8, 18, 0.46);
-  --shadow-strong: 0 30px 65px rgba(2, 8, 18, 0.65);
-  --code-token-plain: #bfd0eb;
-  --code-token-comment: #8ca0c1;
-  --code-token-keyword: #ff7b90;
-  --code-token-string: #57d89f;
-  --code-token-number: #74c7ff;
-  --code-token-function: #b695ff;
-  --code-token-type: #ffb56a;
-  --code-token-attribute: #6de5cb;
-  --code-token-tag: #74c7ff;
-  --code-token-meta: #8ca0c1;
-  --code-token-addition: #2bd08a;
-  --code-token-deletion: #ff6a7f;
+  --surface: #04050b;
+  --surface-elevated: #0d111c;
+  --surface-muted: #131a2b;
+  --text-primary: #f3f5ff;
+  --text-secondary: #c2c9df;
+  --text-muted: #8e97b2;
+  --border: #202b44;
+  --accent: #5f7dff;
+  --accent-alt: #f216a3;
+  --accent-soft: #1a2342;
+  --accent-contrast: #f6f8ff;
+  --accent-gradient: linear-gradient(136deg, #4d78ff 0%, #6a53ff 48%, #f216a3 100%);
+  --panel-gradient: linear-gradient(180deg, rgba(17, 23, 40, 0.9) 0%, rgba(10, 14, 25, 0.95) 100%);
+  --panel-highlight: 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+  --success: #2ad89e;
+  --danger: #ff5b8c;
+  --header-bg: rgba(3, 6, 12, 0.82);
+  --page-gradient:
+    repeating-linear-gradient(60deg, transparent 0 62px, rgb(120 135 180 / 15%) 62px 64px, transparent 64px 126px),
+    repeating-linear-gradient(-60deg, transparent 0 62px, rgb(120 135 180 / 15%) 62px 64px, transparent 64px 126px),
+    repeating-linear-gradient(0deg, transparent 0 35px, rgb(120 135 180 / 15%) 35px 37px, transparent 37px 74px),
+    radial-gradient(circle at 25% 8%, rgb(83 104 255 / 42%) 0%, transparent 38%),
+    radial-gradient(circle at 69% 15%, rgb(242 22 163 / 35%) 0%, transparent 34%),
+    linear-gradient(180deg, #020307 0%, #04060c 50%, #020307 100%);
+  --page-gradient-size: 164px 284px, 164px 284px, 164px 284px, auto, auto, auto;
+  --shadow-soft: 0 22px 55px rgba(1, 3, 10, 0.58);
+  --shadow-strong: 0 32px 80px rgba(0, 0, 0, 0.72);
+  --code-token-plain: #c9d3ef;
+  --code-token-comment: #8592b4;
+  --code-token-keyword: #ff81c2;
+  --code-token-string: #63e6bd;
+  --code-token-number: #88beff;
+  --code-token-function: #ba99ff;
+  --code-token-type: #ffba72;
+  --code-token-attribute: #76edd6;
+  --code-token-tag: #88beff;
+  --code-token-meta: #97a3c5;
+  --code-token-addition: #2ad89e;
+  --code-token-deletion: #ff5b8c;
 }
 
 * {
@@ -87,6 +101,8 @@ body {
 
 body {
   background: var(--page-gradient);
+  background-color: var(--surface);
+  background-size: var(--page-gradient-size);
   color: var(--text-primary);
   font-family: var(--font-body), "Segoe UI", sans-serif;
   line-height: 1.5;
@@ -205,7 +221,7 @@ select {
   display: grid;
   place-items: center;
   color: var(--accent-contrast);
-  background: linear-gradient(160deg, var(--accent), color-mix(in srgb, var(--accent) 60%, #15b8be));
+  background: var(--accent-gradient);
   box-shadow: var(--shadow-soft);
 }
 
@@ -1537,9 +1553,11 @@ select {
   cursor: pointer;
   transition:
     background 160ms ease,
+    filter 160ms ease,
     border-color 160ms ease,
     transform 120ms ease,
-    color 160ms ease;
+    color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .btn:hover {
@@ -1553,13 +1571,13 @@ select {
 }
 
 .btn-primary {
-  background: var(--accent);
+  background: var(--accent-gradient);
   color: var(--accent-contrast);
-  border-color: color-mix(in srgb, var(--accent) 70%, black);
+  border-color: color-mix(in srgb, var(--accent) 74%, black);
 }
 
 .btn-primary:hover {
-  background: color-mix(in srgb, var(--accent) 86%, white 10%);
+  filter: brightness(1.06);
 }
 
 .btn-secondary {
@@ -1966,6 +1984,118 @@ select {
 
 .editor-pane-preview .markdown-body {
   padding: 0.78rem;
+}
+
+html[data-color-mode="dark"] .app-header {
+  border-bottom-color: color-mix(in srgb, var(--border) 64%, var(--accent) 36%);
+  box-shadow: 0 10px 32px rgba(0, 0, 0, 0.56);
+  backdrop-filter: blur(16px);
+}
+
+html[data-color-mode="dark"] .brand-text,
+html[data-color-mode="dark"] .hero-panel h1,
+html[data-color-mode="dark"] .page-heading h1,
+html[data-color-mode="dark"] .auth-hero h1,
+html[data-color-mode="dark"] .editor-topbar h1,
+html[data-color-mode="dark"] .panel-header h1 {
+  background: var(--accent-gradient);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+html[data-color-mode="dark"] .brand-mark {
+  box-shadow:
+    0 10px 26px rgba(36, 46, 110, 0.58),
+    0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+html[data-color-mode="dark"] .hero-panel {
+  background:
+    radial-gradient(circle at 14% -8%, rgb(79 95 255 / 31%) 0%, transparent 46%),
+    radial-gradient(circle at 88% -8%, rgb(242 22 163 / 24%) 0%, transparent 42%),
+    var(--panel-gradient);
+  border-color: color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+  box-shadow:
+    var(--shadow-soft),
+    var(--panel-highlight);
+}
+
+html[data-color-mode="dark"] .hero-panel p,
+html[data-color-mode="dark"] .page-heading p,
+html[data-color-mode="dark"] .panel-description,
+html[data-color-mode="dark"] .auth-hero p {
+  color: var(--text-secondary);
+}
+
+html[data-color-mode="dark"] .feature-card,
+html[data-color-mode="dark"] .docs-sidebar,
+html[data-color-mode="dark"] .docs-main,
+html[data-color-mode="dark"] .auth-card,
+html[data-color-mode="dark"] .panel-card,
+html[data-color-mode="dark"] .editor-topbar,
+html[data-color-mode="dark"] .editor-sidebar,
+html[data-color-mode="dark"] .editor-main,
+html[data-color-mode="dark"] .editor-pane,
+html[data-color-mode="dark"] .result-item,
+html[data-color-mode="dark"] .theme-item {
+  background: var(--panel-gradient);
+  border-color: color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  box-shadow:
+    var(--shadow-soft),
+    var(--panel-highlight);
+}
+
+html[data-color-mode="dark"] .feature-icon,
+html[data-color-mode="dark"] .auth-icon {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-muted));
+}
+
+html[data-color-mode="dark"] .mode-toggle,
+html[data-color-mode="dark"] .sidebar-view-toggle,
+html[data-color-mode="dark"] .editor-view-toggle,
+html[data-color-mode="dark"] .btn-secondary,
+html[data-color-mode="dark"] .btn-ghost,
+html[data-color-mode="dark"] .admin-icon-link,
+html[data-color-mode="dark"] .mobile-sidebar-button,
+html[data-color-mode="dark"] .input,
+html[data-color-mode="dark"] .markdown-body pre,
+html[data-color-mode="dark"] .markdown-body code,
+html[data-color-mode="dark"] .meta-item,
+html[data-color-mode="dark"] .toc-panel {
+  background: color-mix(in srgb, var(--surface-muted) 82%, #080b14);
+}
+
+html[data-color-mode="dark"] .btn-primary {
+  box-shadow:
+    0 10px 28px rgb(88 102 255 / 34%),
+    0 0 0 1px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+html[data-color-mode="dark"] .btn-primary:hover {
+  box-shadow:
+    0 12px 32px rgb(124 70 255 / 34%),
+    0 0 0 1px color-mix(in srgb, var(--accent-alt) 24%, transparent);
+}
+
+html[data-color-mode="dark"] .mode-button-active,
+html[data-color-mode="dark"] .sidebar-view-button-active,
+html[data-color-mode="dark"] .editor-view-button-active,
+html[data-color-mode="dark"] .admin-icon-link-active {
+  background: color-mix(in srgb, var(--accent-soft) 56%, var(--surface-elevated));
+  box-shadow:
+    0 8px 22px rgba(6, 9, 18, 0.58),
+    0 0 0 1px color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+html[data-color-mode="dark"] .nav-link-active,
+html[data-color-mode="dark"] .tree-row-active {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+
+html[data-color-mode="dark"] .app-content {
+  animation-duration: 360ms;
 }
 
 @media (max-width: 1180px) {
