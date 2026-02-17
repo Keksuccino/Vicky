@@ -30,21 +30,21 @@ const lightVariables = {
 };
 
 const darkVariables = {
-  "--surface": "#0f1828",
-  "--surface-elevated": "#152238",
-  "--surface-muted": "#1d2e4a",
-  "--text-primary": "#edf4ff",
-  "--text-secondary": "#bfd0eb",
-  "--text-muted": "#9cb0cf",
-  "--border": "#2a4061",
-  "--accent": "#53b5ff",
-  "--accent-soft": "#173a5d",
-  "--accent-contrast": "#031324",
+  "--surface": "#121820",
+  "--surface-elevated": "#18212c",
+  "--surface-muted": "#232f3d",
+  "--text-primary": "#e8edf5",
+  "--text-secondary": "#c0c9d7",
+  "--text-muted": "#96a3b5",
+  "--border": "#334153",
+  "--accent": "#5caedf",
+  "--accent-soft": "#22384d",
+  "--accent-contrast": "#07121e",
   "--success": "#2bd08a",
   "--danger": "#ff6a7f",
-  "--header-bg": "rgba(14, 24, 41, 0.8)",
+  "--header-bg": "rgba(19, 27, 38, 0.8)",
   "--page-gradient":
-    "radial-gradient(circle at 10% 2%, #1c2f50 0%, transparent 32%), radial-gradient(circle at 88% 6%, #123b54 0%, transparent 30%), linear-gradient(180deg, #0a1526 0%, #0d1b30 50%, #091426 100%)",
+    "radial-gradient(circle at 10% 2%, #273448 0%, transparent 32%), radial-gradient(circle at 88% 6%, #1f3445 0%, transparent 30%), linear-gradient(180deg, #0d141f 0%, #111a28 50%, #0c141f 100%)",
 };
 
 export const DEFAULT_THEMES = (): ThemeDefinition[] => {

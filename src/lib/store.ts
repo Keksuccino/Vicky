@@ -118,9 +118,17 @@ const normalizeThemes = (value: unknown): ThemeDefinition[] => {
     }
 
     if (builtinMap.has(parsed.id)) {
-      const builtinTheme = normalizeTheme(parsed, builtinMap.get(parsed.id));
-      if (builtinTheme) {
+      const builtinFallback = builtinMap.get(parsed.id);
+      const builtinTheme = normalizeTheme(parsed, builtinFallback);
+      if (builtinTheme && builtinFallback) {
         builtinTheme.isBuiltin = true;
+        builtinTheme.mode = builtinFallback.mode;
+        builtinTheme.name = builtinFallback.name;
+        // Built-in themes are versioned with the app; keep their default tokens current.
+        builtinTheme.variables = {
+          ...builtinTheme.variables,
+          ...builtinFallback.variables,
+        };
         normalized.set(parsed.id, builtinTheme);
       }
       continue;
