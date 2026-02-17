@@ -801,7 +801,7 @@ select {
 .meta-item {
   border: 1px solid var(--border);
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--surface-elevated) 94%, var(--accent) 6%);
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
