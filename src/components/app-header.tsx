@@ -36,9 +36,9 @@ const DEFAULT_BRAND_TITLE = "Vicky Docs";
 
 export function AppHeader() {
   const pathname = usePathname();
-  const [brandTitle, setBrandTitle] = useState(DEFAULT_BRAND_TITLE);
+  const [brandTitle, setBrandTitle] = useState<string | null>(null);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
-  const [hasConfiguredIcon, setHasConfiguredIcon] = useState(false);
+  const [hasConfiguredIcon, setHasConfiguredIcon] = useState<boolean | null>(null);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
   useEffect(() => {
@@ -99,7 +99,10 @@ export function AppHeader() {
     };
   }, [pathname]);
 
-  const useCustomIcon = hasConfiguredIcon && !iconLoadFailed;
+  const brandingReady = brandTitle !== null && hasConfiguredIcon !== null;
+  const resolvedBrandTitle = brandTitle ?? DEFAULT_BRAND_TITLE;
+  const useCustomIcon = brandingReady && hasConfiguredIcon && !iconLoadFailed;
+  const showFallbackIcon = brandingReady && !useCustomIcon;
   const navItems: NavigationItem[] = isAdminAuthenticated ? [EDITOR_NAVIGATION] : [];
   const adminIsActive = pathname === ADMIN_NAVIGATION.activePrefix || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
   const adminHref = isAdminAuthenticated
@@ -109,7 +112,7 @@ export function AppHeader() {
   return (
     <header className="app-header">
       <div className="app-header-inner">
-        <Link href="/" className="app-brand" aria-label={`${brandTitle} home`}>
+        <Link href="/" className="app-brand" aria-label={brandingReady ? `${resolvedBrandTitle} home` : "Documentation home"}>
           {useCustomIcon ? (
             <span className="brand-mark brand-mark-icon" aria-hidden="true">
               <Image
@@ -122,10 +125,16 @@ export function AppHeader() {
                 onError={() => setIconLoadFailed(true)}
               />
             </span>
-          ) : (
+          ) : showFallbackIcon ? (
             <span className="brand-mark">V</span>
+          ) : (
+            <span className="brand-mark-placeholder" aria-hidden="true" />
           )}
-          <span className="brand-text">{brandTitle}</span>
+          {brandingReady ? (
+            <span className="brand-text">{resolvedBrandTitle}</span>
+          ) : (
+            <span className="brand-text-placeholder" aria-hidden="true" />
+          )}
         </Link>
 
         <nav className="main-nav" aria-label="Main navigation">
