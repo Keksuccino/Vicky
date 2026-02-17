@@ -3,9 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 import { errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
-export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
-
 type IconSize = "16" | "32" | "180";
 
 const resolveIconUrl = (size: IconSize, settings: Awaited<ReturnType<typeof getStore>>["settings"]): string => {

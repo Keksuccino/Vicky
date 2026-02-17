@@ -1,8 +1,9 @@
 import { type NextRequest, type NextResponse } from "next/server";
 
-import { dynamic, handleIconRequest, runtime } from "@/app/api/public/icon/shared";
+import { handleIconRequest } from "@/app/api/public/icon/shared";
 
-export { runtime, dynamic };
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => handleIconRequest(request, "32");
 export const HEAD = GET;
