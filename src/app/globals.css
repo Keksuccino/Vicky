@@ -1187,28 +1187,50 @@ select {
   color: color-mix(in srgb, #8e5bff 78%, var(--text-primary));
 }
 
-.markdown-body :is(h1, h2, h3, h4, h5, h6) > .heading-anchor,
-.markdown-body :is(h1, h2, h3, h4, h5, h6) > a[href^="#"] {
+.markdown-body h1 > a[href^="#"],
+.markdown-body h2 > a[href^="#"],
+.markdown-body h3 > a[href^="#"],
+.markdown-body h4 > a[href^="#"],
+.markdown-body h5 > a[href^="#"],
+.markdown-body h6 > a[href^="#"] {
   inline-size: 0;
-  block-size: 1em;
+  max-inline-size: 0;
   margin-inline-start: 0;
+  overflow: hidden;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   line-height: 1;
   vertical-align: middle;
-  overflow: hidden;
   text-decoration: none;
   color: var(--text-muted);
+  pointer-events: none;
+  transition:
+    inline-size 140ms ease,
+    max-inline-size 140ms ease,
+    margin-inline-start 140ms ease,
+    color 140ms ease;
+}
+
+.markdown-body h1 > a[href^="#"] > *,
+.markdown-body h2 > a[href^="#"] > *,
+.markdown-body h3 > a[href^="#"] > *,
+.markdown-body h4 > a[href^="#"] > *,
+.markdown-body h5 > a[href^="#"] > *,
+.markdown-body h6 > a[href^="#"] > * {
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transform: translateY(0.04em);
-  transition:
-    opacity 140ms ease,
-    inline-size 140ms ease,
-    margin-inline-start 140ms ease,
-    color 140ms ease;
+  transition: opacity 140ms ease;
+}
+
+.markdown-body .heading-anchor-wrap {
+  inline-size: 1em;
+  block-size: 1em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform: translateY(var(--heading-anchor-offset, 0.06em));
 }
 
 .markdown-body .anchor-icon {
@@ -1217,26 +1239,78 @@ select {
   display: block;
 }
 
-.markdown-body :is(h1, h2, h3, h4, h5, h6):hover > .heading-anchor,
-.markdown-body :is(h1, h2, h3, h4, h5, h6):hover > a[href^="#"],
-.markdown-body :is(h1, h2, h3, h4, h5, h6):focus-within > .heading-anchor,
-.markdown-body :is(h1, h2, h3, h4, h5, h6):focus-within > a[href^="#"],
-.markdown-body .heading-anchor:hover,
-.markdown-body .heading-anchor:focus-visible,
-.markdown-body :is(h1, h2, h3, h4, h5, h6) > a[href^="#"]:hover,
-.markdown-body :is(h1, h2, h3, h4, h5, h6) > a[href^="#"]:focus-visible {
-  opacity: 1;
-  visibility: visible;
+.markdown-body h1:hover > a[href^="#"],
+.markdown-body h2:hover > a[href^="#"],
+.markdown-body h3:hover > a[href^="#"],
+.markdown-body h4:hover > a[href^="#"],
+.markdown-body h5:hover > a[href^="#"],
+.markdown-body h6:hover > a[href^="#"],
+.markdown-body h1:focus-within > a[href^="#"],
+.markdown-body h2:focus-within > a[href^="#"],
+.markdown-body h3:focus-within > a[href^="#"],
+.markdown-body h4:focus-within > a[href^="#"],
+.markdown-body h5:focus-within > a[href^="#"],
+.markdown-body h6:focus-within > a[href^="#"],
+.markdown-body h1 > a[href^="#"]:hover,
+.markdown-body h2 > a[href^="#"]:hover,
+.markdown-body h3 > a[href^="#"]:hover,
+.markdown-body h4 > a[href^="#"]:hover,
+.markdown-body h5 > a[href^="#"]:hover,
+.markdown-body h6 > a[href^="#"]:hover,
+.markdown-body h1 > a[href^="#"]:focus-visible,
+.markdown-body h2 > a[href^="#"]:focus-visible,
+.markdown-body h3 > a[href^="#"]:focus-visible,
+.markdown-body h4 > a[href^="#"]:focus-visible,
+.markdown-body h5 > a[href^="#"]:focus-visible,
+.markdown-body h6 > a[href^="#"]:focus-visible {
   inline-size: 1em;
+  max-inline-size: 1em;
   margin-inline-start: 0.35em;
   overflow: visible;
   pointer-events: auto;
 }
 
-.markdown-body .heading-anchor:hover,
-.markdown-body .heading-anchor:focus-visible,
-.markdown-body :is(h1, h2, h3, h4, h5, h6) > a[href^="#"]:hover,
-.markdown-body :is(h1, h2, h3, h4, h5, h6) > a[href^="#"]:focus-visible {
+.markdown-body h1:hover > a[href^="#"] > *,
+.markdown-body h2:hover > a[href^="#"] > *,
+.markdown-body h3:hover > a[href^="#"] > *,
+.markdown-body h4:hover > a[href^="#"] > *,
+.markdown-body h5:hover > a[href^="#"] > *,
+.markdown-body h6:hover > a[href^="#"] > *,
+.markdown-body h1:focus-within > a[href^="#"] > *,
+.markdown-body h2:focus-within > a[href^="#"] > *,
+.markdown-body h3:focus-within > a[href^="#"] > *,
+.markdown-body h4:focus-within > a[href^="#"] > *,
+.markdown-body h5:focus-within > a[href^="#"] > *,
+.markdown-body h6:focus-within > a[href^="#"] > *,
+.markdown-body h1 > a[href^="#"]:hover > *,
+.markdown-body h2 > a[href^="#"]:hover > *,
+.markdown-body h3 > a[href^="#"]:hover > *,
+.markdown-body h4 > a[href^="#"]:hover > *,
+.markdown-body h5 > a[href^="#"]:hover > *,
+.markdown-body h6 > a[href^="#"]:hover > *,
+.markdown-body h1 > a[href^="#"]:focus-visible > *,
+.markdown-body h2 > a[href^="#"]:focus-visible > *,
+.markdown-body h3 > a[href^="#"]:focus-visible > *,
+.markdown-body h4 > a[href^="#"]:focus-visible > *,
+.markdown-body h5 > a[href^="#"]:focus-visible > *,
+.markdown-body h6 > a[href^="#"]:focus-visible > * {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.markdown-body h1 > a[href^="#"]:hover,
+.markdown-body h2 > a[href^="#"]:hover,
+.markdown-body h3 > a[href^="#"]:hover,
+.markdown-body h4 > a[href^="#"]:hover,
+.markdown-body h5 > a[href^="#"]:hover,
+.markdown-body h6 > a[href^="#"]:hover,
+.markdown-body h1 > a[href^="#"]:focus-visible,
+.markdown-body h2 > a[href^="#"]:focus-visible,
+.markdown-body h3 > a[href^="#"]:focus-visible,
+.markdown-body h4 > a[href^="#"]:focus-visible,
+.markdown-body h5 > a[href^="#"]:focus-visible,
+.markdown-body h6 > a[href^="#"]:focus-visible {
   color: var(--accent);
 }
 

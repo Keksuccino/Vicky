@@ -56,8 +56,15 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
               content: {
                 type: "element",
                 tagName: "span",
-                properties: { className: ["material-symbols-outlined", "anchor-icon"] },
-                children: [{ type: "text", value: "link" }],
+                properties: { className: ["heading-anchor-wrap"] },
+                children: [
+                  {
+                    type: "element",
+                    tagName: "span",
+                    properties: { className: ["material-symbols-outlined", "anchor-icon"] },
+                    children: [{ type: "text", value: "link" }],
+                  },
+                ],
               },
             },
           ],
