@@ -34,17 +34,39 @@ const fontMono = localFont({
 
 const FALLBACK_SITE_TITLE = "Vicky Docs";
 const FALLBACK_SITE_DESCRIPTION = "Docs/wiki frontend with navigation, search, editor, and admin theme management.";
+const FALLBACK_ICON_VERSION = "default";
+
+const appendVersion = (url: string, version: string): string => `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
+
+const createIconVersion = (settings: Awaited<ReturnType<typeof getStore>>["settings"]): string => {
+  const source = [
+    settings.updatedAt,
+    settings.docsIcon.png16Url,
+    settings.docsIcon.png32Url,
+    settings.docsIcon.png180Url,
+  ].join("|");
+
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(36);
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   noStore();
 
   let siteTitle = FALLBACK_SITE_TITLE;
   let siteDescription = FALLBACK_SITE_DESCRIPTION;
+  let iconVersion = FALLBACK_ICON_VERSION;
 
   try {
     const store = await getStore();
     siteTitle = store.settings.siteTitle || FALLBACK_SITE_TITLE;
     siteDescription = store.settings.siteDescription || FALLBACK_SITE_DESCRIPTION;
+    iconVersion = createIconVersion(store.settings);
   } catch {
     // Keep fallback metadata when settings storage is temporarily unavailable.
   }
@@ -57,11 +79,11 @@ export async function generateMetadata(): Promise<Metadata> {
     description: siteDescription,
     icons: {
       icon: [
-        { url: "/api/public/icon/16", sizes: "16x16", type: "image/png" },
-        { url: "/api/public/icon/32", sizes: "32x32", type: "image/png" },
+        { url: appendVersion("/api/public/icon/16", iconVersion), sizes: "16x16", type: "image/png" },
+        { url: appendVersion("/api/public/icon/32", iconVersion), sizes: "32x32", type: "image/png" },
       ],
-      shortcut: [{ url: "/favicon.ico", type: "image/png" }],
-      apple: [{ url: "/api/public/icon/180", sizes: "180x180", type: "image/png" }],
+      shortcut: [{ url: appendVersion("/favicon.ico", iconVersion), type: "image/png" }],
+      apple: [{ url: appendVersion("/api/public/icon/180", iconVersion), sizes: "180x180", type: "image/png" }],
     },
   };
 }
