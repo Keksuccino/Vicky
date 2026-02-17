@@ -8,8 +8,6 @@ export const dynamic = "force-dynamic";
 
 type IconSize = "16" | "32" | "180";
 
-const isIconSize = (value: string): value is IconSize => value === "16" || value === "32" || value === "180";
-
 const resolveIconUrl = (size: IconSize, settings: Awaited<ReturnType<typeof getStore>>["settings"]): string => {
   if (size === "16") {
     return settings.docsIcon.png16Url;
@@ -31,22 +29,15 @@ const toSafeTargetUrl = (rawUrl: string, request: NextRequest): string | null =>
     if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
       return null;
     }
+
     return resolved.toString();
   } catch {
     return null;
   }
 };
 
-export const GET = async (
-  request: NextRequest,
-  context: { params: Promise<{ size: string }> },
-): Promise<NextResponse> => {
+export const handleIconRequest = async (request: NextRequest, size: IconSize): Promise<NextResponse> => {
   try {
-    const { size } = await context.params;
-    if (!isIconSize(size)) {
-      return new NextResponse(null, { status: 404 });
-    }
-
     const store = await getStore();
     const rawUrl = resolveIconUrl(size, store.settings);
     const target = toSafeTargetUrl(rawUrl, request);
