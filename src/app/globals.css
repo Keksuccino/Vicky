@@ -1230,7 +1230,7 @@ select {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transform: translateY(var(--heading-anchor-offset, 0.06em));
+  transform: translateY(var(--heading-anchor-offset, -0.03em));
 }
 
 .markdown-body .anchor-icon {
