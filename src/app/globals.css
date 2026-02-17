@@ -1227,10 +1227,11 @@ select {
 .markdown-body .heading-anchor-wrap {
   inline-size: 1em;
   block-size: 1em;
+  block-size: 1lh;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transform: translateY(var(--heading-anchor-offset, -0.03em));
+  transform: translateY(var(--heading-anchor-offset, -0.04em));
 }
 
 .markdown-body .anchor-icon {
