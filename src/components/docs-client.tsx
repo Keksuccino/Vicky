@@ -15,7 +15,7 @@ import { cn } from "@/components/cn";
 import { DocsTree } from "@/components/docs-tree";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
-import { ErrorState, LoadingState } from "@/components/states";
+import { ErrorState } from "@/components/states";
 import type { DocPage, DocSearchResult, DocTreeNode } from "@/components/types";
 
 type DocsClientProps = {
@@ -71,6 +71,55 @@ function scrollToElement(element: HTMLElement): void {
   window.scrollTo({ top, left: 0, behavior: "auto" });
   document.documentElement.style.scrollBehavior = htmlBehavior;
   document.body.style.scrollBehavior = bodyBehavior;
+}
+
+function DocsSidebarUnresolved() {
+  return (
+    <aside className="docs-sidebar docs-sidebar-unresolved" aria-label="Documentation navigation" aria-busy="true">
+      <div className="docs-sidebar-top">
+        <div className="sidebar-view-toggle" aria-hidden="true">
+          <span className="sidebar-view-button sidebar-skeleton-toggle-item" />
+          <span className="sidebar-view-button sidebar-skeleton-toggle-item" />
+        </div>
+        <div className="sidebar-skeleton-input" aria-hidden="true" />
+      </div>
+
+      <div className="docs-tree-wrap" aria-hidden="true">
+        <div className="sidebar-skeleton-caption" />
+        <div className="sidebar-skeleton-list">
+          <div className="sidebar-skeleton-row sidebar-skeleton-row-wide" />
+          <div className="sidebar-skeleton-row sidebar-skeleton-row-nested" />
+          <div className="sidebar-skeleton-row sidebar-skeleton-row-wide" />
+          <div className="sidebar-skeleton-row sidebar-skeleton-row-mid" />
+          <div className="sidebar-skeleton-row sidebar-skeleton-row-nested-short" />
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+function DocsPageUnresolved() {
+  return (
+    <div className="docs-main-unresolved" role="status" aria-live="polite" aria-label="Loading page">
+      <section className="page-header-card page-header-skeleton" aria-hidden="true">
+        <div className="docs-skeleton-line docs-skeleton-heading" />
+        <div className="docs-skeleton-line docs-skeleton-subheading" />
+        <div className="docs-skeleton-meta-row">
+          <div className="docs-skeleton-chip docs-skeleton-chip-long" />
+          <div className="docs-skeleton-chip docs-skeleton-chip-short" />
+        </div>
+      </section>
+
+      <div className="docs-markdown-skeleton" aria-hidden="true">
+        <div className="docs-skeleton-line docs-skeleton-paragraph-wide" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-wide" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-mid" />
+        <div className="docs-skeleton-line docs-skeleton-heading-small" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-wide" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-short" />
+      </div>
+    </div>
+  );
 }
 
 export function DocsClient({ initialPath }: DocsClientProps) {
@@ -432,7 +481,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
           aria-modal={sidebarOpen || undefined}
         >
           {treeLoading ? (
-            <LoadingState label="Loading documentation tree..." />
+            <DocsSidebarUnresolved />
           ) : treeError ? (
             <ErrorState
               title="Unable to load docs tree"
@@ -457,7 +506,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
         </div>
 
         <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined}>
-          {pageLoading ? <LoadingState label="Loading page..." /> : null}
+          {pageLoading ? <DocsPageUnresolved /> : null}
 
           {pageError ? (
             <ErrorState

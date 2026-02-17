@@ -530,6 +530,60 @@ select {
   box-shadow: 0 4px 14px rgba(22, 38, 66, 0.13);
 }
 
+.docs-sidebar-unresolved {
+  pointer-events: none;
+}
+
+.sidebar-skeleton-toggle-item {
+  min-height: 1.86rem;
+  border-radius: 10px;
+  background: var(--surface-elevated);
+  box-shadow: none;
+}
+
+.sidebar-skeleton-input {
+  height: 2.3rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+}
+
+.sidebar-skeleton-caption {
+  width: 5.2rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.sidebar-skeleton-list {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.sidebar-skeleton-row {
+  height: 2rem;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.sidebar-skeleton-row-wide {
+  width: 100%;
+}
+
+.sidebar-skeleton-row-mid {
+  width: 84%;
+}
+
+.sidebar-skeleton-row-nested {
+  width: 92%;
+  margin-inline-start: 14px;
+}
+
+.sidebar-skeleton-row-nested-short {
+  width: 68%;
+  margin-inline-start: 28px;
+}
+
 .docs-tree-wrap,
 .search-results,
 .sidebar-toc {
@@ -576,6 +630,80 @@ select {
   box-shadow: var(--shadow-soft);
   padding: clamp(1rem, 2vw, 1.6rem);
   min-height: 70vh;
+}
+
+.docs-main-unresolved {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.page-header-skeleton {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface-elevated));
+}
+
+.docs-skeleton-line {
+  border-radius: 999px;
+  background: var(--surface-muted);
+}
+
+.docs-skeleton-heading {
+  width: min(26rem, 78%);
+  height: 1.95rem;
+}
+
+.docs-skeleton-subheading {
+  width: min(32rem, 92%);
+  height: 1.02rem;
+  margin-top: 0.32rem;
+  margin-bottom: 0.86rem;
+}
+
+.docs-skeleton-meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.docs-skeleton-chip {
+  height: 1.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+}
+
+.docs-skeleton-chip-long {
+  width: 11.8rem;
+}
+
+.docs-skeleton-chip-short {
+  width: 9.2rem;
+}
+
+.docs-markdown-skeleton {
+  display: grid;
+  gap: 0.62rem;
+}
+
+.docs-skeleton-paragraph-wide {
+  width: 100%;
+  height: 0.95rem;
+}
+
+.docs-skeleton-paragraph-mid {
+  width: 87%;
+  height: 0.95rem;
+}
+
+.docs-skeleton-heading-small {
+  width: 42%;
+  height: 1.38rem;
+  margin-top: 0.45rem;
+}
+
+.docs-skeleton-paragraph-short {
+  width: 73%;
+  height: 0.95rem;
 }
 
 .breadcrumbs {
