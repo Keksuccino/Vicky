@@ -1187,13 +1187,39 @@ select {
   color: color-mix(in srgb, #8e5bff 78%, var(--text-primary));
 }
 
-.heading-anchor {
-  margin-inline-start: 0.35rem;
+.markdown-body .heading-anchor {
+  margin-inline-start: 0.35em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 1em;
+  line-height: 1;
+  vertical-align: middle;
+  text-decoration: none;
   color: var(--text-muted);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 140ms ease,
+    color 140ms ease;
 }
 
 .anchor-icon {
-  font-size: 1rem;
+  font-size: 1em;
+  line-height: 1;
+}
+
+.markdown-body :is(h1, h2, h3, h4, h5, h6):hover .heading-anchor,
+.markdown-body :is(h1, h2, h3, h4, h5, h6):focus-within .heading-anchor,
+.heading-anchor:hover,
+.heading-anchor:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.heading-anchor:hover,
+.heading-anchor:focus-visible {
+  color: var(--accent);
 }
 
 .tree-list,
