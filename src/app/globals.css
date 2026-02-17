@@ -562,26 +562,9 @@ select {
 
 .sidebar-skeleton-row {
   height: 2rem;
+  width: 100%;
   border-radius: 8px;
   background: var(--surface-muted);
-}
-
-.sidebar-skeleton-row-wide {
-  width: 100%;
-}
-
-.sidebar-skeleton-row-mid {
-  width: 84%;
-}
-
-.sidebar-skeleton-row-nested {
-  width: 92%;
-  margin-inline-start: 14px;
-}
-
-.sidebar-skeleton-row-nested-short {
-  width: 68%;
-  margin-inline-start: 28px;
 }
 
 .docs-tree-wrap,

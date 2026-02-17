@@ -87,11 +87,11 @@ function DocsSidebarUnresolved() {
       <div className="docs-tree-wrap" aria-hidden="true">
         <div className="sidebar-skeleton-caption" />
         <div className="sidebar-skeleton-list">
-          <div className="sidebar-skeleton-row sidebar-skeleton-row-wide" />
-          <div className="sidebar-skeleton-row sidebar-skeleton-row-nested" />
-          <div className="sidebar-skeleton-row sidebar-skeleton-row-wide" />
-          <div className="sidebar-skeleton-row sidebar-skeleton-row-mid" />
-          <div className="sidebar-skeleton-row sidebar-skeleton-row-nested-short" />
+          <div className="sidebar-skeleton-row" />
+          <div className="sidebar-skeleton-row" />
+          <div className="sidebar-skeleton-row" />
+          <div className="sidebar-skeleton-row" />
+          <div className="sidebar-skeleton-row" />
         </div>
       </div>
     </aside>
