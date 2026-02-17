@@ -21,6 +21,7 @@ type RawTreeItem = {
 export type PublicSiteSettings = {
   siteTitle: string;
   siteDescription: string;
+  footerText: string;
   startPage: string;
   siteTitleGradientFrom: string;
   siteTitleGradientTo: string;
@@ -36,6 +37,7 @@ const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
 const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  footerText: "Copyright © {{year}} {{owner}}. All rights reserved.",
   startPage: "/home",
   siteTitleGradientFrom: "",
   siteTitleGradientTo: "",
@@ -377,6 +379,7 @@ function normalizeSettings(source: unknown): AdminSettings {
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    footerText: asString(payload.footerText, DEFAULT_SETTINGS.footerText),
     startPage: asString(payload.startPage, DEFAULT_SETTINGS.startPage),
     siteTitleGradientFrom: asString(siteTitleGradient.from, DEFAULT_SETTINGS.siteTitleGradientFrom),
     siteTitleGradientTo: asString(siteTitleGradient.to, DEFAULT_SETTINGS.siteTitleGradientTo),
@@ -401,6 +404,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
+    footerText: asString(payload.footerText, DEFAULT_SETTINGS.footerText),
     startPage: asString(payload.startPage, DEFAULT_SETTINGS.startPage),
     siteTitleGradientFrom: asString(siteTitleGradient.from, DEFAULT_SETTINGS.siteTitleGradientFrom),
     siteTitleGradientTo: asString(siteTitleGradient.to, DEFAULT_SETTINGS.siteTitleGradientTo),
@@ -548,6 +552,7 @@ export async function saveAdminSettings(
   const payload: Record<string, unknown> = {
     siteTitle: settings.siteTitle,
     siteDescription: settings.siteDescription,
+    footerText: settings.footerText,
     startPage: settings.startPage,
     siteTitleGradient: {
       from: settings.siteTitleGradientFrom,

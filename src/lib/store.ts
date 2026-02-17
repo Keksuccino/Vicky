@@ -164,6 +164,7 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
     siteDescription: normalizeString(source.siteDescription, defaults.siteDescription),
+    footerText: normalizeTrimmedString(source.footerText, defaults.footerText),
     startPage: normalizeStartPage(source.startPage),
     siteTitleGradient: {
       from: normalizeTrimmedString(sourceSiteTitleGradient.from, defaults.siteTitleGradient.from),

@@ -16,6 +16,7 @@ const settingsPatchSchema = z
   .object({
     siteTitle: z.string().min(1).optional(),
     siteDescription: z.string().min(1).optional(),
+    footerText: z.string().optional(),
     startPage: z.string().optional(),
     siteTitleGradient: z
       .object({
@@ -79,6 +80,10 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.siteDescription !== undefined) {
         store.settings.siteDescription = patch.siteDescription.trim() || store.settings.siteDescription;
+      }
+
+      if (patch.footerText !== undefined) {
+        store.settings.footerText = patch.footerText.trim() || store.settings.footerText;
       }
 
       if (patch.startPage !== undefined) {

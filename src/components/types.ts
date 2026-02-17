@@ -43,6 +43,7 @@ export type AuthUser = {
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
+  footerText: string;
   startPage: string;
   siteTitleGradientFrom: string;
   siteTitleGradientTo: string;

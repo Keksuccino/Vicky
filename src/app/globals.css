@@ -170,6 +170,15 @@ select {
   animation: fade-up 280ms ease;
 }
 
+.app-footer {
+  width: min(var(--page-max), calc(100% - 2.2rem));
+  margin: 0 auto;
+  padding: 0.85rem 0 1.2rem;
+  border-top: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 0.86rem;
+}
+
 .app-header {
   position: sticky;
   top: 0;
@@ -2035,6 +2044,10 @@ html[data-color-mode="light"] .meta-item {
 
 @media (max-width: 900px) {
   .app-content {
+    width: min(var(--page-max), calc(100% - 1.2rem));
+  }
+
+  .app-footer {
     width: min(var(--page-max), calc(100% - 1.2rem));
   }
 

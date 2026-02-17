@@ -35,6 +35,7 @@ export interface SiteTitleGradientSettings {
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
+  footerText: string;
   startPage: string;
   siteTitleGradient: SiteTitleGradientSettings;
   docsIcon: DocsIconSettings;

@@ -23,6 +23,7 @@ import type { AdminSettings, ThemeDefinition, ThemeDraft } from "@/components/ty
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  footerText: "Copyright © {{year}} {{owner}}. All rights reserved.",
   startPage: "/home",
   siteTitleGradientFrom: "",
   siteTitleGradientTo: "",
@@ -572,7 +573,7 @@ export function AdminSettingsPanel() {
             <h2>Site Settings</h2>
           </div>
 
-          <p className="panel-description">Configure site branding, start page behavior, and icon assets.</p>
+          <p className="panel-description">Configure site branding, footer text, start page behavior, and icon assets.</p>
 
           <form
             className="form-grid"
@@ -604,6 +605,18 @@ export function AdminSettingsPanel() {
                 />
               </label>
             </div>
+
+            <label className="field-row" htmlFor="site-footer-text">
+              <span className="field-label">Footer text (supports {`{{year}}`} and {`{{owner}}`})</span>
+              <input
+                id="site-footer-text"
+                className="input"
+                value={settings.footerText}
+                onChange={(event) => setSettings((prev) => ({ ...prev, footerText: event.target.value }))}
+                placeholder="Copyright © {{year}} {{owner}}. All rights reserved."
+                required
+              />
+            </label>
 
             <div className="field-inline">
               <label className="field-row" htmlFor="site-title-gradient-from">

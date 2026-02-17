@@ -35,6 +35,9 @@ const fontMono = localFont({
 const FALLBACK_SITE_TITLE = "Vicky Docs";
 const FALLBACK_SITE_DESCRIPTION = "Docs/wiki frontend with navigation, search, editor, and admin theme management.";
 const FALLBACK_ICON_VERSION = "default";
+const FALLBACK_FOOTER_TEXT = "Copyright © {{year}} {{owner}}. All rights reserved.";
+const FALLBACK_FOOTER_OWNER = "Repository Owner";
+const MIN_FOOTER_YEAR = 2026;
 
 const appendVersion = (url: string, version: string): string => `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
 
@@ -53,6 +56,15 @@ const createIconVersion = (settings: Awaited<ReturnType<typeof getStore>>["setti
   }
 
   return (hash >>> 0).toString(36);
+};
+
+const resolveFooterText = (template: string, owner: string): string => {
+  const year = String(Math.max(new Date().getFullYear(), MIN_FOOTER_YEAR));
+  const resolvedOwner = owner.trim() || FALLBACK_FOOTER_OWNER;
+
+  return template
+    .replace(/{{\s*year\s*}}/gi, year)
+    .replace(/{{\s*owner\s*}}/gi, resolvedOwner);
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -88,11 +100,23 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  noStore();
+
+  let footerText = resolveFooterText(FALLBACK_FOOTER_TEXT, FALLBACK_FOOTER_OWNER);
+
+  try {
+    const store = await getStore();
+    const template = store.settings.footerText.trim() || FALLBACK_FOOTER_TEXT;
+    footerText = resolveFooterText(template, store.settings.github.owner);
+  } catch {
+    // Keep fallback footer text when settings storage is temporarily unavailable.
+  }
+
   return (
     <html lang="en" data-color-mode="light">
       <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}>
@@ -103,6 +127,7 @@ export default function RootLayout({
           <div className="app-shell">
             <AppHeader />
             <div className="app-content">{children}</div>
+            <footer className="app-footer">{footerText}</footer>
           </div>
         </ThemeProvider>
       </body>

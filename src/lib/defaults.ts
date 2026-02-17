@@ -77,6 +77,7 @@ export const DEFAULT_THEMES = (): ThemeDefinition[] => {
 export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
+  footerText: "Copyright © {{year}} {{owner}}. All rights reserved.",
   startPage: DEFAULT_START_PAGE,
   siteTitleGradient: {
     from: "",

@@ -14,6 +14,7 @@ export const GET = async (): Promise<NextResponse> => {
       settings: {
         siteTitle: store.settings.siteTitle,
         siteDescription: store.settings.siteDescription,
+        footerText: store.settings.footerText,
         startPage: store.settings.startPage,
         siteTitleGradient: {
           from: store.settings.siteTitleGradient.from,
