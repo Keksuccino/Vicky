@@ -60,7 +60,7 @@ export async function generateMetadata(): Promise<Metadata> {
         { url: "/api/public/icon/16", sizes: "16x16", type: "image/png" },
         { url: "/api/public/icon/32", sizes: "32x32", type: "image/png" },
       ],
-      shortcut: [{ url: "/api/public/icon/32", type: "image/png" }],
+      shortcut: [{ url: "/favicon.ico", type: "image/png" }],
       apple: [{ url: "/api/public/icon/180", sizes: "180x180", type: "image/png" }],
     },
   };
