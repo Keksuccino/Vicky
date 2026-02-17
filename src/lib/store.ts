@@ -20,6 +20,14 @@ const normalizeString = (value: unknown, fallback: string): string => {
   return trimmed || fallback;
 };
 
+const normalizeTrimmedString = (value: unknown, fallback = ""): string => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  return value.trim();
+};
+
 const normalizeOptionalString = (value: unknown): string | null => {
   if (typeof value !== "string") {
     return null;
@@ -140,11 +148,19 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
     typeof source.docsIcon === "object" && source.docsIcon !== null
       ? (source.docsIcon as Record<string, unknown>)
       : ({} as Record<string, unknown>);
+  const sourceSiteTitleGradient =
+    typeof source.siteTitleGradient === "object" && source.siteTitleGradient !== null
+      ? (source.siteTitleGradient as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
     siteDescription: normalizeString(source.siteDescription, defaults.siteDescription),
     startPage: normalizeStartPage(source.startPage),
+    siteTitleGradient: {
+      from: normalizeTrimmedString(sourceSiteTitleGradient.from, defaults.siteTitleGradient.from),
+      to: normalizeTrimmedString(sourceSiteTitleGradient.to, defaults.siteTitleGradient.to),
+    },
     docsIcon: {
       png16Url: normalizeString(sourceDocsIcon.png16Url, defaults.docsIcon.png16Url),
       png32Url: normalizeString(sourceDocsIcon.png32Url, defaults.docsIcon.png32Url),

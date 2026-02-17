@@ -226,6 +226,15 @@ select {
 
 .brand-text {
   letter-spacing: 0.01em;
+  color: var(--text-primary);
+}
+
+.brand-text-gradient {
+  background-image: linear-gradient(90deg, var(--brand-title-gradient-from), var(--brand-title-gradient-to));
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  -webkit-text-fill-color: transparent;
 }
 
 .brand-mark-placeholder {

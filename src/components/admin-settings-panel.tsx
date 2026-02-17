@@ -24,6 +24,8 @@ const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
   startPage: "/home",
+  siteTitleGradientFrom: "",
+  siteTitleGradientTo: "",
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
@@ -599,6 +601,30 @@ export function AdminSettingsPanel() {
                   value={settings.siteDescription}
                   onChange={(event) => setSettings((prev) => ({ ...prev, siteDescription: event.target.value }))}
                   required
+                />
+              </label>
+            </div>
+
+            <div className="field-inline">
+              <label className="field-row" htmlFor="site-title-gradient-from">
+                <span className="field-label">Site title gradient from (optional)</span>
+                <input
+                  id="site-title-gradient-from"
+                  className="input"
+                  value={settings.siteTitleGradientFrom}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, siteTitleGradientFrom: event.target.value }))}
+                  placeholder="#3b82f6"
+                />
+              </label>
+
+              <label className="field-row" htmlFor="site-title-gradient-to">
+                <span className="field-label">Site title gradient to (optional)</span>
+                <input
+                  id="site-title-gradient-to"
+                  className="input"
+                  value={settings.siteTitleGradientTo}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, siteTitleGradientTo: event.target.value }))}
+                  placeholder="#22d3ee"
                 />
               </label>
             </div>

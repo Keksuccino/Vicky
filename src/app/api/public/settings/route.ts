@@ -15,6 +15,10 @@ export const GET = async (): Promise<NextResponse> => {
         siteTitle: store.settings.siteTitle,
         siteDescription: store.settings.siteDescription,
         startPage: store.settings.startPage,
+        siteTitleGradient: {
+          from: store.settings.siteTitleGradient.from,
+          to: store.settings.siteTitleGradient.to,
+        },
         docsIcon: {
           png16Url: store.settings.docsIcon.png16Url,
           png32Url: store.settings.docsIcon.png32Url,

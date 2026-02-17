@@ -17,6 +17,12 @@ const settingsPatchSchema = z
     siteTitle: z.string().min(1).optional(),
     siteDescription: z.string().min(1).optional(),
     startPage: z.string().optional(),
+    siteTitleGradient: z
+      .object({
+        from: z.string().optional(),
+        to: z.string().optional(),
+      })
+      .optional(),
     docsIcon: z
       .object({
         png16Url: z.string().optional(),
@@ -77,6 +83,16 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.startPage !== undefined) {
         store.settings.startPage = normalizeStartPage(patch.startPage);
+      }
+
+      if (patch.siteTitleGradient) {
+        if (patch.siteTitleGradient.from !== undefined) {
+          store.settings.siteTitleGradient.from = patch.siteTitleGradient.from.trim();
+        }
+
+        if (patch.siteTitleGradient.to !== undefined) {
+          store.settings.siteTitleGradient.to = patch.siteTitleGradient.to.trim();
+        }
       }
 
       if (patch.docsIcon) {

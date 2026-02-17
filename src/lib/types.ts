@@ -27,10 +27,16 @@ export interface DocsIconSettings {
   png180Url: string;
 }
 
+export interface SiteTitleGradientSettings {
+  from: string;
+  to: string;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
   startPage: string;
+  siteTitleGradient: SiteTitleGradientSettings;
   docsIcon: DocsIconSettings;
   docsCacheTtlMs: number;
   github: GitHubSettings;

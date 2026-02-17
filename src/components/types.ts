@@ -44,6 +44,8 @@ export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
   startPage: string;
+  siteTitleGradientFrom: string;
+  siteTitleGradientTo: string;
   docsIconPng16Url: string;
   docsIconPng32Url: string;
   docsIconPng180Url: string;

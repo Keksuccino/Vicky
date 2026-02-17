@@ -78,6 +78,10 @@ export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
   startPage: DEFAULT_START_PAGE,
+  siteTitleGradient: {
+    from: "",
+    to: "",
+  },
   docsIcon: {
     png16Url: "",
     png32Url: "",

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { type CSSProperties, useEffect, useState } from "react";
 
 import { fetchPublicSiteSettings, getCurrentUser } from "@/components/api";
 import { cn } from "@/components/cn";
@@ -37,6 +37,7 @@ const DEFAULT_BRAND_TITLE = "Vicky Docs";
 export function AppHeader() {
   const pathname = usePathname();
   const [brandTitle, setBrandTitle] = useState<string | null>(null);
+  const [siteTitleGradient, setSiteTitleGradient] = useState({ from: "", to: "" });
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState<boolean | null>(null);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
@@ -52,6 +53,10 @@ export function AppHeader() {
         }
 
         setBrandTitle(settings.siteTitle.trim() || DEFAULT_BRAND_TITLE);
+        setSiteTitleGradient({
+          from: settings.siteTitleGradientFrom.trim(),
+          to: settings.siteTitleGradientTo.trim(),
+        });
         setHasConfiguredIcon(Boolean(settings.docsIconPng180Url.trim()));
         setIconLoadFailed(false);
       } catch {
@@ -60,6 +65,7 @@ export function AppHeader() {
         }
 
         setBrandTitle(DEFAULT_BRAND_TITLE);
+        setSiteTitleGradient({ from: "", to: "" });
         setHasConfiguredIcon(false);
         setIconLoadFailed(false);
       }
@@ -101,6 +107,13 @@ export function AppHeader() {
 
   const brandingReady = brandTitle !== null && hasConfiguredIcon !== null;
   const resolvedBrandTitle = brandTitle ?? DEFAULT_BRAND_TITLE;
+  const hasSiteTitleGradient = Boolean(siteTitleGradient.from && siteTitleGradient.to);
+  const brandTitleStyle: CSSProperties | undefined = hasSiteTitleGradient
+    ? ({
+        "--brand-title-gradient-from": siteTitleGradient.from,
+        "--brand-title-gradient-to": siteTitleGradient.to,
+      } as CSSProperties)
+    : undefined;
   const useCustomIcon = brandingReady && hasConfiguredIcon && !iconLoadFailed;
   const showFallbackIcon = brandingReady && !useCustomIcon;
   const navItems: NavigationItem[] = isAdminAuthenticated ? [EDITOR_NAVIGATION] : [];
@@ -131,7 +144,9 @@ export function AppHeader() {
             <span className="brand-mark-placeholder" aria-hidden="true" />
           )}
           {brandingReady ? (
-            <span className="brand-text">{resolvedBrandTitle}</span>
+            <span className={cn("brand-text", hasSiteTitleGradient && "brand-text-gradient")} style={brandTitleStyle}>
+              {resolvedBrandTitle}
+            </span>
           ) : (
             <span className="brand-text-placeholder" aria-hidden="true" />
           )}

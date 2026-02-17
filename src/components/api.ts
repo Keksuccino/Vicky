@@ -22,6 +22,8 @@ export type PublicSiteSettings = {
   siteTitle: string;
   siteDescription: string;
   startPage: string;
+  siteTitleGradientFrom: string;
+  siteTitleGradientTo: string;
   docsIconPng16Url: string;
   docsIconPng32Url: string;
   docsIconPng180Url: string;
@@ -35,6 +37,8 @@ const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
   startPage: "/home",
+  siteTitleGradientFrom: "",
+  siteTitleGradientTo: "",
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
@@ -367,12 +371,15 @@ function normalizeSettings(source: unknown): AdminSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const github = asRecord(payload.github);
   const docsIcon = asRecord(payload.docsIcon);
+  const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
     startPage: asString(payload.startPage, DEFAULT_SETTINGS.startPage),
+    siteTitleGradientFrom: asString(siteTitleGradient.from, DEFAULT_SETTINGS.siteTitleGradientFrom),
+    siteTitleGradientTo: asString(siteTitleGradient.to, DEFAULT_SETTINGS.siteTitleGradientTo),
     docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
@@ -389,11 +396,14 @@ function normalizeSettings(source: unknown): AdminSettings {
 function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
+  const siteTitleGradient = asRecord(payload.siteTitleGradient);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
     siteDescription: asString(payload.siteDescription, DEFAULT_SETTINGS.siteDescription),
     startPage: asString(payload.startPage, DEFAULT_SETTINGS.startPage),
+    siteTitleGradientFrom: asString(siteTitleGradient.from, DEFAULT_SETTINGS.siteTitleGradientFrom),
+    siteTitleGradientTo: asString(siteTitleGradient.to, DEFAULT_SETTINGS.siteTitleGradientTo),
     docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
@@ -539,6 +549,10 @@ export async function saveAdminSettings(
     siteTitle: settings.siteTitle,
     siteDescription: settings.siteDescription,
     startPage: settings.startPage,
+    siteTitleGradient: {
+      from: settings.siteTitleGradientFrom,
+      to: settings.siteTitleGradientTo,
+    },
     docsIcon: {
       png16Url: settings.docsIconPng16Url,
       png32Url: settings.docsIconPng32Url,
