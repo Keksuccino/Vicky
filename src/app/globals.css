@@ -752,8 +752,8 @@ select {
   border-radius: var(--radius-md);
   background: color-mix(
     in srgb,
-    var(--accent) 8%,
-    color-mix(in srgb, var(--surface-muted) 62%, var(--surface-elevated) 38%) 92%
+    var(--accent) 4%,
+    color-mix(in srgb, var(--surface-muted) 46%, var(--surface-elevated) 54%) 96%
   );
   padding: clamp(0.85rem, 2vw, 1.1rem) clamp(0.9rem, 2.3vw, 1.25rem);
   margin-bottom: clamp(1.3rem, 3.1vw, 1.9rem);
