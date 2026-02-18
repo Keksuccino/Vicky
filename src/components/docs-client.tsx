@@ -519,23 +519,23 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   const pageReadyForDisplay = !pageLoading && !pageError && Boolean(page) && markdownAssetsResolved;
   const showPagePlaceholder = pageLoading || (!pageLoading && !pageError && Boolean(page) && !markdownAssetsResolved);
-  const sidebarToggleButton = sidebarOpen ? null : (
+  const sidebarToggleButton = (
     <button
       type="button"
       className="mobile-sidebar-button"
-      onClick={() => setSidebarOpen(true)}
-      aria-expanded={false}
+      onClick={() => setSidebarOpen((prev) => !prev)}
+      aria-expanded={sidebarOpen}
       aria-controls="docs-sidebar-panel"
-      aria-label="Browse docs"
-      title="Browse docs"
+      aria-label={sidebarOpen ? "Close navigation" : "Browse docs"}
+      title={sidebarOpen ? "Close navigation" : "Browse docs"}
     >
-      <MaterialIcon name="menu" />
+      <MaterialIcon name={sidebarOpen ? "close" : "menu"} />
     </button>
   );
 
   return (
     <section className="docs-page">
-      {sidebarToggleButton ? (portalHost ? createPortal(sidebarToggleButton, portalHost) : sidebarToggleButton) : null}
+      {portalHost ? createPortal(sidebarToggleButton, portalHost) : sidebarToggleButton}
 
       {sidebarOpen ? (
         <button
