@@ -10,13 +10,6 @@ import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 
-type NavigationItem = {
-  href: string;
-  label: string;
-  icon: string;
-  activePrefix: string;
-};
-
 const ADMIN_NAVIGATION = {
   settingsHref: "/admin/settings",
   loginHref: "/admin/login",
@@ -25,7 +18,7 @@ const ADMIN_NAVIGATION = {
   activePrefix: "/admin",
 };
 
-const EDITOR_NAVIGATION: NavigationItem = {
+const EDITOR_NAVIGATION = {
   href: "/editor",
   label: "Editor",
   icon: "edit_square",
@@ -116,7 +109,11 @@ export function AppHeader() {
     : undefined;
   const useCustomIcon = brandingReady && hasConfiguredIcon && !iconLoadFailed;
   const showFallbackIcon = brandingReady && !useCustomIcon;
-  const navItems: NavigationItem[] = isAdminAuthenticated ? [EDITOR_NAVIGATION] : [];
+  const editorIsActive =
+    pathname === EDITOR_NAVIGATION.activePrefix ||
+    pathname.startsWith(`${EDITOR_NAVIGATION.activePrefix}/`) ||
+    pathname === EDITOR_NAVIGATION.href ||
+    pathname.startsWith(`${EDITOR_NAVIGATION.href}/`);
   const adminIsActive = pathname === ADMIN_NAVIGATION.activePrefix || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
   const adminHref = isAdminAuthenticated
     ? ADMIN_NAVIGATION.settingsHref
@@ -152,23 +149,20 @@ export function AppHeader() {
           )}
         </Link>
 
-        <nav className="main-nav" aria-label="Main navigation">
-          {navItems.map((item) => {
-            const isActive =
-              pathname === item.activePrefix ||
-              pathname.startsWith(`${item.activePrefix}/`) ||
-              pathname === item.href ||
-              pathname.startsWith(`${item.href}/`);
-            return (
-              <Link key={item.label} href={item.href} className={cn("nav-link", isActive && "nav-link-active")}>
-                <MaterialIcon name={item.icon} />
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
-        </nav>
+        <nav className="main-nav" aria-label="Main navigation" />
 
         <div className="app-header-actions">
+          {isAdminAuthenticated ? (
+            <Link
+              href={EDITOR_NAVIGATION.href}
+              className={cn("admin-icon-link", editorIsActive && "admin-icon-link-active")}
+              aria-label={EDITOR_NAVIGATION.label}
+              title={EDITOR_NAVIGATION.label}
+            >
+              <MaterialIcon name={EDITOR_NAVIGATION.icon} />
+            </Link>
+          ) : null}
+
           <Link
             href={adminHref}
             className={cn("admin-icon-link", adminIsActive && "admin-icon-link-active")}
