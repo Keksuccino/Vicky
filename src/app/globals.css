@@ -559,37 +559,6 @@ select {
   gap: 1rem;
 }
 
-.docs-page-centered-overlay {
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  width: clamp(14rem, 24vw, 22rem);
-  height: clamp(14rem, 24vw, 22rem);
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  border: 2px solid rgb(198 227 255 / 65%);
-  background: rgb(140 195 255 / 20%);
-  box-shadow:
-    inset 0 0 0 1px rgb(255 255 255 / 35%),
-    0 0 64px rgb(122 186 255 / 28%);
-  backdrop-filter: blur(20px) saturate(130%);
-  -webkit-backdrop-filter: blur(20px) saturate(130%);
-  pointer-events: none;
-  z-index: 2;
-}
-
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .docs-page-centered-overlay::before {
-    content: "";
-    position: absolute;
-    inset: -1.4rem;
-    border-radius: 50%;
-    background: rgb(122 186 255 / 55%);
-    filter: blur(34px);
-    z-index: -1;
-  }
-}
-
 .mobile-sidebar-button {
   display: none;
   width: 4.08rem;

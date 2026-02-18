@@ -535,8 +535,6 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   return (
     <section className="docs-page">
-      <div className="docs-page-centered-overlay" aria-hidden="true" />
-
       {portalHost ? createPortal(sidebarToggleButton, portalHost) : sidebarToggleButton}
 
       {sidebarOpen ? (
