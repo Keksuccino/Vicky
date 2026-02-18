@@ -648,11 +648,16 @@ select {
   box-shadow: var(--shadow-soft);
   padding: clamp(1rem, 2vw, 1.6rem);
   min-height: 70vh;
+  min-width: 0;
 }
 
 .docs-main-unresolved {
   display: grid;
   gap: 1.15rem;
+}
+
+.docs-main-content {
+  min-width: 0;
 }
 
 .docs-main-content-pending {
@@ -849,6 +854,8 @@ html[data-color-mode="light"] .meta-item {
 
 .markdown-body {
   color: var(--text-primary);
+  min-width: 0;
+  max-width: 100%;
 }
 
 .markdown-body > *:first-child {
@@ -898,6 +905,16 @@ html[data-color-mode="light"] .meta-item {
 .markdown-body table,
 .markdown-body details {
   color: var(--text-secondary);
+}
+
+.markdown-body p,
+.markdown-body li,
+.markdown-body blockquote,
+.markdown-body th,
+.markdown-body td,
+.markdown-body .md-alert {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .markdown-body p {
@@ -969,7 +986,10 @@ html[data-color-mode="light"] .meta-item {
   border: 1px solid var(--border);
   color: var(--text-secondary);
   background: var(--surface-muted);
+  max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
   padding: 0.85rem;
 }
 
@@ -1029,6 +1049,8 @@ html[data-color-mode="light"] .meta-item {
   padding: 0;
   color: var(--code-token-plain);
   display: block;
+  min-width: max-content;
+  white-space: pre;
 }
 
 .markdown-body pre code .hljs-comment,
@@ -1098,6 +1120,7 @@ html[data-color-mode="light"] .meta-item {
 
 .markdown-body table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
   margin: 0.95rem 0;
