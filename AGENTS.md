@@ -144,7 +144,6 @@ Useful URLs:
 - `data/wiki-store.json` is runtime data and ignored.
 - `.next/` artifacts are generated and can cause stale type references after route refactors; clean/restart build if needed.
 
-## Docker/Deployment Notes
-- `next.config.ts` uses `output: "standalone"`.
-- Docker assets are present: `Dockerfile`, `docker-compose.yml`.
-- Persist `/app/data` (contains `wiki-store.json`) in containerized deployments.
+## Deployment Notes
+- Use normal Next.js production commands: `npm run build` then `npm run start`.
+- Persist `/data/wiki-store.json` (runtime app store) across deployments.

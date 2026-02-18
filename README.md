@@ -100,28 +100,14 @@ npm run test
 npm run build
 ```
 
-## Docker Deployment
+## Production Run
 
-### Build + run (Docker)
-
-```bash
-docker build -t vicky-docs .
-docker run -p 3000:3000 \
-  -e AUTH_JWT_SECRET="replace-me" \
-  -e ADMIN_PASSWORD="change-me" \
-  -e ENCRYPTION_SECRET="replace-me" \
-  -v vicky_data:/app/data \
-  vicky-docs
-```
-
-### Run with Docker Compose
+Build and start with npm:
 
 ```bash
-cp .env.example .env
-docker compose up -d --build
+npm run build
+npm run start
 ```
-
-The persistent store is mounted at `/app/data`.
 
 ## Production Notes
 
