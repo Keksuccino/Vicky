@@ -563,17 +563,15 @@ select {
   position: fixed;
   top: 50%;
   left: 50%;
-  width: min(64vw, 560px);
-  aspect-ratio: 1 / 1;
-  border-radius: 50%;
-  background: radial-gradient(
-    circle,
-    rgba(122, 186, 255, 0.5) 0%,
-    rgba(122, 186, 255, 0.22) 45%,
-    rgba(122, 186, 255, 0) 100%
-  );
-  filter: blur(78px);
+  width: clamp(14rem, 24vw, 22rem);
+  height: clamp(14rem, 24vw, 22rem);
   transform: translate(-50%, -50%);
+  border-radius: 50%;
+  border: 2px solid rgb(198 227 255 / 65%);
+  background-color: rgb(140 195 255 / 22%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  box-shadow: 0 0 80px rgb(122 186 255 / 35%);
   pointer-events: none;
   z-index: 2;
 }
