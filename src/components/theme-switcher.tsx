@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { MaterialIcon } from "@/components/material-icon";
 import { useTheme } from "@/components/theme-provider";
@@ -11,11 +11,19 @@ const modeLabels: Array<{ mode: ThemeMode; label: string; icon: string }> = [
   { mode: "dark", label: "Dark", icon: "dark_mode" },
 ];
 
-const subscribe = () => () => {};
-
 export function ThemeSwitcher() {
   const { mode, themes, activeThemeId, setMode, setActiveThemeId } = useTheme();
-  const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
+  const [hydrated, setHydrated] = useState(false);
+
+  useEffect(() => {
+    const handle = window.setTimeout(() => {
+      setHydrated(true);
+    }, 0);
+
+    return () => {
+      window.clearTimeout(handle);
+    };
+  }, []);
 
   const compactTargetMode: "light" | "dark" = mode === "dark" ? "light" : "dark";
   const displayTargetMode: "light" | "dark" = hydrated ? compactTargetMode : "dark";

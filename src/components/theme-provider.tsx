@@ -29,23 +29,6 @@ const MODE_STORAGE_KEY = "wiki-theme-mode";
 const ACTIVE_THEME_STORAGE_KEY = "wiki-active-theme-id";
 const CUSTOM_STYLE_ID = "wiki-custom-theme-style";
 
-function resolveInitialMode(): ThemeMode {
-  if (typeof window === "undefined") {
-    return "light";
-  }
-
-  const stored = window.localStorage.getItem(MODE_STORAGE_KEY);
-  return stored === "dark" || stored === "custom" ? stored : "light";
-}
-
-function resolveInitialThemeId(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return window.localStorage.getItem(ACTIVE_THEME_STORAGE_KEY);
-}
-
 function upsertCustomStyle(cssText: string): void {
   const existing = document.getElementById(CUSTOM_STYLE_ID);
 
@@ -88,10 +71,27 @@ function pickThemeForMode(
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [mode, setMode] = useState<ThemeMode>(resolveInitialMode);
+  const [mode, setMode] = useState<ThemeMode>("light");
   const [themes, setThemes] = useState<ThemeDefinition[]>([]);
-  const [activeThemeId, setActiveThemeId] = useState<string | null>(resolveInitialThemeId);
+  const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
+  const [storageHydrated, setStorageHydrated] = useState(false);
   const appliedCustomVariablesRef = useRef<string[]>([]);
+
+  useEffect(() => {
+    try {
+      const storedMode = window.localStorage.getItem(MODE_STORAGE_KEY);
+      if (storedMode === "dark" || storedMode === "custom") {
+        setMode(storedMode);
+      }
+
+      const storedThemeId = window.localStorage.getItem(ACTIVE_THEME_STORAGE_KEY);
+      setActiveThemeId(storedThemeId);
+    } catch {
+      // Keep defaults if storage is unavailable.
+    } finally {
+      setStorageHydrated(true);
+    }
+  }, []);
 
   const refreshThemes = useCallback(async () => {
     try {
@@ -120,18 +120,30 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }, [refreshThemes]);
 
   useEffect(() => {
+    if (!storageHydrated) {
+      return;
+    }
+
     window.localStorage.setItem(MODE_STORAGE_KEY, mode);
-  }, [mode]);
+  }, [mode, storageHydrated]);
 
   useEffect(() => {
+    if (!storageHydrated) {
+      return;
+    }
+
     if (activeThemeId) {
       window.localStorage.setItem(ACTIVE_THEME_STORAGE_KEY, activeThemeId);
     } else {
       window.localStorage.removeItem(ACTIVE_THEME_STORAGE_KEY);
     }
-  }, [activeThemeId]);
+  }, [activeThemeId, storageHydrated]);
 
   useEffect(() => {
+    if (!storageHydrated) {
+      return;
+    }
+
     const root = document.documentElement;
     root.dataset.colorMode = mode;
 
@@ -155,7 +167,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     appliedCustomVariablesRef.current = keys;
     upsertCustomStyle(theme.customCss);
-  }, [activeThemeId, mode, themes]);
+  }, [activeThemeId, mode, storageHydrated, themes]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({
