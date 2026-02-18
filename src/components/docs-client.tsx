@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -133,6 +133,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
   const [markdownAssetsResolved, setMarkdownAssetsResolved] = useState(false);
+  const lastInitialHashScrollKeyRef = useRef<string | null>(null);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -266,6 +267,10 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [currentPath, loadPage]);
 
   useEffect(() => {
+    lastInitialHashScrollKeyRef.current = null;
+  }, [currentPath]);
+
+  useEffect(() => {
     if (pageLoading || pageError || !page) {
       setMarkdownAssetsResolved(false);
       return;
@@ -355,7 +360,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [pageLoading, pageError, page]);
 
   useEffect(() => {
-    if (pageLoading || pageError || !page) {
+    if (!page || !markdownAssetsResolved || pageLoading || pageError) {
       return;
     }
 
@@ -364,70 +369,21 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       return;
     }
 
-    let cancelled = false;
-    let assetTimer: number | null = null;
-    const timers: number[] = [];
+    const scrollKey = `${page.slug}::${initialHash}`;
+    if (lastInitialHashScrollKeyRef.current === scrollKey) {
+      return;
+    }
 
-    const runScroll = () => {
-      if (cancelled || window.location.hash !== initialHash) {
-        return;
-      }
+    lastInitialHashScrollKeyRef.current = scrollKey;
+
+    const frameId = window.requestAnimationFrame(() => {
       scrollToHashTarget();
-    };
-
-    const schedule = (delay: number) => {
-      const timer = window.setTimeout(() => {
-        runScroll();
-      }, delay);
-      timers.push(timer);
-    };
-
-    // Run immediately and then re-align for common delayed layout shifts.
-    runScroll();
-    [40, 110, 220, 360, 520, 760, 1050, 1450, 1950, 2550].forEach((delay) => {
-      schedule(delay);
-    });
-
-    const onWindowLoad = () => {
-      runScroll();
-      schedule(100);
-    };
-    window.addEventListener("load", onWindowLoad);
-
-    const markdownRoot = document.querySelector(".markdown-body");
-    const onEmbeddedAssetLoad = () => {
-      if (assetTimer !== null) {
-        window.clearTimeout(assetTimer);
-      }
-
-      assetTimer = window.setTimeout(() => {
-        assetTimer = null;
-        runScroll();
-      }, 50);
-    };
-    markdownRoot?.addEventListener("load", onEmbeddedAssetLoad, true);
-
-    const fontSet = document.fonts;
-    void fontSet.ready.then(() => {
-      if (cancelled) {
-        return;
-      }
-      runScroll();
-      schedule(100);
     });
 
     return () => {
-      cancelled = true;
-      window.removeEventListener("load", onWindowLoad);
-      markdownRoot?.removeEventListener("load", onEmbeddedAssetLoad, true);
-      if (assetTimer !== null) {
-        window.clearTimeout(assetTimer);
-      }
-      for (const timer of timers) {
-        window.clearTimeout(timer);
-      }
+      window.cancelAnimationFrame(frameId);
     };
-  }, [pageLoading, pageError, page, scrollToHashTarget]);
+  }, [markdownAssetsResolved, pageLoading, pageError, page, scrollToHashTarget]);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -472,12 +428,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
         window.history.pushState(null, "", href);
       }
 
-      const runScroll = () => {
-        scrollToHashTarget();
-      };
-
-      runScroll();
-      window.setTimeout(runScroll, 80);
+      scrollToHashTarget();
     };
 
     mainElement.addEventListener("click", onClick);
