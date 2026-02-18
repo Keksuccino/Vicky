@@ -655,6 +655,13 @@ select {
   gap: 1.15rem;
 }
 
+.docs-main-content-pending {
+  max-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .page-header-skeleton {
   border-color: var(--border);
   background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface-elevated));

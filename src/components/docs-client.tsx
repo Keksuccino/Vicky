@@ -132,6 +132,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [page, setPage] = useState<DocPage | null>(null);
   const [pageLoading, setPageLoading] = useState(true);
   const [pageError, setPageError] = useState<string | null>(null);
+  const [markdownAssetsResolved, setMarkdownAssetsResolved] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -263,6 +264,95 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     }
     void loadPage(currentPath);
   }, [currentPath, loadPage]);
+
+  useEffect(() => {
+    if (pageLoading || pageError || !page) {
+      setMarkdownAssetsResolved(false);
+      return;
+    }
+
+    setMarkdownAssetsResolved(false);
+
+    let cancelled = false;
+    let frameId: number | null = null;
+    const removeListeners: Array<() => void> = [];
+
+    const resolveAssets = () => {
+      if (cancelled) {
+        return;
+      }
+      setMarkdownAssetsResolved(true);
+    };
+
+    const trackMarkdownImages = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const mainElement = document.getElementById("main-content");
+      const markdownRoot = mainElement?.querySelector<HTMLElement>(".markdown-body");
+
+      if (!markdownRoot) {
+        frameId = window.requestAnimationFrame(() => {
+          frameId = null;
+          trackMarkdownImages();
+        });
+        return;
+      }
+
+      const markdownImages = Array.from(markdownRoot.querySelectorAll<HTMLImageElement>("img"));
+      if (markdownImages.length === 0) {
+        resolveAssets();
+        return;
+      }
+
+      let pendingImages = 0;
+      const onImageSettled = () => {
+        pendingImages -= 1;
+        if (pendingImages <= 0) {
+          resolveAssets();
+        }
+      };
+
+      for (const image of markdownImages) {
+        if (image.complete) {
+          continue;
+        }
+
+        pendingImages += 1;
+        const handleImageSettled = () => {
+          image.removeEventListener("load", handleImageSettled);
+          image.removeEventListener("error", handleImageSettled);
+          onImageSettled();
+        };
+
+        image.addEventListener("load", handleImageSettled);
+        image.addEventListener("error", handleImageSettled);
+        removeListeners.push(() => {
+          image.removeEventListener("load", handleImageSettled);
+          image.removeEventListener("error", handleImageSettled);
+        });
+      }
+
+      if (pendingImages === 0) {
+        resolveAssets();
+      }
+    };
+
+    trackMarkdownImages();
+
+    return () => {
+      cancelled = true;
+
+      if (frameId !== null) {
+        window.cancelAnimationFrame(frameId);
+      }
+
+      for (const removeListener of removeListeners) {
+        removeListener();
+      }
+    };
+  }, [pageLoading, pageError, page]);
 
   useEffect(() => {
     if (pageLoading || pageError || !page) {
@@ -451,6 +541,9 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     router.push(`${toDocsHref(normalized)}${hash}`);
   };
 
+  const pageReadyForDisplay = !pageLoading && !pageError && Boolean(page) && markdownAssetsResolved;
+  const showPagePlaceholder = pageLoading || (!pageLoading && !pageError && Boolean(page) && !markdownAssetsResolved);
+
   return (
     <section className="docs-page">
       <button
@@ -505,8 +598,8 @@ export function DocsClient({ initialPath }: DocsClientProps) {
           )}
         </div>
 
-        <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined}>
-          {pageLoading ? <DocsPageUnresolved /> : null}
+        <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined} aria-busy={showPagePlaceholder || undefined}>
+          {showPagePlaceholder ? <DocsPageUnresolved /> : null}
 
           {pageError ? (
             <ErrorState
@@ -520,7 +613,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
           ) : null}
 
           {!pageLoading && !pageError && page ? (
-            <>
+            <div className={cn("docs-main-content", !pageReadyForDisplay && "docs-main-content-pending")} aria-hidden={!pageReadyForDisplay || undefined}>
               <section className="page-header-card" aria-label="Page header">
                 <header className="page-heading">
                   <h1>{page.title}</h1>
@@ -540,7 +633,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
               </section>
 
               <MarkdownRenderer content={page.content} />
-            </>
+            </div>
           ) : null}
         </main>
       </div>
