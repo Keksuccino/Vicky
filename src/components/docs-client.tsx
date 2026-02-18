@@ -140,6 +140,25 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [searchResults, setSearchResults] = useState<DocSearchResult[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
+  useEffect(() => {
+    const mobileViewportQuery = window.matchMedia("(max-width: 900px)");
+
+    const syncScrollLock = () => {
+      const shouldLockScroll = sidebarOpen && mobileViewportQuery.matches;
+      document.documentElement.classList.toggle("docs-scroll-locked", shouldLockScroll);
+      document.body.classList.toggle("docs-scroll-locked", shouldLockScroll);
+    };
+
+    syncScrollLock();
+    mobileViewportQuery.addEventListener("change", syncScrollLock);
+
+    return () => {
+      mobileViewportQuery.removeEventListener("change", syncScrollLock);
+      document.documentElement.classList.remove("docs-scroll-locked");
+      document.body.classList.remove("docs-scroll-locked");
+    };
+  }, [sidebarOpen]);
+
   const scrollToHashTarget = useCallback((): boolean => {
     if (typeof window === "undefined") {
       return false;
@@ -503,9 +522,10 @@ export function DocsClient({ initialPath }: DocsClientProps) {
         onClick={() => setSidebarOpen((prev) => !prev)}
         aria-expanded={sidebarOpen}
         aria-controls="docs-sidebar-panel"
+        aria-label={sidebarOpen ? "Close navigation" : "Browse docs"}
+        title={sidebarOpen ? "Close navigation" : "Browse docs"}
       >
         <MaterialIcon name={sidebarOpen ? "close" : "menu"} />
-        <span>{sidebarOpen ? "Close navigation" : "Browse docs"}</span>
       </button>
 
       {sidebarOpen ? (

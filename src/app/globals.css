@@ -95,6 +95,11 @@ body {
     background 280ms ease;
 }
 
+html.docs-scroll-locked,
+body.docs-scroll-locked {
+  overflow: hidden;
+}
+
 a {
   color: inherit;
 }
@@ -534,12 +539,43 @@ select {
 
 .mobile-sidebar-button {
   display: none;
+  width: 2.72rem;
+  height: 2.72rem;
+  flex: 0 0 2.72rem;
   border: 1px solid var(--border);
   background: var(--surface-elevated);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 0.8rem;
+  border-radius: 999px;
+  color: var(--text-secondary);
+  padding: 0;
   align-items: center;
-  gap: 0.4rem;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-soft);
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.mobile-sidebar-button .material-icon {
+  font-size: 1.25rem;
+}
+
+.mobile-sidebar-button:hover,
+.mobile-sidebar-button:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface-elevated));
+}
+
+.mobile-sidebar-button:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.mobile-sidebar-button[aria-expanded="true"] {
+  color: var(--text-primary);
+  background: var(--surface-elevated);
 }
 
 .docs-layout {
@@ -2157,6 +2193,10 @@ html[data-color-mode="light"] .meta-item {
 
   .mobile-sidebar-button {
     display: inline-flex;
+    position: fixed;
+    top: calc(var(--header-height) + 0.72rem);
+    left: max(0.72rem, env(safe-area-inset-left));
+    z-index: 92;
   }
 
   .docs-sidebar-panel {
@@ -2164,10 +2204,11 @@ html[data-color-mode="light"] .meta-item {
     top: var(--header-height);
     left: 0;
     width: min(88vw, 360px);
-    max-height: calc(100dvh - var(--header-height));
+    height: calc(100dvh - var(--header-height));
     transform: translateX(-105%);
     transition: transform 220ms ease;
     padding: 0.7rem;
+    overflow: hidden;
     z-index: 90;
   }
 
@@ -2190,6 +2231,7 @@ html[data-color-mode="light"] .meta-item {
   .docs-sidebar {
     height: 100%;
     overflow: auto;
+    overscroll-behavior: contain;
     border-radius: var(--radius-sm);
   }
 
@@ -2221,13 +2263,11 @@ html[data-color-mode="light"] .meta-item {
 }
 
 @media (max-width: 620px) {
-  .mode-button span,
-  .mobile-sidebar-button span {
+  .mode-button span {
     display: none;
   }
 
-  .mode-button,
-  .mobile-sidebar-button {
+  .mode-button {
     padding-inline: 0.58rem;
   }
 
