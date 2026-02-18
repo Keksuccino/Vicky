@@ -4,7 +4,7 @@ import type { Node } from "unist";
 const ALERT_TYPE_MAP: Record<string, string> = {
   NOTE: "info",
   INFO: "info",
-  TIP: "success",
+  TIP: "tip",
   SUCCESS: "success",
   IMPORTANT: "important",
   WARNING: "warning",
