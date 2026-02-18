@@ -19,6 +19,11 @@
     linear-gradient(180deg, #eff6ff 0%, #f6faff 45%, #edf4ff 100%);
   --shadow-soft: 0 16px 40px rgba(25, 53, 98, 0.12);
   --shadow-strong: 0 24px 60px rgba(16, 36, 67, 0.18);
+  --sidebar-scrollbar-track: color-mix(in srgb, var(--surface-muted) 74%, transparent);
+  --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 86%, var(--surface-elevated));
+  --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, #7c8ead);
+  --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 58%, #687ea4);
+  --sidebar-scrollbar-shadow: rgba(30, 58, 96, 0.2);
   --code-token-plain: #334869;
   --code-token-comment: #5f7393;
   --code-token-keyword: #b4233a;
@@ -59,6 +64,11 @@ html[data-color-mode="custom"] {
     linear-gradient(180deg, #0d141f 0%, #111a28 50%, #0c141f 100%);
   --shadow-soft: 0 16px 44px rgba(2, 8, 18, 0.46);
   --shadow-strong: 0 30px 65px rgba(2, 8, 18, 0.65);
+  --sidebar-scrollbar-track: color-mix(in srgb, var(--surface-muted) 82%, #0e1622);
+  --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 78%, #223349);
+  --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 52%, #8da5c7);
+  --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 68%, #b5c8e3);
+  --sidebar-scrollbar-shadow: rgba(2, 8, 18, 0.5);
   --code-token-plain: #c8cfdb;
   --code-token-comment: #93a0b4;
   --code-token-keyword: #ff7b90;
@@ -601,6 +611,37 @@ select {
   display: grid;
   gap: 0.85rem;
   align-content: start;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+}
+
+.docs-sidebar::-webkit-scrollbar {
+  width: 0.94rem;
+}
+
+.docs-sidebar::-webkit-scrollbar-track {
+  background: var(--sidebar-scrollbar-track);
+  border: 1px solid var(--sidebar-scrollbar-track-border);
+  border-radius: 999px;
+  margin: 0.35rem 0.08rem 0.35rem 0.42rem;
+}
+
+.docs-sidebar::-webkit-scrollbar-thumb {
+  background: var(--sidebar-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 2.4rem;
+  box-shadow: 0 4px 12px var(--sidebar-scrollbar-shadow);
+}
+
+.docs-sidebar::-webkit-scrollbar-thumb:hover {
+  background: var(--sidebar-scrollbar-thumb-hover);
+}
+
+.docs-sidebar::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 .docs-sidebar-top {
