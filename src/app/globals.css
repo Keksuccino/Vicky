@@ -552,19 +552,20 @@ select {
   width: 4.08rem;
   height: 4.08rem;
   flex: 0 0 4.08rem;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
-  background: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 84%, var(--surface-elevated));
+  background: color-mix(in srgb, var(--surface-elevated) 90%, transparent);
   border-radius: 999px;
   color: var(--text-secondary);
   padding: 0;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  overflow: hidden;
   box-shadow:
     0 14px 30px color-mix(in srgb, var(--shadow-strong) 52%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 72%, transparent);
-  backdrop-filter: blur(14px) saturate(145%);
-  -webkit-backdrop-filter: blur(14px) saturate(145%);
+    inset 0 1px 0 color-mix(in srgb, var(--surface-elevated) 84%, transparent);
+  backdrop-filter: blur(22px) saturate(180%);
+  -webkit-backdrop-filter: blur(22px) saturate(180%);
   transition:
     background 160ms ease,
     color 160ms ease,
@@ -580,7 +581,7 @@ select {
 .mobile-sidebar-button:hover,
 .mobile-sidebar-button:focus-visible {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-muted) 70%, transparent);
+  background: color-mix(in srgb, var(--surface-muted) 90%, transparent);
   transform: translateY(-1px);
 }
 
@@ -591,7 +592,7 @@ select {
 
 .mobile-sidebar-button[aria-expanded="true"] {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--accent-soft) 66%, transparent);
+  background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
   border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
 }
 
