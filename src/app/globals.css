@@ -568,12 +568,29 @@ select {
   transform: translate(-50%, -50%);
   border-radius: 50%;
   border: 2px solid rgb(198 227 255 / 65%);
-  background-color: rgb(140 195 255 / 22%);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  box-shadow: 0 0 80px rgb(122 186 255 / 35%);
+  background: rgb(140 195 255 / 20%);
+  overflow: visible;
+  isolation: isolate;
   pointer-events: none;
   z-index: 2;
+}
+
+.docs-page-centered-overlay::before {
+  content: "";
+  position: absolute;
+  inset: -1.4rem;
+  border-radius: 50%;
+  background: rgb(122 186 255 / 55%);
+  filter: blur(34px);
+  z-index: -1;
+}
+
+.docs-page-centered-overlay::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 35%);
 }
 
 .mobile-sidebar-button {
