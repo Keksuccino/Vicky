@@ -2285,7 +2285,7 @@ html[data-color-mode="light"] .meta-item {
     position: fixed;
     top: auto;
     bottom: max(1.1rem, env(safe-area-inset-bottom));
-    left: max(0.9rem, env(safe-area-inset-left));
+    left: max(1.1rem, env(safe-area-inset-left));
     z-index: 92;
   }
 
