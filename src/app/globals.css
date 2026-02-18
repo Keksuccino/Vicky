@@ -24,10 +24,10 @@
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, #7c8ead);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 58%, #687ea4);
   --sidebar-scrollbar-shadow: rgba(30, 58, 96, 0.2);
-  --mobile-fab-bg: rgba(10, 84, 156, 0.56);
-  --mobile-fab-bg-hover: rgba(8, 96, 182, 0.66);
-  --mobile-fab-bg-active: rgba(0, 110, 207, 0.76);
-  --mobile-fab-border: rgba(4, 47, 88, 0.55);
+  --mobile-fab-bg: rgba(7, 92, 171, 0.44);
+  --mobile-fab-bg-hover: rgba(7, 106, 194, 0.56);
+  --mobile-fab-bg-active: rgba(0, 110, 207, 0.64);
+  --mobile-fab-border: rgba(4, 56, 104, 0.68);
   --mobile-fab-icon: #f5f9ff;
   --code-token-plain: #334869;
   --code-token-comment: #5f7393;
@@ -74,10 +74,10 @@ html[data-color-mode="custom"] {
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 52%, #8da5c7);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 68%, #b5c8e3);
   --sidebar-scrollbar-shadow: rgba(2, 8, 18, 0.5);
-  --mobile-fab-bg: rgba(88, 170, 224, 0.38);
-  --mobile-fab-bg-hover: rgba(102, 188, 245, 0.5);
-  --mobile-fab-bg-active: rgba(113, 205, 255, 0.6);
-  --mobile-fab-border: rgba(166, 225, 255, 0.52);
+  --mobile-fab-bg: rgba(90, 186, 248, 0.42);
+  --mobile-fab-bg-hover: rgba(112, 200, 255, 0.55);
+  --mobile-fab-bg-active: rgba(134, 212, 255, 0.64);
+  --mobile-fab-border: rgba(164, 224, 255, 0.72);
   --mobile-fab-icon: #f0f8ff;
   --code-token-plain: #c8cfdb;
   --code-token-comment: #93a0b4;
@@ -558,25 +558,23 @@ select {
 }
 
 .mobile-sidebar-button {
-  --mobile-fab-current-bg: var(--mobile-fab-bg);
   display: none;
   width: 4.08rem;
   height: 4.08rem;
   flex: 0 0 4.08rem;
-  position: relative;
-  isolation: isolate;
   border: 1px solid var(--mobile-fab-border);
-  background: var(--mobile-fab-current-bg);
+  background: var(--mobile-fab-bg);
   border-radius: 999px;
   color: var(--mobile-fab-icon);
   padding: 0;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  overflow: hidden;
   box-shadow:
     0 14px 30px color-mix(in srgb, var(--shadow-strong) 62%, transparent),
-    inset 0 1px 0 color-mix(in srgb, #ffffff 44%, transparent);
+    0 0 0 1px color-mix(in srgb, var(--surface-elevated) 28%, transparent);
+  backdrop-filter: blur(44px) saturate(210%);
+  -webkit-backdrop-filter: blur(44px) saturate(210%);
   transition:
     background 160ms ease,
     color 160ms ease,
@@ -591,7 +589,7 @@ select {
 
 .mobile-sidebar-button:hover,
 .mobile-sidebar-button:focus-visible {
-  --mobile-fab-current-bg: var(--mobile-fab-bg-hover);
+  background: var(--mobile-fab-bg-hover);
   color: var(--mobile-fab-icon);
   transform: translateY(-1px);
 }
@@ -602,28 +600,9 @@ select {
 }
 
 .mobile-sidebar-button[aria-expanded="true"] {
-  --mobile-fab-current-bg: var(--mobile-fab-bg-active);
+  background: var(--mobile-fab-bg-active);
   color: var(--mobile-fab-icon);
   border-color: color-mix(in srgb, var(--mobile-fab-border) 84%, white);
-}
-
-@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .mobile-sidebar-button {
-    background: transparent;
-  }
-
-  .mobile-sidebar-button::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: inherit;
-    background: var(--mobile-fab-current-bg);
-    box-shadow: inset 0 1px 0 color-mix(in srgb, #ffffff 48%, transparent);
-    backdrop-filter: blur(44px) saturate(210%);
-    -webkit-backdrop-filter: blur(44px) saturate(210%);
-    transition: background 160ms ease;
-  }
 }
 
 .docs-layout {
