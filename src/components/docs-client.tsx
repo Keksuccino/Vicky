@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createPortal } from "react-dom";
 
 import {
   fetchDocPage,
@@ -139,6 +140,11 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<DocSearchResult[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setPortalHost(document.body);
+  }, []);
 
   useEffect(() => {
     const mobileViewportQuery = window.matchMedia("(max-width: 900px)");
@@ -513,20 +519,23 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   const pageReadyForDisplay = !pageLoading && !pageError && Boolean(page) && markdownAssetsResolved;
   const showPagePlaceholder = pageLoading || (!pageLoading && !pageError && Boolean(page) && !markdownAssetsResolved);
+  const sidebarToggleButton = (
+    <button
+      type="button"
+      className="mobile-sidebar-button"
+      onClick={() => setSidebarOpen((prev) => !prev)}
+      aria-expanded={sidebarOpen}
+      aria-controls="docs-sidebar-panel"
+      aria-label={sidebarOpen ? "Close navigation" : "Browse docs"}
+      title={sidebarOpen ? "Close navigation" : "Browse docs"}
+    >
+      <MaterialIcon name={sidebarOpen ? "close" : "menu"} />
+    </button>
+  );
 
   return (
     <section className="docs-page">
-      <button
-        type="button"
-        className="mobile-sidebar-button"
-        onClick={() => setSidebarOpen((prev) => !prev)}
-        aria-expanded={sidebarOpen}
-        aria-controls="docs-sidebar-panel"
-        aria-label={sidebarOpen ? "Close navigation" : "Browse docs"}
-        title={sidebarOpen ? "Close navigation" : "Browse docs"}
-      >
-        <MaterialIcon name={sidebarOpen ? "close" : "menu"} />
-      </button>
+      {portalHost ? createPortal(sidebarToggleButton, portalHost) : sidebarToggleButton}
 
       {sidebarOpen ? (
         <button

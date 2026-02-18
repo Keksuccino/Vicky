@@ -24,11 +24,12 @@
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, #7c8ead);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 58%, #687ea4);
   --sidebar-scrollbar-shadow: rgba(30, 58, 96, 0.2);
-  --mobile-fab-bg: rgba(7, 92, 171, 0.44);
-  --mobile-fab-bg-hover: rgba(7, 106, 194, 0.56);
-  --mobile-fab-bg-active: rgba(0, 110, 207, 0.64);
-  --mobile-fab-border: rgba(4, 56, 104, 0.68);
-  --mobile-fab-icon: #f5f9ff;
+  --mobile-fab-bg: rgba(39, 132, 215, 0.24);
+  --mobile-fab-bg-hover: rgba(22, 123, 214, 0.34);
+  --mobile-fab-bg-active: rgba(14, 116, 206, 0.42);
+  --mobile-fab-border: rgba(18, 85, 146, 0.58);
+  --mobile-fab-shadow: rgba(26, 62, 110, 0.27);
+  --mobile-fab-icon: #0f5698;
   --code-token-plain: #334869;
   --code-token-comment: #5f7393;
   --code-token-keyword: #b4233a;
@@ -74,11 +75,12 @@ html[data-color-mode="custom"] {
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 52%, #8da5c7);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 68%, #b5c8e3);
   --sidebar-scrollbar-shadow: rgba(2, 8, 18, 0.5);
-  --mobile-fab-bg: rgba(90, 186, 248, 0.42);
-  --mobile-fab-bg-hover: rgba(112, 200, 255, 0.55);
-  --mobile-fab-bg-active: rgba(134, 212, 255, 0.64);
-  --mobile-fab-border: rgba(164, 224, 255, 0.72);
-  --mobile-fab-icon: #f0f8ff;
+  --mobile-fab-bg: rgba(116, 209, 255, 0.22);
+  --mobile-fab-bg-hover: rgba(127, 214, 255, 0.33);
+  --mobile-fab-bg-active: rgba(138, 220, 255, 0.4);
+  --mobile-fab-border: rgba(172, 227, 255, 0.62);
+  --mobile-fab-shadow: rgba(2, 8, 18, 0.56);
+  --mobile-fab-icon: #eef8ff;
   --code-token-plain: #c8cfdb;
   --code-token-comment: #93a0b4;
   --code-token-keyword: #ff7b90;
@@ -562,36 +564,42 @@ select {
   width: 4.08rem;
   height: 4.08rem;
   flex: 0 0 4.08rem;
-  border: 1px solid var(--mobile-fab-border);
-  background: var(--mobile-fab-bg);
+  border: 0;
+  background: color-mix(in srgb, var(--header-bg) 42%, transparent);
   border-radius: 999px;
   color: var(--mobile-fab-icon);
   padding: 0;
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
   box-shadow:
-    0 14px 30px color-mix(in srgb, var(--shadow-strong) 62%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--surface-elevated) 28%, transparent);
-  backdrop-filter: blur(44px) saturate(210%);
-  -webkit-backdrop-filter: blur(44px) saturate(210%);
+    0 14px 32px var(--mobile-fab-shadow),
+    inset 0 0 0 1px var(--mobile-fab-border);
+  backdrop-filter: blur(60px) saturate(170%);
+  -webkit-backdrop-filter: blur(60px) saturate(170%);
+  will-change: transform, backdrop-filter;
+  transform: translate3d(0, 0, 0);
   transition:
     background 160ms ease,
     color 160ms ease,
-    border-color 160ms ease,
     box-shadow 160ms ease,
     transform 160ms ease;
 }
 
 .mobile-sidebar-button .material-icon {
   font-size: 1.88rem;
+  position: relative;
+  z-index: 1;
 }
 
 .mobile-sidebar-button:hover,
 .mobile-sidebar-button:focus-visible {
-  background: var(--mobile-fab-bg-hover);
+  background: color-mix(in srgb, var(--header-bg) 36%, var(--mobile-fab-bg-hover));
   color: var(--mobile-fab-icon);
-  transform: translateY(-1px);
+  transform: translate3d(0, -1px, 0);
 }
 
 .mobile-sidebar-button:focus-visible {
@@ -600,9 +608,11 @@ select {
 }
 
 .mobile-sidebar-button[aria-expanded="true"] {
-  background: var(--mobile-fab-bg-active);
+  background: color-mix(in srgb, var(--header-bg) 33%, var(--mobile-fab-bg-active));
   color: var(--mobile-fab-icon);
-  border-color: color-mix(in srgb, var(--mobile-fab-border) 84%, white);
+  box-shadow:
+    0 16px 36px var(--mobile-fab-shadow),
+    inset 0 0 0 1px color-mix(in srgb, var(--mobile-fab-border) 80%, white);
 }
 
 .docs-layout {
