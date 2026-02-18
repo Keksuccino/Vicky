@@ -600,11 +600,13 @@ select {
   padding: 0.9rem;
   display: grid;
   gap: 0.85rem;
+  align-content: start;
 }
 
 .docs-sidebar-top {
   display: grid;
   gap: 0.55rem;
+  align-content: start;
 }
 
 .sidebar-view-toggle {
@@ -688,6 +690,7 @@ select {
   display: grid;
   gap: 0.55rem;
   min-height: 0;
+  align-content: start;
 }
 
 .sidebar-toc-list {
