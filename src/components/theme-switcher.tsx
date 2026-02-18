@@ -16,9 +16,11 @@ const subscribe = () => () => {};
 export function ThemeSwitcher() {
   const { mode, themes, activeThemeId, setMode, setActiveThemeId } = useTheme();
   const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
+
   const compactTargetMode: "light" | "dark" = mode === "dark" ? "light" : "dark";
-  const compactIcon = compactTargetMode === "light" ? "light_mode" : "dark_mode";
-  const compactLabel = `Switch to ${compactTargetMode} mode`;
+  const displayTargetMode: "light" | "dark" = hydrated ? compactTargetMode : "dark";
+  const compactIcon = displayTargetMode === "light" ? "light_mode" : "dark_mode";
+  const compactLabel = `Switch to ${displayTargetMode} mode`;
 
   return (
     <div className="theme-switcher" aria-label="Theme controls">
