@@ -2196,7 +2196,7 @@ html[data-color-mode="light"] .meta-item {
     position: fixed;
     top: calc(var(--header-height) + 0.72rem);
     left: max(0.72rem, env(safe-area-inset-left));
-    z-index: 92;
+    z-index: 89;
   }
 
   .docs-sidebar-panel {
