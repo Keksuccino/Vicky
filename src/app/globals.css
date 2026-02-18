@@ -993,10 +993,21 @@ html[data-color-mode="light"] .meta-item {
   padding: 0.85rem;
 }
 
+.markdown-code-block-shell {
+  position: relative;
+  margin: 0.9rem 0;
+  max-width: 100%;
+}
+
+.markdown-code-block-shell > .markdown-code-block {
+  margin: 0;
+}
+
 .markdown-code-copy-button {
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
+  z-index: 1;
   width: 1.9rem;
   height: 1.9rem;
   border-radius: 0.5rem;

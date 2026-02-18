@@ -108,7 +108,7 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
   }, [copied]);
 
   return (
-    <pre className={cn("markdown-code-block", className)} {...props}>
+    <div className="markdown-code-block-shell">
       <button
         type="button"
         className={cn("markdown-code-copy-button", copied && "markdown-code-copy-button-success")}
@@ -119,8 +119,11 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
           {copied ? "check_circle" : "content_copy"}
         </span>
       </button>
-      {children}
-    </pre>
+
+      <pre className={cn("markdown-code-block", className)} {...props}>
+        {children}
+      </pre>
+    </div>
   );
 }
 
