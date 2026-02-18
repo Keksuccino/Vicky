@@ -16,6 +16,9 @@ const subscribe = () => () => {};
 export function ThemeSwitcher() {
   const { mode, themes, activeThemeId, setMode, setActiveThemeId } = useTheme();
   const hydrated = useSyncExternalStore(subscribe, () => true, () => false);
+  const compactTargetMode: "light" | "dark" = mode === "dark" ? "light" : "dark";
+  const compactIcon = compactTargetMode === "light" ? "light_mode" : "dark_mode";
+  const compactLabel = `Switch to ${compactTargetMode} mode`;
 
   return (
     <div className="theme-switcher" aria-label="Theme controls">
@@ -32,6 +35,16 @@ export function ThemeSwitcher() {
           </button>
         ))}
       </div>
+
+      <button
+        type="button"
+        className="mode-toggle-compact"
+        onClick={() => setMode(compactTargetMode)}
+        aria-label={compactLabel}
+        title={compactLabel}
+      >
+        <MaterialIcon name={compactIcon} />
+      </button>
 
       {hydrated && mode === "custom" ? (
         <label className="theme-picker" htmlFor="custom-theme-select">

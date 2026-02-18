@@ -210,8 +210,8 @@ select {
   min-height: var(--header-height);
   margin: 0 auto;
   display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.85rem;
   align-items: center;
 }
 
@@ -222,6 +222,8 @@ select {
   text-decoration: none;
   font-family: var(--font-display), "Segoe UI", sans-serif;
   font-weight: 650;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .brand-mark {
@@ -251,6 +253,11 @@ select {
 }
 
 .brand-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   letter-spacing: 0.01em;
   color: var(--text-primary);
 }
@@ -311,6 +318,7 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 0.65rem;
+  min-width: 0;
 }
 
 .app-header-actions {
@@ -319,6 +327,7 @@ select {
   align-items: center;
   gap: 0.45rem;
   justify-self: end;
+  flex-wrap: nowrap;
 }
 
 .app-header-actions .mode-toggle {
@@ -331,6 +340,41 @@ select {
   padding: 0.2rem;
   background: var(--surface-muted);
   border: 1px solid var(--border);
+}
+
+.mode-toggle-compact {
+  width: var(--header-control-size);
+  height: var(--header-control-size);
+  flex: 0 0 var(--header-control-size);
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.mode-toggle-compact:hover,
+.mode-toggle-compact:focus-visible {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface-elevated));
+}
+
+.mode-toggle-compact:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+.mode-toggle-compact .material-icon {
+  font-size: 1.24rem;
 }
 
 .admin-icon-link {
@@ -2055,31 +2099,15 @@ html[data-color-mode="light"] .meta-item {
 
 @media (max-width: 980px) {
   .app-header-inner {
-    grid-template-columns: 1fr;
-    justify-items: start;
-    padding: 0.7rem 0;
-    gap: 0.55rem;
-  }
-
-  .main-nav {
-    width: 100%;
-    overflow-x: auto;
-    justify-content: flex-start;
-  }
-
-  .theme-switcher {
-    width: 100%;
-    flex-wrap: wrap;
+    width: min(var(--page-max), calc(100% - 1.2rem));
+    grid-template-columns: minmax(0, 1fr) auto;
+    padding: 0.55rem 0;
+    gap: 0.5rem;
   }
 
   .app-header-actions {
-    width: 100%;
-    justify-content: flex-end;
-  }
-
-  .app-header-actions .theme-switcher {
-    width: auto;
-    flex-wrap: nowrap;
+    --header-control-size: 2.58rem;
+    gap: 0.34rem;
   }
 
   .editor-layout {
@@ -2174,15 +2202,31 @@ html[data-color-mode="light"] .meta-item {
   }
 }
 
+@media (max-width: 760px) {
+  .mode-toggle {
+    display: none;
+  }
+
+  .mode-toggle-compact {
+    display: inline-flex;
+  }
+
+  .theme-picker {
+    display: none;
+  }
+
+  .app-header-actions {
+    --header-control-size: 2.44rem;
+  }
+}
+
 @media (max-width: 620px) {
   .mode-button span,
-  .nav-link span,
   .mobile-sidebar-button span {
     display: none;
   }
 
   .mode-button,
-  .nav-link,
   .mobile-sidebar-button {
     padding-inline: 0.58rem;
   }

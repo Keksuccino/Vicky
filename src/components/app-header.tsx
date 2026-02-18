@@ -149,8 +149,6 @@ export function AppHeader() {
           )}
         </Link>
 
-        <nav className="main-nav" aria-label="Main navigation" />
-
         <div className="app-header-actions">
           {isAdminAuthenticated ? (
             <Link
