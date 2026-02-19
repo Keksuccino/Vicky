@@ -637,7 +637,8 @@ export function AdminSettingsPanel() {
                 required
               />
               <span className="field-hint">
-                `{{year}}` and `{{owner}}` are replaced automatically; all other text is rendered as-is.
+                <code>{`{{year}}`}</code> and <code>{`{{owner}}`}</code> are replaced automatically; all other text is
+                rendered as-is.
               </span>
             </label>
 
