@@ -58,9 +58,21 @@ npm run dev
 - GitHub repository
 - Branch
 - Docs path (for example `docs`)
-- GitHub token (PAT with repo read/write permissions)
+- GitHub token (fine-grained PAT)
 4. Click **Test connection**.
 5. Save settings.
+
+### Fine-Grained GitHub Token Setup (Recommended)
+
+When creating the token, configure it like this:
+
+1. Token type: **Fine-grained personal access token**
+2. Repository access: **Only select repositories**
+3. Select exactly the docs source repository used by Vicky
+4. Repository permissions:
+   - **Contents**: **Read and write**
+   - **Metadata**: **Read-only**
+5. Leave all other permissions as **No access**
 
 ## Markdown Support
 
