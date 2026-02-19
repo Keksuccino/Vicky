@@ -122,6 +122,16 @@ body.docs-scroll-locked {
   overflow: hidden;
 }
 
+body.docs-scroll-locked .app-header {
+  position: fixed;
+  inset-block-start: 0;
+  inset-inline: 0;
+}
+
+body.docs-scroll-locked .app-shell {
+  padding-top: var(--header-height);
+}
+
 a {
   color: inherit;
 }
