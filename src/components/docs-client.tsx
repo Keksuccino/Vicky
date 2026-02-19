@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createPortal } from "react-dom";
 
 import {
   fetchDocPage,
@@ -140,11 +139,6 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<DocSearchResult[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
-
-  useEffect(() => {
-    setPortalHost(document.body);
-  }, []);
 
   useEffect(() => {
     const mobileViewportQuery = window.matchMedia("(max-width: 900px)");
@@ -529,13 +523,14 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       aria-label={sidebarOpen ? "Close navigation" : "Browse docs"}
       title={sidebarOpen ? "Close navigation" : "Browse docs"}
     >
+      <span className="mobile-sidebar-button-surface" aria-hidden="true" />
       <MaterialIcon name={sidebarOpen ? "close" : "menu"} />
     </button>
   );
 
   return (
     <section className="docs-page">
-      {portalHost ? createPortal(sidebarToggleButton, portalHost) : sidebarToggleButton}
+      {sidebarToggleButton}
 
       {sidebarOpen ? (
         <button
