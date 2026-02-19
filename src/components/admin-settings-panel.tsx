@@ -211,6 +211,9 @@ export function AdminSettingsPanel() {
                 }}
                 required
               />
+              <span className="field-hint">
+                Allowed range: 1-86400. Lower values refresh docs faster; higher values reduce GitHub API calls.
+              </span>
             </label>
 
             <label className="field-row" htmlFor="github-token">
@@ -225,8 +228,13 @@ export function AdminSettingsPanel() {
                   setSettings((prev) => ({ ...prev, githubToken: event.target.value }));
                   setClearTokenOnSave(false);
                 }}
-                placeholder={settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "ghp_..."}
+                placeholder={
+                  settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "github_pat_... or ghp_..."
+                }
               />
+              <span className="field-hint">
+                Use a PAT for this repo. Minimum permissions: Contents (read/write) and Metadata (read-only).
+              </span>
               {settings.tokenConfigured ? (
                 <label className="checkbox-row">
                   <input
@@ -249,6 +257,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubOwner: event.target.value }))}
                   required
                 />
+                <span className="field-hint">GitHub user or org name only. Example: `Keksuccino`.</span>
               </label>
               <label className="field-row" htmlFor="repo-name">
                 <span className="field-label">Repository</span>
@@ -259,6 +268,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubRepo: event.target.value }))}
                   required
                 />
+                <span className="field-hint">Repository name only. Example: `Vicky` (no owner, no `.git`).</span>
               </label>
             </div>
 
@@ -272,6 +282,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubBranch: event.target.value }))}
                   required
                 />
+                <span className="field-hint">Existing branch name. Example: `main`.</span>
               </label>
               <label className="field-row" htmlFor="docs-path">
                 <span className="field-label">Docs path</span>
@@ -282,6 +293,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubDocsPath: event.target.value }))}
                   required
                 />
+                <span className="field-hint">Folder inside the repo where markdown files live. Example: `docs`.</span>
               </label>
             </div>
 
@@ -468,6 +480,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setThemeDraft((prev) => ({ ...prev, name: event.target.value }))}
                   required
                 />
+                <span className="field-hint">Human-readable name shown in the theme list.</span>
               </label>
 
               <label className="field-row" htmlFor="theme-mode">
@@ -486,6 +499,7 @@ export function AdminSettingsPanel() {
                   <option value="light">Light</option>
                   <option value="dark">Dark</option>
                 </select>
+                <span className="field-hint">Choose the base palette behavior for this theme.</span>
               </label>
             </div>
 
@@ -506,6 +520,7 @@ export function AdminSettingsPanel() {
                   <span>Add variable</span>
                 </button>
               </div>
+              <span className="field-hint">Use CSS custom property names like `--accent` with valid CSS values.</span>
 
               {themeDraft.variables.map((variable, index) => (
                 <div key={`${variable.key}-${index}`} className="field-inline variable-row">
@@ -556,6 +571,9 @@ export function AdminSettingsPanel() {
                 onChange={(event) => setThemeDraft((prev) => ({ ...prev, customCss: event.target.value }))}
                 placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
               />
+              <span className="field-hint">
+                Optional raw CSS appended after theme variables. Use this for advanced overrides.
+              </span>
             </label>
 
             <button type="submit" className="btn btn-primary" disabled={themeSaving}>
@@ -592,6 +610,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, siteTitle: event.target.value }))}
                   required
                 />
+                <span className="field-hint">Shown in the header and browser metadata.</span>
               </label>
 
               <label className="field-row" htmlFor="site-description">
@@ -603,6 +622,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, siteDescription: event.target.value }))}
                   required
                 />
+                <span className="field-hint">Short summary used in metadata and previews.</span>
               </label>
             </div>
 
@@ -616,6 +636,9 @@ export function AdminSettingsPanel() {
                 placeholder="Copyright © {{year}} {{owner}}. All rights reserved."
                 required
               />
+              <span className="field-hint">
+                `{{year}}` and `{{owner}}` are replaced automatically; all other text is rendered as-is.
+              </span>
             </label>
 
             <div className="field-inline">
@@ -628,6 +651,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, siteTitleGradientFrom: event.target.value }))}
                   placeholder="#3b82f6"
                 />
+                <span className="field-hint">Any CSS color value. Example: `#3b82f6`, `rgb(59 130 246)`.</span>
               </label>
 
               <label className="field-row" htmlFor="site-title-gradient-to">
@@ -639,6 +663,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, siteTitleGradientTo: event.target.value }))}
                   placeholder="#22d3ee"
                 />
+                <span className="field-hint">Any CSS color value. Leave both gradient fields empty to disable.</span>
               </label>
             </div>
 
@@ -652,6 +677,9 @@ export function AdminSettingsPanel() {
                 placeholder="/home"
                 required
               />
+              <span className="field-hint">
+                Preferred format: `/home`. `/docs/home` and full docs URLs are normalized automatically.
+              </span>
             </label>
 
             <div className="form-separator" role="separator" aria-hidden="true" />
@@ -666,6 +694,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng16Url: event.target.value }))}
                   placeholder="https://example.com/docs-icon-16.png"
                 />
+                <span className="field-hint">Public absolute URL to a PNG file, exactly 16x16 recommended.</span>
               </label>
 
               <label className="field-row" htmlFor="docs-icon-png-32">
@@ -677,6 +706,7 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng32Url: event.target.value }))}
                   placeholder="https://example.com/docs-icon-32.png"
                 />
+                <span className="field-hint">Public absolute URL to a PNG file, exactly 32x32 recommended.</span>
               </label>
             </div>
 
@@ -689,6 +719,9 @@ export function AdminSettingsPanel() {
                 onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng180Url: event.target.value }))}
                 placeholder="https://example.com/docs-icon-180.png"
               />
+              <span className="field-hint">
+                Public absolute URL to a PNG file, exactly 180x180 recommended (Apple touch icon).
+              </span>
             </label>
 
             <div className="action-row">

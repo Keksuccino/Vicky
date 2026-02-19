@@ -1732,6 +1732,12 @@ html[data-color-mode="light"] .meta-item {
   font-weight: 650;
 }
 
+.field-hint {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
 .field-inline {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
