@@ -80,13 +80,40 @@ export const toRuntimeConfigCacheKey = (config: GitHubRuntimeConfig): string =>
   [config.owner, config.repo, config.branch, normalizeDocsPath(config.docsPath)].join("|");
 
 const treeCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntimeConfigCacheKey(config)}|tree`;
+const treeTitlesCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntimeConfigCacheKey(config)}|tree-titles`;
 const pageCacheKey = (config: GitHubRuntimeConfig, fullPath: string): string =>
   `${toRuntimeConfigCacheKey(config)}|page|${fullPath}`;
+const TREE_TITLE_LOAD_CONCURRENCY = 6;
 
 const createOctokit = (config: GitHubRuntimeConfig): Octokit =>
   new Octokit({
     auth: config.token,
   });
+
+const mapWithConcurrency = async <T, R>(
+  values: T[],
+  concurrency: number,
+  iteratee: (value: T, index: number) => Promise<R>,
+): Promise<R[]> => {
+  if (values.length === 0) {
+    return [];
+  }
+
+  const workerCount = Math.max(1, Math.min(concurrency, values.length));
+  const output = new Array<R>(values.length);
+  let index = 0;
+
+  const workers = Array.from({ length: workerCount }, async () => {
+    while (index < values.length) {
+      const currentIndex = index;
+      index += 1;
+      output[currentIndex] = await iteratee(values[currentIndex], currentIndex);
+    }
+  });
+
+  await Promise.all(workers);
+  return output;
+};
 
 const joinDocsPath = (docsRoot: string, relativePath: string): string => {
   if (!docsRoot) {
@@ -291,11 +318,64 @@ export const listMarkdownDocsTree = async (config: GitHubRuntimeConfig): Promise
   return docs;
 };
 
+export const listMarkdownDocsTreeWithTitles = async (config: GitHubRuntimeConfig): Promise<GitHubDocTreeItem[]> => {
+  const validation = validateGitHubRuntimeConfig(config);
+
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  const cacheKey = treeTitlesCacheKey(config);
+  const cached = docsTreeCache.get(cacheKey);
+
+  if (cached) {
+    return cached as GitHubDocTreeItem[];
+  }
+
+  const baseTree = await listMarkdownDocsTree(config);
+  if (baseTree.length === 0) {
+    docsTreeCache.set(cacheKey, []);
+    return [];
+  }
+
+  const docsRoot = normalizeDocsPath(config.docsPath);
+  const octokit = createOctokit(config);
+
+  const withTitles = await mapWithConcurrency(
+    baseTree,
+    TREE_TITLE_LOAD_CONCURRENCY,
+    async (item): Promise<GitHubDocTreeItem> => {
+      const fullPath = joinDocsPath(docsRoot, item.path);
+
+      try {
+        const file = await fetchFileFromGitHub(config, fullPath, octokit);
+        const parsed = parseMarkdownDocument(file.markdown);
+        const title = parsed.title.trim();
+
+        if (!title) {
+          return item;
+        }
+
+        return {
+          ...item,
+          name: title,
+        };
+      } catch {
+        return item;
+      }
+    },
+  );
+
+  docsTreeCache.set(cacheKey, withTitles);
+  return withTitles;
+};
+
 const fetchFileFromGitHub = async (
   config: GitHubRuntimeConfig,
   fullRepoPath: string,
+  octokitOverride?: Octokit,
 ): Promise<{ sha: string; markdown: string }> => {
-  const octokit = createOctokit(config);
+  const octokit = octokitOverride ?? createOctokit(config);
 
   try {
     const fileResponse = await octokit.repos.getContent({

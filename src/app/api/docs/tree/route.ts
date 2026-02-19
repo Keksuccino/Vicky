@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { setDocsCacheTtlMs } from "@/lib/cache";
-import { listMarkdownDocsTree, resolveRuntimeConfig } from "@/lib/github";
+import { listMarkdownDocsTreeWithTitles, resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
@@ -13,7 +13,7 @@ export const GET = async (): Promise<NextResponse> => {
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
-    const items = await listMarkdownDocsTree(config);
+    const items = await listMarkdownDocsTreeWithTitles(config);
 
     return NextResponse.json({ items });
   } catch (error: unknown) {
