@@ -31,6 +31,29 @@ describe("MarkdownRenderer", () => {
     expect(alertParagraph?.innerHTML.startsWith("<br")).toBe(false);
   });
 
+  it.each([
+    ["{.is-info}", "info"],
+    ["{.is-warning}", "warning"],
+    ["{.is-success}", "success"],
+    ["{.is-danger}", "error"],
+  ])("supports WikiJS alert markers for %s", (marker, expectedVariant) => {
+    const content = `> Wiki-style alert body\n${marker}`;
+    const { container } = render(<MarkdownRenderer content={content} />);
+
+    const alert = container.querySelector(`.md-alert-${expectedVariant}`);
+    expect(alert).toBeTruthy();
+    expect(screen.queryByText(marker)).toBeNull();
+  });
+
+  it("supports WikiJS markers when parsed as a sibling paragraph", () => {
+    const content = "> Wiki alert with explicit continuation\n>\n{.is-warning}";
+    const { container } = render(<MarkdownRenderer content={content} />);
+
+    const alert = container.querySelector(".md-alert-warning");
+    expect(alert).toBeTruthy();
+    expect(screen.queryByText("{.is-warning}")).toBeNull();
+  });
+
   it("rewrites root short links to docs paths", () => {
     render(<MarkdownRenderer content="[Home](/home)" />);
 

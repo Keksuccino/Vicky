@@ -13,6 +13,13 @@ const ALERT_TYPE_MAP: Record<string, string> = {
 };
 
 const MARKER_REGEX = /^\s*\[!([A-Za-z]+)\]\s*(.*)$/;
+const WIKI_MARKER_REGEX = /^\s*\{\.is-(info|warning|success|danger)\}\s*$/i;
+const WIKI_ALERT_TYPE_MAP: Record<string, string> = {
+  INFO: "info",
+  WARNING: "warning",
+  SUCCESS: "success",
+  DANGER: "error",
+};
 
 type MarkdownTextNode = {
   type: "text";
@@ -35,11 +42,15 @@ type MarkdownParagraphNode = {
 
 type MarkdownBlockquoteNode = {
   type: "blockquote";
-  children: MarkdownParagraphNode[];
+  children: unknown[];
   data?: {
     hName?: string;
     hProperties?: Record<string, unknown>;
   };
+};
+
+type MarkdownParentNode = {
+  children: unknown[];
 };
 
 function isBlockquoteNode(value: unknown): value is MarkdownBlockquoteNode {
@@ -78,62 +89,175 @@ function isBreakNode(value: unknown): value is MarkdownBreakNode {
   return record.type === "break";
 }
 
+function isParentNode(value: unknown): value is MarkdownParentNode {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Array.isArray(record.children);
+}
+
+function parseWikiMarker(value: string): string | null {
+  const match = WIKI_MARKER_REGEX.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const rawType = match[1].toUpperCase();
+  return WIKI_ALERT_TYPE_MAP[rawType] ?? null;
+}
+
+function trimLeadingParagraphWhitespace(paragraph: MarkdownParagraphNode) {
+  while (paragraph.children.length > 0) {
+    const leadingNode = paragraph.children[0];
+    if (isBreakNode(leadingNode)) {
+      paragraph.children.shift();
+      continue;
+    }
+
+    if (isTextNode(leadingNode) && leadingNode.value.trim().length === 0) {
+      paragraph.children.shift();
+      continue;
+    }
+
+    break;
+  }
+}
+
+function trimTrailingParagraphWhitespace(paragraph: MarkdownParagraphNode) {
+  while (paragraph.children.length > 0) {
+    const trailingNode = paragraph.children[paragraph.children.length - 1];
+    if (isBreakNode(trailingNode)) {
+      paragraph.children.pop();
+      continue;
+    }
+
+    if (isTextNode(trailingNode) && trailingNode.value.trim().length === 0) {
+      paragraph.children.pop();
+      continue;
+    }
+
+    break;
+  }
+}
+
+function extractGitHubVariant(blockquote: MarkdownBlockquoteNode): string | null {
+  if (blockquote.children.length === 0) {
+    return null;
+  }
+
+  const firstParagraph = blockquote.children[0];
+  if (!isParagraphNode(firstParagraph) || firstParagraph.children.length === 0) {
+    return null;
+  }
+
+  const firstTextNode = firstParagraph.children[0];
+  if (!isTextNode(firstTextNode)) {
+    return null;
+  }
+
+  const match = MARKER_REGEX.exec(firstTextNode.value);
+  if (!match) {
+    return null;
+  }
+
+  const rawType = match[1].toUpperCase();
+  const variant = ALERT_TYPE_MAP[rawType] ?? "info";
+
+  // Remove only the `[!TYPE]` marker and keep remaining user-authored text.
+  firstTextNode.value = firstTextNode.value.replace(MARKER_REGEX, "$2").trimStart();
+  trimLeadingParagraphWhitespace(firstParagraph);
+
+  if (firstParagraph.children.length === 0) {
+    blockquote.children.shift();
+  }
+
+  return variant;
+}
+
+function extractWikiVariantFromBlockquote(blockquote: MarkdownBlockquoteNode): string | null {
+  if (blockquote.children.length === 0) {
+    return null;
+  }
+
+  const lastChild = blockquote.children[blockquote.children.length - 1];
+  if (!isParagraphNode(lastChild) || lastChild.children.length === 0) {
+    return null;
+  }
+
+  const trailingInline = lastChild.children[lastChild.children.length - 1];
+  if (!isTextNode(trailingInline)) {
+    return null;
+  }
+
+  const variant = parseWikiMarker(trailingInline.value);
+  if (!variant) {
+    return null;
+  }
+
+  lastChild.children.pop();
+  trimTrailingParagraphWhitespace(lastChild);
+
+  if (lastChild.children.length === 0) {
+    blockquote.children.pop();
+  }
+
+  return variant;
+}
+
+function extractWikiVariantFromSibling(parent: unknown, index: number | undefined): string | null {
+  if (!isParentNode(parent) || index === undefined) {
+    return null;
+  }
+
+  const sibling = parent.children[index + 1];
+  if (!isParagraphNode(sibling) || sibling.children.length !== 1) {
+    return null;
+  }
+
+  const onlyChild = sibling.children[0];
+  if (!isTextNode(onlyChild)) {
+    return null;
+  }
+
+  const variant = parseWikiMarker(onlyChild.value);
+  if (!variant) {
+    return null;
+  }
+
+  parent.children.splice(index + 1, 1);
+  return variant;
+}
+
+function applyAlertVariant(blockquote: MarkdownBlockquoteNode, variant: string) {
+  blockquote.data = {
+    ...(blockquote.data ?? {}),
+    hName: "aside",
+    hProperties: {
+      ...((blockquote.data && blockquote.data.hProperties) || {}),
+      className: ["md-alert", `md-alert-${variant}`],
+      "data-alert": variant,
+    },
+  };
+}
+
 export function remarkGitHubAlerts() {
   return (tree: unknown) => {
-    visit(tree as Node, (node) => {
-      if (!isBlockquoteNode(node) || node.children.length === 0) {
+    visit(tree as Node, (node: unknown, index: number | undefined, parent: unknown) => {
+      if (!isBlockquoteNode(node)) {
         return;
       }
 
-      const firstParagraph = node.children[0];
-      if (!isParagraphNode(firstParagraph) || firstParagraph.children.length === 0) {
+      const githubVariant = extractGitHubVariant(node);
+      const wikiVariant = extractWikiVariantFromBlockquote(node) ?? extractWikiVariantFromSibling(parent, index);
+      const variant = githubVariant ?? wikiVariant;
+
+      if (!variant) {
         return;
       }
 
-      const firstTextNode = firstParagraph.children[0];
-      if (!isTextNode(firstTextNode)) {
-        return;
-      }
-
-      const match = MARKER_REGEX.exec(firstTextNode.value);
-      if (!match) {
-        return;
-      }
-
-      const rawType = match[1].toUpperCase();
-      const variant = ALERT_TYPE_MAP[rawType] ?? "info";
-
-      // Remove only the `[!TYPE]` marker and keep remaining user-authored text.
-      firstTextNode.value = firstTextNode.value.replace(MARKER_REGEX, "$2").trimStart();
-
-      while (firstParagraph.children.length > 0) {
-        const leadingNode = firstParagraph.children[0];
-        if (isBreakNode(leadingNode)) {
-          firstParagraph.children.shift();
-          continue;
-        }
-
-        if (isTextNode(leadingNode) && leadingNode.value.trim().length === 0) {
-          firstParagraph.children.shift();
-          continue;
-        }
-
-        break;
-      }
-
-      if (firstParagraph.children.length === 0) {
-        node.children.shift();
-      }
-
-      node.data = {
-        ...(node.data ?? {}),
-        hName: "aside",
-        hProperties: {
-          ...((node.data && node.data.hProperties) || {}),
-          className: ["md-alert", `md-alert-${variant}`],
-          "data-alert": variant,
-        },
-      };
+      applyAlertVariant(node, variant);
     });
   };
 }
