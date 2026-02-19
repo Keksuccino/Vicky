@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, type ReactNode, useMemo, useState } from "react";
 
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
@@ -34,6 +34,71 @@ function normalizePath(path: string): string {
     return "/";
   }
   return path.startsWith("/") ? path : `/${path}`;
+}
+
+type SearchHighlightMatcher = {
+  regex: RegExp;
+  tokenSet: Set<string>;
+};
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function buildSearchHighlightMatcher(query: string): SearchHighlightMatcher | null {
+  const normalizedQuery = query.trim().replace(/\s+/g, " ");
+  if (!normalizedQuery) {
+    return null;
+  }
+
+  const tokens = normalizedQuery.split(" ").filter(Boolean);
+  const candidates = normalizedQuery.includes(" ") ? [normalizedQuery, ...tokens] : tokens;
+  const seen = new Set<string>();
+  const uniqueTokens: string[] = [];
+
+  for (const token of candidates) {
+    const normalizedToken = token.toLowerCase();
+    if (seen.has(normalizedToken)) {
+      continue;
+    }
+
+    seen.add(normalizedToken);
+    uniqueTokens.push(token);
+  }
+
+  if (uniqueTokens.length === 0) {
+    return null;
+  }
+
+  uniqueTokens.sort((left, right) => right.length - left.length);
+
+  return {
+    regex: new RegExp(`(${uniqueTokens.map((token) => escapeRegExp(token)).join("|")})`, "gi"),
+    tokenSet: new Set(uniqueTokens.map((token) => token.toLowerCase())),
+  };
+}
+
+function renderHighlightedExcerpt(excerpt: string, matcher: SearchHighlightMatcher | null): ReactNode {
+  if (!excerpt || !matcher) {
+    return excerpt;
+  }
+
+  const pieces = excerpt.split(matcher.regex);
+  if (pieces.length <= 1) {
+    return excerpt;
+  }
+
+  return pieces.map((piece, index) => {
+    if (!piece) {
+      return null;
+    }
+
+    if (matcher.tokenSet.has(piece.toLowerCase())) {
+      return <mark key={`match-${index}`}>{piece}</mark>;
+    }
+
+    return <Fragment key={`text-${index}`}>{piece}</Fragment>;
+  });
 }
 
 function TreeNode({ node, currentPath, expanded, onToggle, onSelectPath, level }: TreeNodeProps) {
@@ -116,6 +181,7 @@ export function DocsTree({
     return countNodes(tree);
   }, [tree]);
   const tocHeadings = useMemo(() => headings.filter((heading) => heading.depth <= 4), [headings]);
+  const excerptHighlightMatcher = useMemo(() => buildSearchHighlightMatcher(searchQuery), [searchQuery]);
 
   const onToggle = (id: string) => {
     setExpanded((prev) => {
@@ -204,7 +270,7 @@ export function DocsTree({
                     <button type="button" className="result-item" onClick={() => onSelectPath(result.path, result.anchor)}>
                       <strong>{result.title}</strong>
                       <span>{result.path}</span>
-                      {result.excerpt ? <p>{result.excerpt}</p> : null}
+                      {result.excerpt ? <p>{renderHighlightedExcerpt(result.excerpt, excerptHighlightMatcher)}</p> : null}
                     </button>
                   </li>
                 ))}

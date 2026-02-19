@@ -1782,6 +1782,16 @@ html[data-color-mode="light"] .meta-item {
   font-size: 0.89rem;
 }
 
+.result-item p mark {
+  background: color-mix(in srgb, var(--accent-soft) 74%, var(--surface-elevated) 26%);
+  color: var(--text-primary);
+  border-radius: 0.22rem;
+  padding-inline: 0.12em;
+  font-weight: 620;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .btn {
   border: 1px solid transparent;
   border-radius: 10px;
