@@ -130,10 +130,23 @@ npm run start
 - serves HTTPS on `HTTPS_PORT` when domain + email are configured
 - automatically requests/renews certificates from Let's Encrypt
 - performs renewal checks on startup and periodically during runtime
+- watches `wiki-store.json` and applies domain/SSL setting changes quickly (debounced)
+- uses retry backoff after issuance failures to reduce Let's Encrypt rate-limit risk
+- persists runtime SSL status and exposes it via a small runtime endpoint
 
 For direct Let's Encrypt HTTP-01 validation, set:
 - `HTTP_PORT=80`
 - `HTTPS_PORT=443`
+
+Binding ports `<1024` (for example `80`/`443`) usually requires elevated privileges.
+Use one of:
+- Linux capability (`CAP_NET_BIND_SERVICE`) for the Node binary/service user
+- a reverse proxy (recommended) that listens on `80/443` and forwards to Vicky
+
+If you run behind a reverse proxy:
+- forward `/.well-known/acme-challenge/*` unchanged to Vicky's HTTP port
+- preserve the original `Host` header
+- keep DNS for the custom domain pointing at the proxy/public ingress
 
 ## Production Notes
 
@@ -141,11 +154,31 @@ For direct Let's Encrypt HTTP-01 validation, set:
 - Keep GitHub token scoped minimally (repo access only as needed).
 - Back up `data/wiki-store.json` regularly.
 - Persist `data/ssl` (or your configured `WIKI_SSL_STORAGE_DIR`) across deployments.
+- SSL storage directories are locked down at runtime (`0700` where supported by the OS).
 - Automatic SSL only runs when both Domain Settings fields are configured.
 - DNS for the configured custom domain must point to this server.
+- Runtime SSL status:
+  - endpoint path: `SSL_STATUS_ENDPOINT_PATH` (default `/.well-known/vicky/ssl-status`)
+  - optional auth: `SSL_STATUS_BEARER_TOKEN` (Bearer token)
+  - persisted file: `SSL_STATUS_FILE_PATH` (default `./data/ssl/runtime-ssl-status.json`)
+- SSL retry/backoff tuning:
+  - `SSL_ISSUE_RETRY_BASE_MS` (default `900000`)
+  - `SSL_ISSUE_RETRY_MAX_MS` (default `86400000`)
+- Store watcher debounce:
+  - `SSL_STORE_WATCH_DEBOUNCE_MS` (default `1500`)
 - Admin login brute-force protection can be tuned with:
   - `AUTH_LOGIN_MAX_FAILURES` (default `8`)
   - `AUTH_LOGIN_WINDOW_SECONDS` (default `600`)
   - `AUTH_LOGIN_BLOCK_SECONDS` (default `10800`)
   - `AUTH_TRUST_PROXY_HEADERS` (default `false`; only enable behind trusted proxies)
   - `AUTH_LOGIN_STORE_FILE_PATH` (default `./data/login-rate-limit.json`)
+
+## SSL Runbook / Troubleshooting
+
+1. Check runtime SSL state:
+   - `curl -s http://127.0.0.1:${HTTP_PORT:-3000}/.well-known/vicky/ssl-status`
+   - if token is configured: `curl -H "Authorization: Bearer <token>" ...`
+2. If `phase` is `backoff`, inspect `retry.nextAttemptAt` and `certificate.lastIssueErrorMessage` before retrying.
+3. For dry runs, set `LETS_ENCRYPT_STAGING=true` to avoid production CA rate limits.
+4. If certificates are lost after redeploy/restart, verify persistent volume mapping for `WIKI_SSL_STORAGE_DIR`.
+5. If domain changes do not apply quickly, verify writes reach `WIKI_STORE_FILE_PATH` on disk and inspect server logs for watcher events/errors.
