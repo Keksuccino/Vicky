@@ -8,7 +8,7 @@ It provides:
 - Rich markdown rendering (GFM + GitHub-style alerts)
 - Integrated docs editor with live preview
 - Theme system with default light/dark themes + custom themes (CSS variables + custom CSS)
-- Responsive docs browsing with tree navigation, search, breadcrumbs, and table of contents
+- Responsive docs browsing with tree navigation, search, and table of contents
 
 ## Tech Stack
 
