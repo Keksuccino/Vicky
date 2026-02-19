@@ -28,6 +28,7 @@ export type PublicSiteSettings = {
   docsIconPng16Url: string;
   docsIconPng32Url: string;
   docsIconPng180Url: string;
+  customDomain: string;
 };
 
 const DEFAULT_DOCS_CACHE_TTL_SECONDS = 30;
@@ -45,6 +46,8 @@ const DEFAULT_SETTINGS: AdminSettings = {
   docsIconPng32Url: "",
   docsIconPng180Url: "",
   docsCacheTtlSeconds: DEFAULT_DOCS_CACHE_TTL_SECONDS,
+  customDomain: "",
+  letsEncryptEmail: "",
   githubOwner: "",
   githubRepo: "",
   githubBranch: "main",
@@ -374,6 +377,7 @@ function normalizeSettings(source: unknown): AdminSettings {
   const github = asRecord(payload.github);
   const docsIcon = asRecord(payload.docsIcon);
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
+  const domain = asRecord(payload.domain);
   const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
 
   return {
@@ -387,6 +391,8 @@ function normalizeSettings(source: unknown): AdminSettings {
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
     docsCacheTtlSeconds: msToSeconds(docsCacheTtlMs),
+    customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
+    letsEncryptEmail: asString(domain.letsEncryptEmail, DEFAULT_SETTINGS.letsEncryptEmail),
     githubOwner: asString(github.owner, DEFAULT_SETTINGS.githubOwner),
     githubRepo: asString(github.repo, DEFAULT_SETTINGS.githubRepo),
     githubBranch: asString(github.branch, DEFAULT_SETTINGS.githubBranch),
@@ -400,6 +406,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
+  const domain = asRecord(payload.domain);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
@@ -411,6 +418,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
+    customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
   };
 }
 
@@ -564,6 +572,10 @@ export async function saveAdminSettings(
       png180Url: settings.docsIconPng180Url,
     },
     docsCacheTtlMs: secondsToMs(settings.docsCacheTtlSeconds),
+    domain: {
+      customDomain: settings.customDomain,
+      letsEncryptEmail: settings.letsEncryptEmail,
+    },
     github: {
       owner: settings.githubOwner,
       repo: settings.githubRepo,

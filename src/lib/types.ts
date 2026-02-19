@@ -32,6 +32,11 @@ export interface SiteTitleGradientSettings {
   to: string;
 }
 
+export interface DomainSettings {
+  customDomain: string;
+  letsEncryptEmail: string;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
@@ -40,6 +45,7 @@ export interface AppSettings {
   siteTitleGradient: SiteTitleGradientSettings;
   docsIcon: DocsIconSettings;
   docsCacheTtlMs: number;
+  domain: DomainSettings;
   github: GitHubSettings;
   activeThemeId: string;
   updatedAt: string;

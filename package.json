@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "start": "next start",
+    "start": "node server.mjs",
+    "start:next": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,6 +18,7 @@
     "@fontsource/material-symbols-outlined": "^5.2.35",
     "@octokit/rest": "^22.0.1",
     "@uiw/react-codemirror": "^4.25.4",
+    "acme-client": "^5.4.0",
     "clsx": "^2.1.1",
     "fuse.js": "^7.1.0",
     "github-slugger": "^2.0.0",

@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
+import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { encryptSecret } from "@/lib/encryption";
 import { clearGitHubDocsCache } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
@@ -32,6 +33,12 @@ const settingsPatchSchema = z
       })
       .optional(),
     docsCacheTtlMs: z.coerce.number().int().min(MIN_DOCS_CACHE_TTL_MS).max(MAX_DOCS_CACHE_TTL_MS).optional(),
+    domain: z
+      .object({
+        customDomain: z.string().optional(),
+        letsEncryptEmail: z.string().optional(),
+      })
+      .optional(),
     activeThemeId: z.string().min(1).optional(),
     github: z
       .object({
@@ -116,6 +123,28 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.docsCacheTtlMs !== undefined) {
         store.settings.docsCacheTtlMs = patch.docsCacheTtlMs;
+      }
+
+      if (patch.domain) {
+        if (patch.domain.customDomain !== undefined) {
+          const normalizedDomain = normalizeCustomDomain(patch.domain.customDomain);
+          if (patch.domain.customDomain.trim() && !normalizedDomain) {
+            throw badRequest(
+              "Domain Settings: custom domain must be a valid hostname without protocol or path (example: docs.example.com).",
+            );
+          }
+
+          store.settings.domain.customDomain = normalizedDomain;
+        }
+
+        if (patch.domain.letsEncryptEmail !== undefined) {
+          const normalizedEmail = normalizeLetsEncryptEmail(patch.domain.letsEncryptEmail);
+          if (patch.domain.letsEncryptEmail.trim() && !normalizedEmail) {
+            throw badRequest("Domain Settings: Let's Encrypt email must be a valid email address.");
+          }
+
+          store.settings.domain.letsEncryptEmail = normalizedEmail;
+        }
       }
 
       if (patch.activeThemeId !== undefined) {

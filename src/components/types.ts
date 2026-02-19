@@ -51,6 +51,8 @@ export type AdminSettings = {
   docsIconPng32Url: string;
   docsIconPng180Url: string;
   docsCacheTtlSeconds: number;
+  customDomain: string;
+  letsEncryptEmail: string;
   githubOwner: string;
   githubRepo: string;
   githubBranch: string;

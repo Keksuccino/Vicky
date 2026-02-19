@@ -89,6 +89,10 @@ export const DEFAULT_SETTINGS = (): AppSettings => ({
     png180Url: "",
   },
   docsCacheTtlMs: DOCS_CACHE_TTL_MS,
+  domain: {
+    customDomain: "",
+    letsEncryptEmail: "",
+  },
   github: {
     owner: "",
     repo: "",

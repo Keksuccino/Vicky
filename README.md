@@ -5,6 +5,7 @@ Vicky Docs is a browser-based wiki/documentation system built with Next.js.
 It provides:
 - GitHub-backed markdown storage (read + write through GitHub API)
 - Admin-configurable repository settings
+- Admin-configurable domain settings (custom domain + automatic Let's Encrypt HTTPS)
 - Rich markdown rendering (GFM + GitHub-style alerts)
 - Integrated docs editor with live preview
 - Theme system with default light/dark themes + custom themes (CSS variables + custom CSS)
@@ -59,6 +60,9 @@ npm run dev
 - Branch
 - Docs path (for example `docs`)
 - GitHub token (fine-grained PAT)
+- Optional domain settings:
+  - Custom domain (for example `fancymenu.net`)
+  - Let's Encrypt email
 4. Click **Test connection**.
 5. Save settings.
 
@@ -121,11 +125,24 @@ npm run build
 npm run start
 ```
 
+`npm run start` runs `server.mjs`, which:
+- serves HTTP on `HTTP_PORT` (or `PORT` fallback)
+- serves HTTPS on `HTTPS_PORT` when domain + email are configured
+- automatically requests/renews certificates from Let's Encrypt
+- performs renewal checks on startup and periodically during runtime
+
+For direct Let's Encrypt HTTP-01 validation, set:
+- `HTTP_PORT=80`
+- `HTTPS_PORT=443`
+
 ## Production Notes
 
 - `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` must be set in every non-test environment.
 - Keep GitHub token scoped minimally (repo access only as needed).
 - Back up `data/wiki-store.json` regularly.
+- Persist `data/ssl` (or your configured `WIKI_SSL_STORAGE_DIR`) across deployments.
+- Automatic SSL only runs when both Domain Settings fields are configured.
+- DNS for the configured custom domain must point to this server.
 - Admin login brute-force protection can be tuned with:
   - `AUTH_LOGIN_MAX_FAILURES` (default `8`)
   - `AUTH_LOGIN_WINDOW_SECONDS` (default `600`)

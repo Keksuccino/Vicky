@@ -1962,9 +1962,14 @@ html[data-color-mode="light"] .meta-item {
   grid-row: 2;
 }
 
+.panel-card-domain {
+  grid-column: 1;
+  grid-row: 3;
+}
+
 .panel-card-theme {
   grid-column: 2;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
 }
 
 .panel-card {
@@ -2280,6 +2285,7 @@ html[data-color-mode="light"] .meta-item {
 
   .panel-card-repo,
   .panel-card-site,
+  .panel-card-domain,
   .panel-card-theme {
     grid-column: auto;
     grid-row: auto;

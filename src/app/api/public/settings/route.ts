@@ -25,6 +25,9 @@ export const GET = async (): Promise<NextResponse> => {
           png32Url: store.settings.docsIcon.png32Url,
           png180Url: store.settings.docsIcon.png180Url,
         },
+        domain: {
+          customDomain: store.settings.domain.customDomain,
+        },
       },
     });
   } catch (error: unknown) {

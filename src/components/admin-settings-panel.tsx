@@ -31,6 +31,8 @@ const INITIAL_SETTINGS: AdminSettings = {
   docsIconPng32Url: "",
   docsIconPng180Url: "",
   docsCacheTtlSeconds: 30,
+  customDomain: "",
+  letsEncryptEmail: "",
   githubOwner: "",
   githubRepo: "",
   githubBranch: "main",
@@ -724,6 +726,65 @@ export function AdminSettingsPanel() {
                 Public absolute URL to a PNG file, exactly 180x180 recommended (Apple touch icon).
               </span>
             </label>
+
+            <div className="action-row">
+              <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
+                <MaterialIcon name={settingsSaving ? "sync" : "save"} />
+                <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section className="panel-card panel-card-domain">
+          <div className="panel-header">
+            <h2>Domain Settings</h2>
+          </div>
+
+          <p className="panel-description">
+            Configure your custom domain and Let&apos;s Encrypt contact email for automatic HTTPS certificate management.
+          </p>
+
+          <form
+            className="form-grid"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              await saveSettingsChanges(false);
+            }}
+          >
+            <label className="field-row" htmlFor="domain-custom-domain">
+              <span className="field-label">Custom domain</span>
+              <input
+                id="domain-custom-domain"
+                className="input"
+                value={settings.customDomain}
+                onChange={(event) => setSettings((prev) => ({ ...prev, customDomain: event.target.value }))}
+                placeholder="docs.example.com"
+              />
+              <span className="field-hint">
+                Hostname only (no protocol or path). Example: <code>fancymenu.net</code> or{" "}
+                <code>docs.fancymenu.net</code>.
+              </span>
+            </label>
+
+            <label className="field-row" htmlFor="domain-letsencrypt-email">
+              <span className="field-label">Let&apos;s Encrypt email</span>
+              <input
+                id="domain-letsencrypt-email"
+                className="input"
+                type="email"
+                value={settings.letsEncryptEmail}
+                onChange={(event) => setSettings((prev) => ({ ...prev, letsEncryptEmail: event.target.value }))}
+                placeholder="admin@example.com"
+              />
+              <span className="field-hint">
+                Required for automatic certificate registration and renewal notifications.
+              </span>
+            </label>
+
+            <p className="warning-text">
+              Automatic SSL runs only when both values are set and DNS points this domain to your server.
+            </p>
 
             <div className="action-row">
               <button type="submit" className="btn btn-primary" disabled={settingsSaving}>

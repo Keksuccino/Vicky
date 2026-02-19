@@ -5,6 +5,7 @@ import localFont from "next/font/local";
 
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
+import { normalizeCustomDomain } from "@/lib/domain-settings";
 import { getStore } from "@/lib/store";
 
 import "@fontsource/material-symbols-outlined";
@@ -74,12 +75,17 @@ export async function generateMetadata(): Promise<Metadata> {
   let siteTitle = FALLBACK_SITE_TITLE;
   let siteDescription = FALLBACK_SITE_DESCRIPTION;
   let iconVersion = FALLBACK_ICON_VERSION;
+  let metadataBase: URL | undefined;
 
   try {
     const store = await getStore();
     siteTitle = store.settings.siteTitle || FALLBACK_SITE_TITLE;
     siteDescription = store.settings.siteDescription || FALLBACK_SITE_DESCRIPTION;
     iconVersion = createIconVersion(store.settings);
+    const customDomain = normalizeCustomDomain(store.settings.domain.customDomain);
+    if (customDomain) {
+      metadataBase = new URL(`https://${customDomain}`);
+    }
   } catch {
     // Keep fallback metadata when settings storage is temporarily unavailable.
   }
@@ -89,6 +95,7 @@ export async function generateMetadata(): Promise<Metadata> {
       default: siteTitle,
       template: `%s | ${siteTitle}`,
     },
+    ...(metadataBase ? { metadataBase } : {}),
     description: siteDescription,
     icons: {
       icon: [

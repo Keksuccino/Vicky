@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { BUILTIN_THEME_IDS, DEFAULT_SETTINGS, DEFAULT_STORE, DEFAULT_THEMES, STORE_VERSION } from "@/lib/defaults";
+import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeStartPage } from "@/lib/start-page";
 import type { AppSettings, DocsStore, ThemeDefinition, ThemeVariables } from "@/lib/types";
 
@@ -160,6 +161,10 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
     typeof source.siteTitleGradient === "object" && source.siteTitleGradient !== null
       ? (source.siteTitleGradient as Record<string, unknown>)
       : ({} as Record<string, unknown>);
+  const sourceDomain =
+    typeof source.domain === "object" && source.domain !== null
+      ? (source.domain as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
@@ -176,6 +181,10 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
       png180Url: normalizeString(sourceDocsIcon.png180Url, defaults.docsIcon.png180Url),
     },
     docsCacheTtlMs: normalizeDocsCacheTtlMs(source.docsCacheTtlMs, defaults.docsCacheTtlMs),
+    domain: {
+      customDomain: normalizeCustomDomain(sourceDomain.customDomain) || defaults.domain.customDomain,
+      letsEncryptEmail: normalizeLetsEncryptEmail(sourceDomain.letsEncryptEmail) || defaults.domain.letsEncryptEmail,
+    },
     github: {
       owner: normalizeString(sourceGitHub.owner, defaults.github.owner),
       repo: normalizeString(sourceGitHub.repo, defaults.github.repo),

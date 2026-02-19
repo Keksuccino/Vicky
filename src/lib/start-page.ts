@@ -1,5 +1,6 @@
 const DEFAULT_START_PAGE = "/home";
 const markdownExtensionRegex = /\.(md|mdx)$/i;
+const HOST_LIKE_PATH_REGEX = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:\/|$)/i;
 
 const toDocsRelativePath = (value: string): string => {
   let normalized = value.trim().replace(/\\+/g, "/");
@@ -14,7 +15,21 @@ const toDocsRelativePath = (value: string): string => {
     normalized = normalized.slice(0, queryIndex);
   }
 
-  normalized = normalized.replace(/^[a-z]+:\/\/[^/]+/i, "");
+  if (HOST_LIKE_PATH_REGEX.test(normalized) && !normalized.startsWith("/")) {
+    normalized = `https://${normalized}`;
+  }
+
+  if (/^[a-z]+:\/\//i.test(normalized)) {
+    try {
+      const parsed = new URL(normalized);
+      normalized = parsed.pathname || "/";
+    } catch {
+      normalized = normalized.replace(/^[a-z]+:\/\/[^/]+/i, "");
+    }
+  } else {
+    normalized = normalized.replace(/^[a-z]+:\/\/[^/]+/i, "");
+  }
+
   normalized = normalized.replace(/^\/?docs(?=\/|$)/i, "");
   normalized = normalized.replace(/^\/+/, "").replace(/\/+$/, "");
   normalized = normalized.replace(markdownExtensionRegex, "");
