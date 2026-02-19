@@ -783,6 +783,7 @@ select {
   display: grid;
   gap: 0.55rem;
   min-height: 0;
+  min-width: 0;
   align-content: start;
 }
 
@@ -1625,6 +1626,10 @@ html[data-color-mode="light"] .meta-item {
   padding: 0;
 }
 
+.result-list > li {
+  min-width: 0;
+}
+
 .tree-row {
   display: flex;
   align-items: center;
@@ -1763,6 +1768,7 @@ html[data-color-mode="light"] .meta-item {
   text-align: left;
   display: grid;
   gap: 0.16rem;
+  min-width: 0;
   padding: 0.62rem;
   cursor: pointer;
 }
@@ -1773,6 +1779,13 @@ html[data-color-mode="light"] .meta-item {
 
 .result-item strong {
   color: var(--text-primary);
+}
+
+.result-item strong,
+.result-item span,
+.result-item p {
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .result-item span,
