@@ -15,6 +15,19 @@ describe("markdown helpers", () => {
     ]);
   });
 
+  it("keeps underscore segments in slugs to match rendered heading ids", () => {
+    const markdown = "## Previous Track (audio_previous_track)";
+    const headings = extractHeadings(markdown);
+
+    expect(headings).toEqual([
+      {
+        depth: 2,
+        text: "Previous Track (audio_previous_track)",
+        slug: "previous-track-audio_previous_track",
+      },
+    ]);
+  });
+
   it("parses frontmatter and content", () => {
     const markdown = `---\ntitle: API\ndescription: Endpoint docs\n---\n# API`;
     const parsed = parseMarkdownDocument(markdown);

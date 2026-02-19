@@ -1,4 +1,5 @@
 import matter from "gray-matter";
+import GithubSlugger from "github-slugger";
 
 import type { MarkdownHeading, ParsedMarkdownDocument } from "@/lib/types";
 
@@ -12,18 +13,10 @@ const sanitizeHeadingText = (text: string): string =>
     .replace(/<[^>]+>/g, "")
     .trim();
 
-const baseSlug = (text: string): string =>
-  sanitizeHeadingText(text)
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .trim()
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-
 export const extractHeadings = (markdown: string): MarkdownHeading[] => {
   const lines = markdown.replace(/\r\n/g, "\n").split("\n");
-  const duplicates = new Map<string, number>();
   const headings: MarkdownHeading[] = [];
+  const slugger = new GithubSlugger();
 
   let inFence = false;
 
@@ -48,11 +41,7 @@ export const extractHeadings = (markdown: string): MarkdownHeading[] => {
       continue;
     }
 
-    const rawSlug = baseSlug(text);
-    const count = duplicates.get(rawSlug) ?? 0;
-    duplicates.set(rawSlug, count + 1);
-
-    const slug = count === 0 ? rawSlug : `${rawSlug}-${count}`;
+    const slug = slugger.slug(text);
     headings.push({
       depth: level.length,
       text,
