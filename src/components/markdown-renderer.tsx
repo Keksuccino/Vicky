@@ -17,19 +17,35 @@ type MarkdownRendererProps = {
   content: string;
 };
 
-const ALLOWED_HREF_REGEX = /^(https?:|mailto:|\/|#)/i;
-const ROOT_SHORT_LINK_REGEX = /^\/(?!docs(?:[/?#]|$))[^/?#]+(?:[?#].*)?$/;
+const ALLOWED_SCHEME_HREF_REGEX = /^(https?:|mailto:|#)/i;
+const ROOT_RELATIVE_HREF_REGEX = /^\/(?!\/)/;
+const DOCS_HREF_REGEX = /^\/docs(?:[/?#]|$)/i;
+const RESERVED_ROOT_HREF_REGEX = /^\/(?:api|admin|editor|_next)(?:[/?#]|$)/i;
+const RESERVED_ROOT_FILE_HREF_REGEX = /^\/(?:favicon\.ico|robots\.txt|sitemap\.xml|manifest\.json)(?:[?#]|$)/i;
 const COPIED_STATE_DURATION_MS = 1400;
 
 type CodeBlockProps = ComponentPropsWithoutRef<"pre">;
 
 const normalizeInternalDocsLink = (href: string): string => {
-  if (!ROOT_SHORT_LINK_REGEX.test(href)) {
+  if (!ROOT_RELATIVE_HREF_REGEX.test(href)) {
     return href;
   }
 
-  return `/docs${href}`;
+  if (DOCS_HREF_REGEX.test(href) || RESERVED_ROOT_HREF_REGEX.test(href) || RESERVED_ROOT_FILE_HREF_REGEX.test(href)) {
+    return href;
+  }
+
+  const queryOrHashIndex = href.search(/[?#]/);
+  const pathOnly = queryOrHashIndex >= 0 ? href.slice(0, queryOrHashIndex) : href;
+  const suffix = queryOrHashIndex >= 0 ? href.slice(queryOrHashIndex) : "";
+  const normalizedPath = pathOnly.replace(/\/{2,}/g, "/");
+  const docsPath = normalizedPath === "/" ? "/docs" : `/docs${normalizedPath}`;
+
+  return `${docsPath}${suffix}`;
 };
+
+const isSafeHref = (href: string): boolean =>
+  ALLOWED_SCHEME_HREF_REGEX.test(href) || ROOT_RELATIVE_HREF_REGEX.test(href);
 
 const getNodeText = (node: ReactNode): string => {
   if (typeof node === "string" || typeof node === "number") {
@@ -194,8 +210,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         components={{
           a: ({ href, children, ...props }) => {
             const normalizedHref = href ? normalizeInternalDocsLink(href.trim()) : "";
-            const safeHref =
-              normalizedHref && ALLOWED_HREF_REGEX.test(normalizedHref) ? normalizedHref : normalizedHref ? "#" : undefined;
+            const safeHref = normalizedHref && isSafeHref(normalizedHref) ? normalizedHref : normalizedHref ? "#" : undefined;
             const external = safeHref?.startsWith("http://") || safeHref?.startsWith("https://");
 
             return (

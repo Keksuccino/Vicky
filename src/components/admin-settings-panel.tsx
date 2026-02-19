@@ -7,6 +7,7 @@ import {
   activateTheme,
   createTheme,
   deleteTheme,
+  fetchAdminDomainSslStatus,
   fetchAdminSettings,
   formatApiError,
   getCurrentUser,
@@ -18,7 +19,8 @@ import {
 import { MaterialIcon } from "@/components/material-icon";
 import { EmptyState, ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
-import type { AdminSettings, ThemeDefinition, ThemeDraft } from "@/components/types";
+import type { AdminSettings, DomainSslRuntimeStatus, ThemeDefinition, ThemeDraft } from "@/components/types";
+import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -63,6 +65,75 @@ function draftFromTheme(theme: ThemeDefinition): ThemeDraft {
   };
 }
 
+type DomainFieldErrors = {
+  customDomain: string | null;
+  letsEncryptEmail: string | null;
+};
+
+const EMPTY_DOMAIN_FIELD_ERRORS: DomainFieldErrors = {
+  customDomain: null,
+  letsEncryptEmail: null,
+};
+
+const validateCustomDomainInput = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return normalizeCustomDomain(trimmed)
+    ? null
+    : "Enter a valid hostname only (example: docs.example.com, without protocol or path).";
+};
+
+const validateLetsEncryptEmailInput = (value: string): string | null => {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return normalizeLetsEncryptEmail(trimmed) ? null : "Enter a valid email address for Let's Encrypt notifications.";
+};
+
+const validateDomainFields = (domain: string, email: string): DomainFieldErrors => ({
+  customDomain: validateCustomDomainInput(domain),
+  letsEncryptEmail: validateLetsEncryptEmailInput(email),
+});
+
+const hasDomainFieldErrors = (errors: DomainFieldErrors): boolean => Boolean(errors.customDomain || errors.letsEncryptEmail);
+
+const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings => ({
+  ...settings,
+  customDomain: normalizeCustomDomain(settings.customDomain),
+  letsEncryptEmail: normalizeLetsEncryptEmail(settings.letsEncryptEmail),
+});
+
+const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "warning-text" | "error-text" => {
+  switch (status.certificateState) {
+    case "valid":
+      return "success-text";
+    case "expiring_soon":
+    case "missing":
+      return "warning-text";
+    case "expired":
+    case "domain_mismatch":
+    case "invalid":
+      return "error-text";
+    default:
+      return "warning-text";
+  }
+};
+
+const formatStatusTimestamp = (value: string): string => {
+  const parsed = new Date(value);
+
+  if (Number.isNaN(parsed.valueOf())) {
+    return value;
+  }
+
+  return parsed.toLocaleString();
+};
+
 export function AdminSettingsPanel() {
   const router = useRouter();
   const { themes, refreshThemes, setMode, setActiveThemeId } = useTheme();
@@ -74,9 +145,14 @@ export function AdminSettingsPanel() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [clearTokenOnSave, setClearTokenOnSave] = useState(false);
+  const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_DOMAIN_FIELD_ERRORS);
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
+
+  const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
+  const [sslStatusLoading, setSslStatusLoading] = useState(true);
+  const [sslStatusError, setSslStatusError] = useState<string | null>(null);
 
   const [themeDraft, setThemeDraft] = useState<ThemeDraft>(INITIAL_THEME_DRAFT);
   const [themeSaving, setThemeSaving] = useState(false);
@@ -87,28 +163,53 @@ export function AdminSettingsPanel() {
 
   const activeTheme = useMemo(() => themes.find((theme) => theme.isActive) ?? null, [themes]);
 
+  const refreshSslStatus = useCallback(async () => {
+    setSslStatusLoading(true);
+    setSslStatusError(null);
+
+    try {
+      const status = await fetchAdminDomainSslStatus();
+      setSslStatus(status);
+    } catch (error) {
+      setSslStatus(null);
+      setSslStatusError(formatApiError(error));
+    } finally {
+      setSslStatusLoading(false);
+    }
+  }, []);
+
   const saveSettingsChanges = useCallback(
     async (clearToken: boolean) => {
+      const domainErrors = validateDomainFields(settings.customDomain, settings.letsEncryptEmail);
+      setDomainFieldErrors(domainErrors);
+
+      if (hasDomainFieldErrors(domainErrors)) {
+        setSettingsMessage(null);
+        setConnectionMessage(null);
+        return;
+      }
+
       setSettingsSaving(true);
       setSettingsMessage(null);
       setLoadingError(null);
 
       try {
-        const saved = await saveAdminSettings(settings, { clearToken });
+        const saved = await saveAdminSettings(normalizeDomainFieldsForSave(settings), { clearToken });
         setSettings({
           ...saved,
           githubToken: "",
         });
+        setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
         setClearTokenOnSave(false);
         setSettingsMessage("Settings saved.");
-        await refreshThemes();
+        await Promise.all([refreshThemes(), refreshSslStatus()]);
       } catch (error) {
         setLoadingError(formatApiError(error));
       } finally {
         setSettingsSaving(false);
       }
     },
-    [refreshThemes, settings],
+    [refreshSslStatus, refreshThemes, settings],
   );
 
   useEffect(() => {
@@ -131,8 +232,9 @@ export function AdminSettingsPanel() {
         }
 
         setSettings(loadedSettings);
+        setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setClearTokenOnSave(false);
-        await refreshThemes();
+        await Promise.all([refreshThemes(), refreshSslStatus()]);
       } catch (error) {
         if (isActive) {
           setLoadingError(formatApiError(error));
@@ -149,7 +251,7 @@ export function AdminSettingsPanel() {
     return () => {
       isActive = false;
     };
-  }, [refreshThemes, router]);
+  }, [refreshSslStatus, refreshThemes, router]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;
@@ -758,13 +860,22 @@ export function AdminSettingsPanel() {
                 id="domain-custom-domain"
                 className="input"
                 value={settings.customDomain}
-                onChange={(event) => setSettings((prev) => ({ ...prev, customDomain: event.target.value }))}
+                aria-invalid={Boolean(domainFieldErrors.customDomain)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSettings((prev) => ({ ...prev, customDomain: value }));
+                  setDomainFieldErrors((prev) => ({
+                    ...prev,
+                    customDomain: validateCustomDomainInput(value),
+                  }));
+                }}
                 placeholder="docs.example.com"
               />
               <span className="field-hint">
                 Hostname only (no protocol or path). Example: <code>fancymenu.net</code> or{" "}
                 <code>docs.fancymenu.net</code>.
               </span>
+              {domainFieldErrors.customDomain ? <span className="error-text">{domainFieldErrors.customDomain}</span> : null}
             </label>
 
             <label className="field-row" htmlFor="domain-letsencrypt-email">
@@ -774,13 +885,45 @@ export function AdminSettingsPanel() {
                 className="input"
                 type="email"
                 value={settings.letsEncryptEmail}
-                onChange={(event) => setSettings((prev) => ({ ...prev, letsEncryptEmail: event.target.value }))}
+                aria-invalid={Boolean(domainFieldErrors.letsEncryptEmail)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setSettings((prev) => ({ ...prev, letsEncryptEmail: value }));
+                  setDomainFieldErrors((prev) => ({
+                    ...prev,
+                    letsEncryptEmail: validateLetsEncryptEmailInput(value),
+                  }));
+                }}
                 placeholder="admin@example.com"
               />
               <span className="field-hint">
                 Required for automatic certificate registration and renewal notifications.
               </span>
+              {domainFieldErrors.letsEncryptEmail ? (
+                <span className="error-text">{domainFieldErrors.letsEncryptEmail}</span>
+              ) : null}
             </label>
+
+            <div className="field-row">
+              <span className="field-label">SSL runtime status</span>
+              {sslStatusLoading ? <span className="field-hint">Checking certificate runtime status...</span> : null}
+              {!sslStatusLoading && sslStatus ? (
+                <>
+                  <p className={statusToneClassName(sslStatus)}>{sslStatus.message}</p>
+                  <span className="field-hint">
+                    Source:{" "}
+                    {sslStatus.source === "runtime" ? "runtime status endpoint" : "best-effort check (settings + local cert files)"}.
+                  </span>
+                  {sslStatus.certificateExpiresAt ? (
+                    <span className="field-hint">
+                      Certificate expiry: {formatStatusTimestamp(sslStatus.certificateExpiresAt)}.
+                    </span>
+                  ) : null}
+                  <span className="field-hint">Last checked: {formatStatusTimestamp(sslStatus.checkedAt)}.</span>
+                </>
+              ) : null}
+              {sslStatusError ? <p className="warning-text">Could not load SSL runtime status: {sslStatusError}</p> : null}
+            </div>
 
             <p className="warning-text">
               Automatic SSL runs only when both values are set and DNS points this domain to your server.

@@ -54,21 +54,35 @@ describe("MarkdownRenderer", () => {
     expect(screen.queryByText("{.is-warning}")).toBeNull();
   });
 
-  it("rewrites root short links to docs paths", () => {
-    render(<MarkdownRenderer content="[Home](/home)" />);
+  it("rewrites root-relative links to docs paths, including nested paths", () => {
+    render(<MarkdownRenderer content={"[Home](/home)\n\n[Deep](/guides/setup?mode=full#install)\n\n[Root](/)"} />);
 
     const link = screen.getByRole("link", { name: "Home" });
+    const deepLink = screen.getByRole("link", { name: "Deep" });
+    const rootLink = screen.getByRole("link", { name: "Root" });
+
     expect(link.getAttribute("href")).toBe("/docs/home");
+    expect(deepLink.getAttribute("href")).toBe("/docs/guides/setup?mode=full#install");
+    expect(rootLink.getAttribute("href")).toBe("/docs");
   });
 
-  it("does not rewrite links that already target nested paths", () => {
-    render(<MarkdownRenderer content="[Nested](/docs/home)\n\n[Deep](/foo/bar)" />);
+  it("does not rewrite links that target reserved app routes or existing docs paths", () => {
+    render(<MarkdownRenderer content="[Docs](/docs/home)\n\n[API](/api/docs/page)\n\n[Admin](/admin/login)" />);
 
-    const nestedLink = screen.getByRole("link", { name: "Nested" });
-    const deepLink = screen.getByRole("link", { name: "Deep" });
+    const docsLink = screen.getByRole("link", { name: "Docs" });
+    const apiLink = screen.getByRole("link", { name: "API" });
+    const adminLink = screen.getByRole("link", { name: "Admin" });
 
-    expect(nestedLink.getAttribute("href")).toBe("/docs/home");
-    expect(deepLink.getAttribute("href")).toBe("/foo/bar");
+    expect(docsLink.getAttribute("href")).toBe("/docs/home");
+    expect(apiLink.getAttribute("href")).toBe("/api/docs/page");
+    expect(adminLink.getAttribute("href")).toBe("/admin/login");
+  });
+
+  it("falls back to a safe hash for protocol-relative links", () => {
+    render(<MarkdownRenderer content="[Unsafe](//example.com/phishing)" />);
+
+    const unsafeLink = screen.getByRole("link", { name: "Unsafe" });
+    expect(unsafeLink.getAttribute("href")).toBe("#");
   });
 
   it("renders copy buttons only for fenced code blocks", () => {

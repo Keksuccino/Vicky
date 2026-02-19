@@ -4,6 +4,8 @@ import {
   type DocPage,
   type DocSearchResult,
   type DocTreeNode,
+  type DomainSslCertificateState,
+  type DomainSslRuntimeStatus,
   type EditableDoc,
   type MarkdownHeading,
   type ThemeDefinition,
@@ -34,6 +36,14 @@ export type PublicSiteSettings = {
 const DEFAULT_DOCS_CACHE_TTL_SECONDS = 30;
 const MIN_DOCS_CACHE_TTL_SECONDS = 1;
 const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
+const DOMAIN_SSL_CERTIFICATE_STATES: DomainSslCertificateState[] = [
+  "missing",
+  "valid",
+  "expiring_soon",
+  "expired",
+  "domain_mismatch",
+  "invalid",
+];
 
 const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -82,6 +92,10 @@ function asBoolean(value: unknown, fallback = false): boolean {
 
 function asNumber(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function asNullableBoolean(value: unknown): boolean | null {
+  return typeof value === "boolean" ? value : null;
 }
 
 function clampInteger(value: number, min: number, max: number): number {
@@ -422,6 +436,31 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   };
 }
 
+function isDomainSslCertificateState(value: string): value is DomainSslCertificateState {
+  return DOMAIN_SSL_CERTIFICATE_STATES.includes(value as DomainSslCertificateState);
+}
+
+function normalizeDomainSslRuntimeStatus(source: unknown): DomainSslRuntimeStatus {
+  const payload = asRecord(asRecord(source).status ?? source);
+  const sourceValue = asString(payload.source).trim();
+  const certificateStateValue = asString(payload.certificateState).trim();
+  const checkedAt = asString(payload.checkedAt).trim();
+  const expiresAt = asString(payload.certificateExpiresAt).trim();
+
+  return {
+    source: sourceValue === "runtime" ? "runtime" : "best-effort",
+    configured: asBoolean(payload.configured, false),
+    customDomain: asString(payload.customDomain),
+    letsEncryptEmail: asString(payload.letsEncryptEmail),
+    certificateState: isDomainSslCertificateState(certificateStateValue) ? certificateStateValue : "missing",
+    certificatePresent: asBoolean(payload.certificatePresent, false),
+    certificateValidForDomain: asNullableBoolean(payload.certificateValidForDomain),
+    certificateExpiresAt: expiresAt || null,
+    checkedAt: checkedAt || new Date().toISOString(),
+    message: asString(payload.message, "SSL runtime status is unavailable."),
+  };
+}
+
 function normalizeTheme(source: unknown, activeThemeId: string | null): ThemeDefinition | null {
   const payload = asRecord(source);
   const id = asString(payload.id).trim();
@@ -553,6 +592,11 @@ export async function fetchAdminSettings(): Promise<{ settings: AdminSettings; t
   };
 }
 
+export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatus> {
+  const response = await requestJson<unknown>("/api/admin/domain-status");
+  return normalizeDomainSslRuntimeStatus(response);
+}
+
 export async function saveAdminSettings(
   settings: AdminSettings,
   options?: { clearToken?: boolean },
@@ -573,8 +617,8 @@ export async function saveAdminSettings(
     },
     docsCacheTtlMs: secondsToMs(settings.docsCacheTtlSeconds),
     domain: {
-      customDomain: settings.customDomain,
-      letsEncryptEmail: settings.letsEncryptEmail,
+      customDomain: settings.customDomain.trim(),
+      letsEncryptEmail: settings.letsEncryptEmail.trim(),
     },
     github: {
       owner: settings.githubOwner,

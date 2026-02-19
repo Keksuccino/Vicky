@@ -61,6 +61,21 @@ export type AdminSettings = {
   tokenConfigured: boolean;
 };
 
+export type DomainSslCertificateState = "missing" | "valid" | "expiring_soon" | "expired" | "domain_mismatch" | "invalid";
+
+export type DomainSslRuntimeStatus = {
+  source: "runtime" | "best-effort";
+  configured: boolean;
+  customDomain: string;
+  letsEncryptEmail: string;
+  certificateState: DomainSslCertificateState;
+  certificatePresent: boolean;
+  certificateValidForDomain: boolean | null;
+  certificateExpiresAt: string | null;
+  checkedAt: string;
+  message: string;
+};
+
 export type ThemeDefinition = {
   id: string;
   name: string;
