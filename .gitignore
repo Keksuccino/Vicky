@@ -43,3 +43,4 @@ yarn-error.log*
 
 # runtime data
 /data/wiki-store.json
+/data/login-rate-limit.json

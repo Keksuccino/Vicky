@@ -9,18 +9,18 @@ const defaultSessionSeconds = Number(process.env.ADMIN_SESSION_MAX_AGE_SECONDS ?
 export const ADMIN_SESSION_MAX_AGE_SECONDS =
   Number.isFinite(defaultSessionSeconds) && defaultSessionSeconds > 0 ? defaultSessionSeconds : 43200;
 
-const DEV_FALLBACK_AUTH_SECRET = "change-this-dev-auth-secret";
-const DEV_FALLBACK_ADMIN_PASSWORD = "admin";
+const TEST_FALLBACK_AUTH_SECRET = "test-auth-jwt-secret";
+const TEST_FALLBACK_ADMIN_PASSWORD = "test-admin-password";
 
 const getJwtSecret = (): Uint8Array => {
   const secret = process.env.AUTH_JWT_SECRET;
 
   if (!secret?.trim()) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Missing AUTH_JWT_SECRET environment variable.");
+    if (process.env.NODE_ENV === "test") {
+      return encoder.encode(TEST_FALLBACK_AUTH_SECRET);
     }
 
-    return encoder.encode(DEV_FALLBACK_AUTH_SECRET);
+    throw new Error("Missing AUTH_JWT_SECRET environment variable.");
   }
 
   return encoder.encode(secret.trim());
@@ -30,11 +30,11 @@ const getAdminPassword = (): string => {
   const password = process.env.ADMIN_PASSWORD;
 
   if (!password?.trim()) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Missing ADMIN_PASSWORD environment variable.");
+    if (process.env.NODE_ENV === "test") {
+      return TEST_FALLBACK_ADMIN_PASSWORD;
     }
 
-    return DEV_FALLBACK_ADMIN_PASSWORD;
+    throw new Error("Missing ADMIN_PASSWORD environment variable.");
   }
 
   return password.trim();

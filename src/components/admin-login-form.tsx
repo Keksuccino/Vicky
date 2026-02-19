@@ -7,13 +7,42 @@ import { ApiError, formatApiError, getCurrentUser, login } from "@/components/ap
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
 
-const getNextPath = (): string => {
-  if (typeof window === "undefined") {
-    return "/admin/settings";
+const DEFAULT_NEXT_PATH = "/admin/settings";
+const ALLOWED_NEXT_PATH_PREFIXES = ["/admin", "/editor"];
+const DISALLOWED_NEXT_PATHS = new Set(["/admin/login"]);
+
+const isAllowedNextPathname = (pathname: string): boolean => {
+  if (DISALLOWED_NEXT_PATHS.has(pathname)) {
+    return false;
   }
 
-  const next = new URLSearchParams(window.location.search).get("next");
-  return next && next.startsWith("/") ? next : "/admin/settings";
+  return ALLOWED_NEXT_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+};
+
+const getNextPath = (): string => {
+  if (typeof window === "undefined") {
+    return DEFAULT_NEXT_PATH;
+  }
+
+  const rawNext = new URLSearchParams(window.location.search).get("next");
+  if (!rawNext) {
+    return DEFAULT_NEXT_PATH;
+  }
+
+  try {
+    const parsed = new URL(rawNext, window.location.origin);
+    if (parsed.origin !== window.location.origin) {
+      return DEFAULT_NEXT_PATH;
+    }
+
+    if (!isAllowedNextPathname(parsed.pathname)) {
+      return DEFAULT_NEXT_PATH;
+    }
+
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return DEFAULT_NEXT_PATH;
+  }
 };
 
 const asRecord = (value: unknown): Record<string, unknown> =>

@@ -1,17 +1,17 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const ENCRYPTION_PREFIX = "enc:v1";
-const DEV_FALLBACK_ENCRYPTION_SECRET = "change-this-dev-encryption-secret";
+const TEST_FALLBACK_ENCRYPTION_SECRET = "test-encryption-secret";
 
 const getEncryptionSecret = (): string => {
   const secret = process.env.ENCRYPTION_SECRET;
 
   if (!secret?.trim()) {
-    if (process.env.NODE_ENV === "production") {
-      throw new Error("Missing ENCRYPTION_SECRET environment variable.");
+    if (process.env.NODE_ENV === "test") {
+      return TEST_FALLBACK_ENCRYPTION_SECRET;
     }
 
-    return DEV_FALLBACK_ENCRYPTION_SECRET;
+    throw new Error("Missing ENCRYPTION_SECRET environment variable.");
   }
 
   return secret.trim();

@@ -33,7 +33,7 @@ npm install
 cp .env.example .env.local
 ```
 
-3. Set required values in `.env.local`:
+3. Set required values in `.env.local` (required for local development and production):
 - `AUTH_JWT_SECRET`
 - `ADMIN_PASSWORD`
 - `ENCRYPTION_SECRET`
@@ -111,10 +111,12 @@ npm run start
 
 ## Production Notes
 
-- In production, `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` must be set.
+- `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` must be set in every non-test environment.
 - Keep GitHub token scoped minimally (repo access only as needed).
 - Back up `data/wiki-store.json` regularly.
 - Admin login brute-force protection can be tuned with:
   - `AUTH_LOGIN_MAX_FAILURES` (default `8`)
   - `AUTH_LOGIN_WINDOW_SECONDS` (default `600`)
   - `AUTH_LOGIN_BLOCK_SECONDS` (default `10800`)
+  - `AUTH_TRUST_PROXY_HEADERS` (default `false`; only enable behind trusted proxies)
+  - `AUTH_LOGIN_STORE_FILE_PATH` (default `./data/login-rate-limit.json`)

@@ -28,7 +28,7 @@ const blockedLoginResponse = (retryAfterSeconds: number): NextResponse =>
 
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   try {
-    const initialRateLimit = getLoginRateLimitStatus(request);
+    const initialRateLimit = await getLoginRateLimitStatus(request);
     if (initialRateLimit.blocked) {
       return blockedLoginResponse(initialRateLimit.retryAfterSeconds);
     }
@@ -38,7 +38,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     const isValid = await verifyAdminPassword(parsed.password);
     if (!isValid) {
-      const nextRateLimit = registerFailedLoginAttempt(request);
+      const nextRateLimit = await registerFailedLoginAttempt(request);
       if (nextRateLimit.blocked) {
         return blockedLoginResponse(nextRateLimit.retryAfterSeconds);
       }
@@ -52,7 +52,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       );
     }
 
-    clearFailedLoginAttempts(request);
+    await clearFailedLoginAttempts(request);
     const token = await createAdminSessionToken();
     const response = NextResponse.json({ authenticated: true });
     applyAdminSessionCookie(response, token);
