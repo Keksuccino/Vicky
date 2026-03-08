@@ -27,8 +27,7 @@ export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
   "--success": "#0f8a58",
   "--danger": "#ca3f54",
   "--header-bg": "rgba(248, 251, 255, 0.88)",
-  "--page-gradient":
-    "radial-gradient(circle at 12% 0%, rgba(125, 184, 240, 0.1) 0%, transparent 35%), radial-gradient(circle at 88% 8%, rgba(0, 110, 207, 0.06) 0%, transparent 25%), linear-gradient(180deg, #f7faff 0%, #f9fbff 45%, #f5f8fd 100%)",
+  "--page-gradient": "#f8fbff",
 };
 
 export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
@@ -48,8 +47,7 @@ export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
   "--success": "#2bd08a",
   "--danger": "#ff6a7f",
   "--header-bg": "rgba(19, 27, 38, 0.8)",
-  "--page-gradient":
-    "radial-gradient(circle at 10% 2%, rgba(71, 114, 156, 0.14) 0%, transparent 32%), radial-gradient(circle at 88% 6%, rgba(92, 174, 223, 0.08) 0%, transparent 30%), linear-gradient(180deg, #101721 0%, #121a27 50%, #0f1620 100%)",
+  "--page-gradient": "#121820",
 };
 
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(value)));
@@ -175,21 +173,8 @@ const buildSoftColor = (mode: ThemeMode, accent: string, ratio: number): string 
 
 const buildAccentContrast = (accent: string): string => (relativeLuminance(accent) >= 0.42 ? DARK_CONTRAST : LIGHT_CONTRAST);
 
-const buildPageGradient = (mode: ThemeMode, primaryAccent: string, surfaceAccent: string): string => {
-  if (mode === "dark") {
-    return [
-      `radial-gradient(circle at 10% 2%, ${hexToRgba(surfaceAccent, 0.14)} 0%, transparent 32%)`,
-      `radial-gradient(circle at 88% 6%, ${hexToRgba(primaryAccent, 0.08)} 0%, transparent 30%)`,
-      `linear-gradient(180deg, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.08)} 0%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.03)} 50%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.05)} 100%)`,
-    ].join(", ");
-  }
-
-  return [
-    `radial-gradient(circle at 12% 0%, ${hexToRgba(surfaceAccent, 0.1)} 0%, transparent 35%)`,
-    `radial-gradient(circle at 88% 8%, ${hexToRgba(primaryAccent, 0.06)} 0%, transparent 25%)`,
-    `linear-gradient(180deg, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.03)} 0%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.015)} 45%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.025)} 100%)`,
-  ].join(", ");
-};
+const buildPageGradient = (mode: ThemeMode): string =>
+  mode === "dark" ? DARK_THEME_BASE_VARIABLES["--surface"] : LIGHT_THEME_BASE_VARIABLES["--surface"];
 
 const buildMobileFabVariables = (mode: ThemeMode, surfaceAccent: string): ThemeVariables =>
   mode === "dark"
@@ -223,7 +208,7 @@ export const buildThemeVariables = (mode: ThemeMode, settings: ThemeCustomizatio
     "--accent-surface": surfaceAccent,
     "--accent-surface-soft": buildSoftColor(mode, surfaceAccent, mode === "dark" ? 0.2 : 0.14),
     "--accent-surface-contrast": buildAccentContrast(surfaceAccent),
-    "--page-gradient": buildPageGradient(mode, accent, surfaceAccent),
+    "--page-gradient": buildPageGradient(mode),
     ...buildMobileFabVariables(mode, surfaceAccent),
   };
 };
