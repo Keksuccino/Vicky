@@ -130,6 +130,8 @@ type AccentColorFieldProps = {
   hint: string;
   id: string;
   label: string;
+  resetLabel?: string;
+  showReset?: boolean;
   value: string;
   onChange: (value: string) => void;
 };
@@ -141,12 +143,16 @@ function AccentColorField({
   hint,
   id,
   label,
+  resetLabel = "Reset",
+  showReset = false,
   value,
   onChange,
 }: AccentColorFieldProps) {
   const trimmedValue = value.trim();
+  const normalizedFallbackColor = normalizeAccentColor(fallbackColor, "#000000");
   const normalizedPickerValue = normalizeAccentColor(trimmedValue, fallbackColor);
   const displayValue = trimmedValue ? trimmedValue.toUpperCase() : emptyLabel;
+  const canReset = showReset && normalizedPickerValue !== normalizedFallbackColor;
   const previewStyle = trimmedValue
     ? ({
         "--theme-color-preview": trimmedValue,
@@ -170,8 +176,18 @@ function AccentColorField({
         <span className={`theme-color-value${trimmedValue ? "" : " theme-color-value-empty"}`} aria-live="polite">
           {displayValue}
         </span>
+        {showReset ? (
+          <button
+            type="button"
+            className="btn btn-ghost theme-color-action"
+            disabled={!canReset}
+            onClick={() => onChange(normalizedFallbackColor)}
+          >
+            {resetLabel}
+          </button>
+        ) : null}
         {allowEmpty ? (
-          <button type="button" className="btn btn-ghost theme-color-clear" disabled={!trimmedValue} onClick={() => onChange("")}>
+          <button type="button" className="btn btn-ghost theme-color-action" disabled={!trimmedValue} onClick={() => onChange("")}>
             Clear
           </button>
         ) : null}
@@ -569,6 +585,7 @@ export function AdminSettingsPanel() {
                     label="Main accent"
                     value={settings.themeLightAccent}
                     fallbackColor={THEME_DEFAULTS.lightAccent}
+                    showReset
                     hint="Used for links, highlights, focus states, and primary action buttons in Light mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
                   />
@@ -577,6 +594,7 @@ export function AdminSettingsPanel() {
                     label="Surface/background accent"
                     value={settings.themeLightSurfaceAccent}
                     fallbackColor={THEME_DEFAULTS.lightSurfaceAccent}
+                    showReset
                     hint="Used for sidebar surfaces, header controls, and page-entry hovers in Light mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
                   />
@@ -591,6 +609,7 @@ export function AdminSettingsPanel() {
                     label="Main accent"
                     value={settings.themeDarkAccent}
                     fallbackColor={THEME_DEFAULTS.darkAccent}
+                    showReset
                     hint="Used for links, highlights, focus states, and primary action buttons in Dark mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
                   />
@@ -599,29 +618,11 @@ export function AdminSettingsPanel() {
                     label="Surface/background accent"
                     value={settings.themeDarkSurfaceAccent}
                     fallbackColor={THEME_DEFAULTS.darkSurfaceAccent}
+                    showReset
                     hint="Used for sidebar surfaces, header controls, and page-entry hovers in Dark mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
                   />
                 </div>
-              </div>
-
-              <div className="action-row">
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() =>
-                    setSettings((prev) => ({
-                      ...prev,
-                      themeLightAccent: THEME_DEFAULTS.lightAccent,
-                      themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
-                      themeDarkAccent: THEME_DEFAULTS.darkAccent,
-                      themeDarkSurfaceAccent: THEME_DEFAULTS.darkSurfaceAccent,
-                    }))
-                  }
-                >
-                  <MaterialIcon name="restart_alt" />
-                  <span>Reset accent colors</span>
-                </button>
               </div>
             </div>
 

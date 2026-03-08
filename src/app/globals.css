@@ -2269,7 +2269,7 @@ html[data-color-mode="light"] .meta-item {
   color: var(--text-muted);
 }
 
-.theme-color-clear {
+.theme-color-action {
   min-height: 2.3rem;
   padding-inline: 0.72rem;
 }
