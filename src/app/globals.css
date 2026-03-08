@@ -21,6 +21,9 @@
   --page-gradient: #f8fbff;
   --shadow-soft: 0 16px 40px rgba(25, 53, 98, 0.12);
   --shadow-strong: 0 24px 60px rgba(16, 36, 67, 0.18);
+  --placeholder-surface: color-mix(in srgb, var(--accent-surface-soft) 74%, var(--surface));
+  --placeholder-surface-strong: color-mix(in srgb, var(--accent-surface) 18%, var(--surface-elevated));
+  --placeholder-border: color-mix(in srgb, var(--accent-surface) 22%, var(--border));
   --sidebar-scrollbar-track: color-mix(in srgb, var(--surface-muted) 74%, transparent);
   --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 86%, var(--surface-elevated));
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, #7c8ead);
@@ -74,6 +77,9 @@ html[data-color-mode="custom"] {
   --page-gradient: #121820;
   --shadow-soft: 0 16px 44px rgba(2, 8, 18, 0.46);
   --shadow-strong: 0 30px 65px rgba(2, 8, 18, 0.65);
+  --placeholder-surface: color-mix(in srgb, var(--accent-surface-soft) 78%, var(--surface));
+  --placeholder-surface-strong: color-mix(in srgb, var(--accent-surface) 22%, var(--surface-elevated));
+  --placeholder-border: color-mix(in srgb, var(--accent-surface) 26%, var(--border));
   --sidebar-scrollbar-track: color-mix(in srgb, var(--surface-muted) 82%, #0e1622);
   --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 78%, #223349);
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 52%, #8da5c7);
@@ -315,14 +321,14 @@ select {
   width: 2rem;
   height: 2rem;
   border-radius: 0.6rem;
-  background: var(--surface-muted);
+  background: var(--placeholder-surface);
 }
 
 .brand-text-placeholder {
   width: 7.5rem;
   height: 1.05rem;
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: var(--placeholder-surface);
 }
 
 .main-nav {
@@ -784,22 +790,22 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .sidebar-skeleton-toggle-item {
   min-height: 1.86rem;
   border-radius: 10px;
-  background: var(--surface-elevated);
+  background: var(--placeholder-surface-strong);
   box-shadow: none;
 }
 
 .sidebar-skeleton-input {
   height: 2.3rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
+  border: 1px solid var(--placeholder-border);
+  background: var(--placeholder-surface);
 }
 
 .sidebar-skeleton-caption {
   width: 5.2rem;
   height: 0.85rem;
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: var(--placeholder-surface);
 }
 
 .sidebar-skeleton-list {
@@ -811,7 +817,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   height: 2rem;
   width: 100%;
   border-radius: 8px;
-  background: var(--surface-muted);
+  background: var(--placeholder-surface);
 }
 
 .docs-tree-wrap,
@@ -882,13 +888,13 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 }
 
 .page-header-skeleton {
-  border-color: var(--border);
-  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface-elevated));
+  border-color: var(--placeholder-border);
+  background: var(--placeholder-surface);
 }
 
 .docs-skeleton-line {
   border-radius: 999px;
-  background: var(--surface-muted);
+  background: var(--placeholder-surface);
 }
 
 .docs-skeleton-heading {
@@ -912,8 +918,8 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .docs-skeleton-chip {
   height: 1.85rem;
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-elevated);
+  border: 1px solid var(--placeholder-border);
+  background: var(--placeholder-surface-strong);
 }
 
 .docs-skeleton-chip-long {
