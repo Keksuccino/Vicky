@@ -762,19 +762,19 @@ html[data-color-mode="dark"] .mode-toggle,
 html[data-color-mode="custom"] .mode-toggle,
 html[data-color-mode="dark"] .sidebar-view-toggle,
 html[data-color-mode="custom"] .sidebar-view-toggle {
-  background: color-mix(in srgb, var(--surface) 86%, var(--accent-surface-soft) 14%);
-  border-color: color-mix(in srgb, var(--accent-surface) 26%, var(--border));
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  background: color-mix(in srgb, var(--accent-surface-soft) 60%, var(--surface-muted));
+  border-color: color-mix(in srgb, var(--accent-surface) 18%, var(--border));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 html[data-color-mode="dark"] .mode-button-active,
 html[data-color-mode="custom"] .mode-button-active,
 html[data-color-mode="dark"] .sidebar-view-button-active,
 html[data-color-mode="custom"] .sidebar-view-button-active {
-  background: color-mix(in srgb, var(--surface-elevated) 80%, white 20%);
+  background: color-mix(in srgb, var(--accent-surface-soft) 58%, var(--surface-elevated));
   box-shadow:
-    inset 0 0 0 1px color-mix(in srgb, rgba(255, 255, 255, 0.4) 55%, var(--accent-surface) 45%),
-    0 8px 18px rgba(2, 8, 18, 0.28);
+    inset 0 0 0 1px color-mix(in srgb, rgba(255, 255, 255, 0.12) 55%, var(--border) 45%),
+    0 4px 12px rgba(2, 8, 18, 0.18);
 }
 
 .docs-sidebar-unresolved {
