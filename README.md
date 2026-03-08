@@ -234,6 +234,13 @@ Admin endpoints:
 - `GET|POST /api/admin/docs`
 - `GET /api/admin/domain-status`
 
+## Third-Party Assets
+
+Vicky uses Google's Material Symbols Outlined icon font for UI icons via `@fontsource/material-symbols-outlined`.
+
+- Source: <https://github.com/google/material-design-icons>
+- License: Apache-2.0
+
 ## License
 
 MIT. See [LICENSE.md](LICENSE.md).
