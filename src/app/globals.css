@@ -2080,12 +2080,11 @@ html[data-color-mode="light"] .meta-item {
   align-items: start;
 }
 
-.panel-grid > .panel-card-repo {
+.panel-grid > .panel-stack-left {
   grid-column: 1;
-}
-
-.panel-grid > .panel-card-site {
-  grid-column: 1;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
 }
 
 .panel-grid > .panel-stack-right {
@@ -2503,8 +2502,7 @@ html[data-color-mode="light"] .meta-item {
     grid-template-columns: 1fr;
   }
 
-  .panel-grid > .panel-card-repo,
-  .panel-grid > .panel-card-site,
+  .panel-grid > .panel-stack-left,
   .panel-grid > .panel-stack-right {
     grid-column: auto;
   }
@@ -2547,8 +2545,7 @@ html[data-color-mode="light"] .meta-item {
     grid-template-columns: 1fr;
   }
 
-  .panel-grid > .panel-card-repo,
-  .panel-grid > .panel-card-site,
+  .panel-grid > .panel-stack-left,
   .panel-grid > .panel-stack-right {
     grid-column: auto;
   }
