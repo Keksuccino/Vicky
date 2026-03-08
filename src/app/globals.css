@@ -2367,10 +2367,15 @@ html[data-color-mode="light"] .meta-item {
     border-radius: var(--radius-sm);
   }
 
-  .docs-sidebar::-webkit-scrollbar-button {
+  .docs-sidebar::-webkit-scrollbar-button,
+  .docs-sidebar::-webkit-scrollbar-button:single-button,
+  .docs-sidebar::-webkit-scrollbar-button:vertical:start:decrement,
+  .docs-sidebar::-webkit-scrollbar-button:vertical:end:increment {
+    -webkit-appearance: none;
     display: none;
     height: 0;
     width: 0;
+    background: transparent;
   }
 
   .field-inline {
