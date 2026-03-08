@@ -664,17 +664,29 @@ select {
   gap: 0.85rem;
   align-content: start;
   scrollbar-gutter: stable;
-  scrollbar-width: thin;
-  scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .docs-sidebar {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .docs-sidebar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+  }
 }
 
 .docs-sidebar::-webkit-scrollbar {
-  width: 0.94rem;
+  width: 0.72rem;
 }
 
 .docs-sidebar::-webkit-scrollbar-track {
-  background: var(--sidebar-scrollbar-track);
-  border: 1px solid var(--sidebar-scrollbar-track-border);
+  background: transparent;
+  border: 0;
   border-radius: 999px;
   margin: 0.35rem 0.08rem 0.35rem 0.42rem;
 }
