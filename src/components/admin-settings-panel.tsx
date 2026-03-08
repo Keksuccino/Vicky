@@ -149,6 +149,7 @@ function AccentColorField({
   onChange,
 }: AccentColorFieldProps) {
   const trimmedValue = value.trim();
+  const labelId = `${id}-label`;
   const normalizedFallbackColor = normalizeAccentColor(fallbackColor, "#000000");
   const normalizedPickerValue = normalizeAccentColor(trimmedValue, fallbackColor);
   const displayValue = trimmedValue ? trimmedValue.toUpperCase() : emptyLabel;
@@ -160,8 +161,10 @@ function AccentColorField({
     : undefined;
 
   return (
-    <label className="field-row" htmlFor={id}>
-      <span className="field-label">{label}</span>
+    <div className="field-row">
+      <span className="field-label" id={labelId}>
+        {label}
+      </span>
       <div className="theme-color-input-row">
         <span className={`theme-color-picker-shell${trimmedValue ? "" : " theme-color-picker-shell-empty"}`} style={previewStyle}>
           <span className="theme-color-picker-preview" aria-hidden="true" />
@@ -170,6 +173,7 @@ function AccentColorField({
             className="theme-color-picker"
             type="color"
             value={normalizedPickerValue}
+            aria-labelledby={labelId}
             onChange={(event) => onChange(event.target.value)}
           />
         </span>
@@ -193,7 +197,7 @@ function AccentColorField({
         ) : null}
       </div>
       <span className="field-hint">{hint}</span>
-    </label>
+    </div>
   );
 }
 
