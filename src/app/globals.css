@@ -241,6 +241,7 @@ select {
 
 .app-content > .docs-page + .app-footer .app-footer-card {
   grid-column: 2;
+  background: var(--surface);
 }
 
 .app-header {
@@ -862,7 +863,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .docs-main {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-elevated);
+  background: var(--surface);
   box-shadow: var(--shadow-soft);
   padding: clamp(1rem, 2vw, 1.6rem);
   min-height: 70vh;
