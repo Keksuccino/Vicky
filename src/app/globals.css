@@ -11,6 +11,7 @@
   --accent: #006ecf;
   --accent-soft: #d6ecff;
   --accent-contrast: #f8fbff;
+  --info-accent: #2f7fd8;
   --success: #0f8a58;
   --danger: #ca3f54;
   --header-bg: rgba(248, 251, 255, 0.88);
@@ -62,6 +63,7 @@ html[data-color-mode="custom"] {
   --accent: #5caedf;
   --accent-soft: #22384d;
   --accent-contrast: #07121e;
+  --info-accent: #79b9ff;
   --success: #2bd08a;
   --danger: #ff6a7f;
   --header-bg: rgba(19, 27, 38, 0.8);
@@ -1501,13 +1503,13 @@ html[data-color-mode="light"] .meta-item {
 }
 
 .md-alert-info {
-  border-color: color-mix(in srgb, var(--accent) 36%, var(--border));
-  background: color-mix(in srgb, var(--accent) 12%, var(--surface-muted));
+  border-color: color-mix(in srgb, var(--info-accent) 36%, var(--border));
+  background: color-mix(in srgb, var(--info-accent) 12%, var(--surface-muted));
 }
 
 .md-alert-info::before {
   content: "info";
-  color: color-mix(in srgb, var(--accent) 74%, var(--text-primary));
+  color: color-mix(in srgb, var(--info-accent) 74%, var(--text-primary));
 }
 
 .md-alert-success {
