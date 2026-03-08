@@ -118,7 +118,7 @@ body {
 }
 
 body {
-  background: var(--page-gradient);
+  background: var(--surface);
   color: var(--text-primary);
   font-family: var(--font-body), "Segoe UI", sans-serif;
   line-height: 1.5;
@@ -496,9 +496,7 @@ select {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: clamp(1rem, 4vw, 2.15rem);
-  background:
-    radial-gradient(circle at 85% 12%, color-mix(in srgb, var(--accent) 16%, transparent) 0%, transparent 40%),
-    var(--surface-elevated);
+  background: var(--surface-elevated);
   box-shadow: var(--shadow-soft);
 }
 
