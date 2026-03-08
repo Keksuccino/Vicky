@@ -1,11 +1,13 @@
 # Vicky
 
-Vicky is a self-hosted docs/wiki frontend for markdown content stored in a GitHub repository.
+Vicky is a modern self-hosted docs/wiki frontend for markdown content stored in a GitHub repository.
 
 It gives you:
 - a public documentation site
 - an admin panel for repository, branding, domain, and theme settings
 - an in-browser markdown editor that saves directly back to GitHub
+
+![Screenshot_6_7](https://github.com/user-attachments/assets/241f4ffe-edb6-49a7-a006-a4b7a75ea261)
 
 ## Highlights
 
