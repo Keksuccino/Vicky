@@ -1179,7 +1179,65 @@ html[data-color-mode="light"] .meta-item {
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
   padding: 0.85rem;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .markdown-body pre {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .markdown-body pre {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+  }
+}
+
+.markdown-body pre::-webkit-scrollbar {
+  width: 0.72rem;
+  height: 0.72rem;
+}
+
+.markdown-body pre::-webkit-scrollbar-track {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  margin: 0.42rem 0.35rem 0.08rem;
+}
+
+.markdown-body pre::-webkit-scrollbar-thumb {
+  background: var(--sidebar-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-width: 2.4rem;
+  min-height: 2.4rem;
+  box-shadow: 0 4px 12px var(--sidebar-scrollbar-shadow);
+}
+
+.markdown-body pre::-webkit-scrollbar-thumb:hover {
+  background: var(--sidebar-scrollbar-thumb-hover);
+}
+
+.markdown-body pre::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.markdown-body pre::-webkit-scrollbar-button,
+.markdown-body pre::-webkit-scrollbar-button:single-button,
+.markdown-body pre::-webkit-scrollbar-button:horizontal:start:decrement,
+.markdown-body pre::-webkit-scrollbar-button:horizontal:end:increment,
+.markdown-body pre::-webkit-scrollbar-button:vertical:start:decrement,
+.markdown-body pre::-webkit-scrollbar-button:vertical:end:increment {
+  -webkit-appearance: none;
+  display: none;
+  width: 0;
+  height: 0;
+  background: transparent;
 }
 
 .markdown-code-block-shell {
