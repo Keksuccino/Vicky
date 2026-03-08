@@ -46,8 +46,19 @@ npm install
 
 2. Create a local env file:
 
+**Unix**
 ```bash
 cp .env.example .env.local
+```
+
+**Windows Command Prompt**
+```bash
+copy .env.example .env.local
+```
+
+**Windows PowerShell**
+```bash
+Copy-Item .env.example .env.local
 ```
 
 3. Set the required values in `.env.local`:
