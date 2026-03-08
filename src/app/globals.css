@@ -2080,24 +2080,19 @@ html[data-color-mode="light"] .meta-item {
   align-items: start;
 }
 
-.panel-card-repo {
+.panel-grid > .panel-card-repo {
   grid-column: 1;
-  grid-row: 1;
 }
 
-.panel-card-site {
+.panel-grid > .panel-card-site {
   grid-column: 1;
-  grid-row: 2 / span 2;
 }
 
-.panel-card-domain {
+.panel-grid > .panel-stack-right {
   grid-column: 2;
-  grid-row: 3;
-}
-
-.panel-card-theme {
-  grid-column: 2;
-  grid-row: 1 / span 2;
+  display: grid;
+  gap: 1rem;
+  align-content: start;
 }
 
 .panel-card {
@@ -2508,6 +2503,12 @@ html[data-color-mode="light"] .meta-item {
     grid-template-columns: 1fr;
   }
 
+  .panel-grid > .panel-card-repo,
+  .panel-grid > .panel-card-site,
+  .panel-grid > .panel-stack-right {
+    grid-column: auto;
+  }
+
   .card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2546,12 +2547,10 @@ html[data-color-mode="light"] .meta-item {
     grid-template-columns: 1fr;
   }
 
-  .panel-card-repo,
-  .panel-card-site,
-  .panel-card-domain,
-  .panel-card-theme {
+  .panel-grid > .panel-card-repo,
+  .panel-grid > .panel-card-site,
+  .panel-grid > .panel-stack-right {
     grid-column: auto;
-    grid-row: auto;
   }
 
   .theme-preview-grid {

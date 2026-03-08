@@ -566,230 +566,232 @@ export function AdminSettingsPanel() {
           {loadingError ? <p className="error-text">{loadingError}</p> : null}
         </section>
 
-        <section className="panel-card panel-card-theme">
-          <div className="panel-header">
-            <h2>Theme Management</h2>
-          </div>
-
-          <p className="panel-description">Customize the built-in Light and Dark modes with a simpler accent setup.</p>
-
-          <form
-            className="theme-editor"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              await saveThemeChanges();
-            }}
-          >
-            <div className="theme-color-grid">
-              <div className="theme-color-section">
-                <strong className="theme-color-section-title">Light mode</strong>
-                <div className="field-inline">
-                  <AccentColorField
-                    id="theme-light-accent"
-                    label="Main accent"
-                    value={settings.themeLightAccent}
-                    fallbackColor={THEME_DEFAULTS.lightAccent}
-                    showReset
-                    hint="Used for links, highlights, focus states, and primary action buttons in Light mode."
-                    onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
-                  />
-                  <AccentColorField
-                    id="theme-light-surface-accent"
-                    label="Surface/background accent"
-                    value={settings.themeLightSurfaceAccent}
-                    fallbackColor={THEME_DEFAULTS.lightSurfaceAccent}
-                    showReset
-                    hint="Used for sidebar surfaces, header controls, and page-entry hovers in Light mode."
-                    onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
-                  />
-                </div>
-              </div>
-
-              <div className="theme-color-section">
-                <strong className="theme-color-section-title">Dark mode</strong>
-                <div className="field-inline">
-                  <AccentColorField
-                    id="theme-dark-accent"
-                    label="Main accent"
-                    value={settings.themeDarkAccent}
-                    fallbackColor={THEME_DEFAULTS.darkAccent}
-                    showReset
-                    hint="Used for links, highlights, focus states, and primary action buttons in Dark mode."
-                    onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
-                  />
-                  <AccentColorField
-                    id="theme-dark-surface-accent"
-                    label="Surface/background accent"
-                    value={settings.themeDarkSurfaceAccent}
-                    fallbackColor={THEME_DEFAULTS.darkSurfaceAccent}
-                    showReset
-                    hint="Used for sidebar surfaces, header controls, and page-entry hovers in Dark mode."
-                    onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
-                  />
-                </div>
-              </div>
+        <div className="panel-stack-right">
+          <section className="panel-card panel-card-theme">
+            <div className="panel-header">
+              <h2>Theme Management</h2>
             </div>
 
-            <div className="theme-preview-grid">
-              <div className="theme-preview-card" style={lightPreviewStyle}>
-                <div className="theme-preview-header">
-                  <strong>Light mode</strong>
-                  <span className="theme-preview-chip">Preview</span>
+            <p className="panel-description">Customize the built-in Light and Dark modes with a simpler accent setup.</p>
+
+            <form
+              className="theme-editor"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                await saveThemeChanges();
+              }}
+            >
+              <div className="theme-color-grid">
+                <div className="theme-color-section">
+                  <strong className="theme-color-section-title">Light mode</strong>
+                  <div className="field-inline">
+                    <AccentColorField
+                      id="theme-light-accent"
+                      label="Main accent"
+                      value={settings.themeLightAccent}
+                      fallbackColor={THEME_DEFAULTS.lightAccent}
+                      showReset
+                      hint="Used for links, highlights, focus states, and primary action buttons in Light mode."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
+                    />
+                    <AccentColorField
+                      id="theme-light-surface-accent"
+                      label="Surface/background accent"
+                      value={settings.themeLightSurfaceAccent}
+                      fallbackColor={THEME_DEFAULTS.lightSurfaceAccent}
+                      showReset
+                      hint="Used for sidebar surfaces, header controls, and page-entry hovers in Light mode."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
+                    />
+                  </div>
                 </div>
-                <p className="theme-preview-copy">
-                  Main accent drives links and primary actions. Surface/background accent drives sidebar and header UI.
-                </p>
-                <div className="theme-preview-actions">
-                  <span className="theme-preview-link">Example link</span>
-                  <span className="theme-preview-surface-chip">Sidebar tab</span>
-                  <button type="button" className="theme-preview-button">
-                    Primary action
-                  </button>
+
+                <div className="theme-color-section">
+                  <strong className="theme-color-section-title">Dark mode</strong>
+                  <div className="field-inline">
+                    <AccentColorField
+                      id="theme-dark-accent"
+                      label="Main accent"
+                      value={settings.themeDarkAccent}
+                      fallbackColor={THEME_DEFAULTS.darkAccent}
+                      showReset
+                      hint="Used for links, highlights, focus states, and primary action buttons in Dark mode."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
+                    />
+                    <AccentColorField
+                      id="theme-dark-surface-accent"
+                      label="Surface/background accent"
+                      value={settings.themeDarkSurfaceAccent}
+                      fallbackColor={THEME_DEFAULTS.darkSurfaceAccent}
+                      showReset
+                      hint="Used for sidebar surfaces, header controls, and page-entry hovers in Dark mode."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="theme-preview-card" style={darkPreviewStyle}>
-                <div className="theme-preview-header">
-                  <strong>Dark mode</strong>
-                  <span className="theme-preview-chip">Preview</span>
+              <div className="theme-preview-grid">
+                <div className="theme-preview-card" style={lightPreviewStyle}>
+                  <div className="theme-preview-header">
+                    <strong>Light mode</strong>
+                    <span className="theme-preview-chip">Preview</span>
+                  </div>
+                  <p className="theme-preview-copy">
+                    Main accent drives links and primary actions. Surface/background accent drives sidebar and header UI.
+                  </p>
+                  <div className="theme-preview-actions">
+                    <span className="theme-preview-link">Example link</span>
+                    <span className="theme-preview-surface-chip">Sidebar tab</span>
+                    <button type="button" className="theme-preview-button">
+                      Primary action
+                    </button>
+                  </div>
                 </div>
-                <p className="theme-preview-copy">
-                  Top-right controls and sidebar surfaces reuse the secondary accent in Dark mode.
-                </p>
-                <div className="theme-preview-actions">
-                  <span className="theme-preview-link">Example link</span>
-                  <span className="theme-preview-surface-chip">Header control</span>
-                  <button type="button" className="theme-preview-button">
-                    Primary action
-                  </button>
+
+                <div className="theme-preview-card" style={darkPreviewStyle}>
+                  <div className="theme-preview-header">
+                    <strong>Dark mode</strong>
+                    <span className="theme-preview-chip">Preview</span>
+                  </div>
+                  <p className="theme-preview-copy">
+                    Top-right controls and sidebar surfaces reuse the secondary accent in Dark mode.
+                  </p>
+                  <div className="theme-preview-actions">
+                    <span className="theme-preview-link">Example link</span>
+                    <span className="theme-preview-surface-chip">Header control</span>
+                    <button type="button" className="theme-preview-button">
+                      Primary action
+                    </button>
+                  </div>
                 </div>
               </div>
+
+              <label className="field-row" htmlFor="theme-custom-css">
+                <span className="field-label">Custom CSS</span>
+                <textarea
+                  id="theme-custom-css"
+                  className="input textarea"
+                  rows={6}
+                  value={settings.themeCustomCss}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, themeCustomCss: event.target.value }))}
+                  placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
+                />
+                <span className="field-hint">
+                  Optional advanced overrides applied on top of the built-in Light and Dark themes.
+                </span>
+              </label>
+
+              <button type="submit" className="btn btn-primary" disabled={themeSaving}>
+                <MaterialIcon name={themeSaving ? "sync" : "save"} />
+                <span>{themeSaving ? "Saving..." : "Save theme customization"}</span>
+              </button>
+            </form>
+
+            {themeMessage ? <p className="success-text">{themeMessage}</p> : null}
+            {themeError ? <p className="error-text">{themeError}</p> : null}
+          </section>
+
+          <section className="panel-card panel-card-domain">
+            <div className="panel-header">
+              <h2>Domain Settings</h2>
             </div>
 
-            <label className="field-row" htmlFor="theme-custom-css">
-              <span className="field-label">Custom CSS</span>
-              <textarea
-                id="theme-custom-css"
-                className="input textarea"
-                rows={6}
-                value={settings.themeCustomCss}
-                onChange={(event) => setSettings((prev) => ({ ...prev, themeCustomCss: event.target.value }))}
-                placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
-              />
-              <span className="field-hint">
-                Optional advanced overrides applied on top of the built-in Light and Dark themes.
-              </span>
-            </label>
-
-            <button type="submit" className="btn btn-primary" disabled={themeSaving}>
-              <MaterialIcon name={themeSaving ? "sync" : "save"} />
-              <span>{themeSaving ? "Saving..." : "Save theme customization"}</span>
-            </button>
-          </form>
-
-          {themeMessage ? <p className="success-text">{themeMessage}</p> : null}
-          {themeError ? <p className="error-text">{themeError}</p> : null}
-        </section>
-
-        <section className="panel-card panel-card-domain">
-          <div className="panel-header">
-            <h2>Domain Settings</h2>
-          </div>
-
-          <p className="panel-description">
-            Configure your custom domain and Let&apos;s Encrypt contact email for automatic HTTPS certificate management.
-          </p>
-
-          <form
-            className="form-grid"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              await saveSettingsChanges(false);
-            }}
-          >
-            <label className="field-row" htmlFor="domain-custom-domain">
-              <span className="field-label">Custom domain</span>
-              <input
-                id="domain-custom-domain"
-                className="input"
-                value={settings.customDomain}
-                aria-invalid={Boolean(domainFieldErrors.customDomain)}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSettings((prev) => ({ ...prev, customDomain: value }));
-                  setDomainFieldErrors((prev) => ({
-                    ...prev,
-                    customDomain: validateCustomDomainInput(value),
-                  }));
-                }}
-                placeholder="docs.example.com"
-              />
-              <span className="field-hint">
-                Hostname only (no protocol or path). Example: <code>fancymenu.net</code> or{" "}
-                <code>docs.fancymenu.net</code>.
-              </span>
-              {domainFieldErrors.customDomain ? <span className="error-text">{domainFieldErrors.customDomain}</span> : null}
-            </label>
-
-            <label className="field-row" htmlFor="domain-letsencrypt-email">
-              <span className="field-label">Let&apos;s Encrypt email</span>
-              <input
-                id="domain-letsencrypt-email"
-                className="input"
-                type="email"
-                value={settings.letsEncryptEmail}
-                aria-invalid={Boolean(domainFieldErrors.letsEncryptEmail)}
-                onChange={(event) => {
-                  const value = event.target.value;
-                  setSettings((prev) => ({ ...prev, letsEncryptEmail: value }));
-                  setDomainFieldErrors((prev) => ({
-                    ...prev,
-                    letsEncryptEmail: validateLetsEncryptEmailInput(value),
-                  }));
-                }}
-                placeholder="admin@example.com"
-              />
-              <span className="field-hint">
-                Required for automatic certificate registration and renewal notifications.
-              </span>
-              {domainFieldErrors.letsEncryptEmail ? (
-                <span className="error-text">{domainFieldErrors.letsEncryptEmail}</span>
-              ) : null}
-            </label>
-
-            <div className="field-row">
-              <span className="field-label">SSL runtime status</span>
-              {sslStatusLoading ? <span className="field-hint">Checking certificate runtime status...</span> : null}
-              {!sslStatusLoading && sslStatus ? (
-                <>
-                  <p className={statusToneClassName(sslStatus)}>{sslStatus.message}</p>
-                  <span className="field-hint">
-                    Source:{" "}
-                    {sslStatus.source === "runtime" ? "runtime status endpoint" : "best-effort check (settings + local cert files)"}.
-                  </span>
-                  {sslStatus.certificateExpiresAt ? (
-                    <span className="field-hint">
-                      Certificate expiry: {formatStatusTimestamp(sslStatus.certificateExpiresAt)}.
-                    </span>
-                  ) : null}
-                  <span className="field-hint">Last checked: {formatStatusTimestamp(sslStatus.checkedAt)}.</span>
-                </>
-              ) : null}
-              {sslStatusError ? <p className="warning-text">Could not load SSL runtime status: {sslStatusError}</p> : null}
-            </div>
-
-            <p className="warning-text">
-              Automatic SSL runs only when both values are set and DNS points this domain to your server.
+            <p className="panel-description">
+              Configure your custom domain and Let&apos;s Encrypt contact email for automatic HTTPS certificate management.
             </p>
 
-            <div className="action-row">
-              <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
-                <MaterialIcon name={settingsSaving ? "sync" : "save"} />
-                <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
-              </button>
-            </div>
-          </form>
-        </section>
+            <form
+              className="form-grid"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                await saveSettingsChanges(false);
+              }}
+            >
+              <label className="field-row" htmlFor="domain-custom-domain">
+                <span className="field-label">Custom domain</span>
+                <input
+                  id="domain-custom-domain"
+                  className="input"
+                  value={settings.customDomain}
+                  aria-invalid={Boolean(domainFieldErrors.customDomain)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSettings((prev) => ({ ...prev, customDomain: value }));
+                    setDomainFieldErrors((prev) => ({
+                      ...prev,
+                      customDomain: validateCustomDomainInput(value),
+                    }));
+                  }}
+                  placeholder="docs.example.com"
+                />
+                <span className="field-hint">
+                  Hostname only (no protocol or path). Example: <code>fancymenu.net</code> or{" "}
+                  <code>docs.fancymenu.net</code>.
+                </span>
+                {domainFieldErrors.customDomain ? <span className="error-text">{domainFieldErrors.customDomain}</span> : null}
+              </label>
+
+              <label className="field-row" htmlFor="domain-letsencrypt-email">
+                <span className="field-label">Let&apos;s Encrypt email</span>
+                <input
+                  id="domain-letsencrypt-email"
+                  className="input"
+                  type="email"
+                  value={settings.letsEncryptEmail}
+                  aria-invalid={Boolean(domainFieldErrors.letsEncryptEmail)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSettings((prev) => ({ ...prev, letsEncryptEmail: value }));
+                    setDomainFieldErrors((prev) => ({
+                      ...prev,
+                      letsEncryptEmail: validateLetsEncryptEmailInput(value),
+                    }));
+                  }}
+                  placeholder="admin@example.com"
+                />
+                <span className="field-hint">
+                  Required for automatic certificate registration and renewal notifications.
+                </span>
+                {domainFieldErrors.letsEncryptEmail ? (
+                  <span className="error-text">{domainFieldErrors.letsEncryptEmail}</span>
+                ) : null}
+              </label>
+
+              <div className="field-row">
+                <span className="field-label">SSL runtime status</span>
+                {sslStatusLoading ? <span className="field-hint">Checking certificate runtime status...</span> : null}
+                {!sslStatusLoading && sslStatus ? (
+                  <>
+                    <p className={statusToneClassName(sslStatus)}>{sslStatus.message}</p>
+                    <span className="field-hint">
+                      Source:{" "}
+                      {sslStatus.source === "runtime" ? "runtime status endpoint" : "best-effort check (settings + local cert files)"}.
+                    </span>
+                    {sslStatus.certificateExpiresAt ? (
+                      <span className="field-hint">
+                        Certificate expiry: {formatStatusTimestamp(sslStatus.certificateExpiresAt)}.
+                      </span>
+                    ) : null}
+                    <span className="field-hint">Last checked: {formatStatusTimestamp(sslStatus.checkedAt)}.</span>
+                  </>
+                ) : null}
+                {sslStatusError ? <p className="warning-text">Could not load SSL runtime status: {sslStatusError}</p> : null}
+              </div>
+
+              <p className="warning-text">
+                Automatic SSL runs only when both values are set and DNS points this domain to your server.
+              </p>
+
+              <div className="action-row">
+                <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
+                  <MaterialIcon name={settingsSaving ? "sync" : "save"} />
+                  <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
+                </button>
+              </div>
+            </form>
+          </section>
+        </div>
 
         <section className="panel-card panel-card-site">
           <div className="panel-header">
