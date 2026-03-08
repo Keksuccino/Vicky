@@ -98,10 +98,10 @@ const deriveThemeCustomizationFromLegacyStore = (
     defaults.customCss;
 
   return {
-    useSharedAccent: defaults.useSharedAccent,
-    sharedAccent: defaults.sharedAccent,
     lightAccent: normalizeAccentColor(lightAccentSource, defaults.lightAccent),
+    lightSurfaceAccent: defaults.lightSurfaceAccent,
     darkAccent: normalizeAccentColor(darkAccentSource, defaults.darkAccent),
+    darkSurfaceAccent: defaults.darkSurfaceAccent,
     customCss: customCssSource,
   };
 };

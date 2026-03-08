@@ -2156,30 +2156,6 @@ html[data-color-mode="light"] .meta-item {
   background: color-mix(in srgb, var(--warning, var(--accent)) 16%, transparent);
 }
 
-.theme-customization-intro {
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border));
-  border-radius: 14px;
-  padding: 0.85rem;
-  display: grid;
-  gap: 0.35rem;
-  background:
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--accent) 14%, transparent) 0%, transparent 40%),
-    color-mix(in srgb, var(--accent-soft) 55%, transparent);
-}
-
-.theme-customization-intro strong {
-  color: var(--text-primary);
-}
-
-.theme-customization-intro p {
-  margin: 0;
-  color: var(--text-secondary);
-}
-
-.theme-shared-toggle {
-  padding: 0.15rem 0;
-}
-
 .theme-color-grid {
   display: grid;
   gap: 0.8rem;

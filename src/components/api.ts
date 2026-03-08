@@ -29,9 +29,6 @@ export type PublicSiteSettings = {
   docsIconPng32Url: string;
   docsIconPng180Url: string;
   customDomain: string;
-  themeUseSharedAccent: boolean;
-  themeSharedAccent: string;
-  themeSharedSurfaceAccent: string;
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;
@@ -70,9 +67,6 @@ const DEFAULT_SETTINGS: AdminSettings = {
   githubDocsPath: "docs",
   githubToken: "",
   tokenConfigured: false,
-  themeUseSharedAccent: false,
-  themeSharedAccent: "#006ecf",
-  themeSharedSurfaceAccent: "#7db8f0",
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
   themeDarkAccent: "#5caedf",
@@ -428,9 +422,6 @@ function normalizeSettings(source: unknown): AdminSettings {
     githubDocsPath: asString(github.docsPath, DEFAULT_SETTINGS.githubDocsPath),
     githubToken: "",
     tokenConfigured: asBoolean(github.tokenConfigured, false),
-    themeUseSharedAccent: asBoolean(theme.useSharedAccent, DEFAULT_SETTINGS.themeUseSharedAccent),
-    themeSharedAccent: asString(theme.sharedAccent, DEFAULT_SETTINGS.themeSharedAccent),
-    themeSharedSurfaceAccent: asString(theme.sharedSurfaceAccent, DEFAULT_SETTINGS.themeSharedSurfaceAccent),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -457,9 +448,6 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
-    themeUseSharedAccent: asBoolean(theme.useSharedAccent, DEFAULT_SETTINGS.themeUseSharedAccent),
-    themeSharedAccent: asString(theme.sharedAccent, DEFAULT_SETTINGS.themeSharedAccent),
-    themeSharedSurfaceAccent: asString(theme.sharedSurfaceAccent, DEFAULT_SETTINGS.themeSharedSurfaceAccent),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -592,9 +580,6 @@ export async function saveAdminSettings(
       letsEncryptEmail: settings.letsEncryptEmail.trim(),
     },
     theme: {
-      useSharedAccent: settings.themeUseSharedAccent,
-      sharedAccent: settings.themeSharedAccent,
-      sharedSurfaceAccent: settings.themeSharedSurfaceAccent,
       lightAccent: settings.themeLightAccent,
       lightSurfaceAccent: settings.themeLightSurfaceAccent,
       darkAccent: settings.themeDarkAccent,

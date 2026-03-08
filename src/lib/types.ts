@@ -25,9 +25,6 @@ export interface DomainSettings {
 }
 
 export interface ThemeCustomizationSettings {
-  useSharedAccent: boolean;
-  sharedAccent: string;
-  sharedSurfaceAccent: string;
   lightAccent: string;
   lightSurfaceAccent: string;
   darkAccent: string;

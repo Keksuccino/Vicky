@@ -41,9 +41,6 @@ const settingsPatchSchema = z
       .optional(),
     theme: z
       .object({
-        useSharedAccent: z.boolean().optional(),
-        sharedAccent: z.string().optional(),
-        sharedSurfaceAccent: z.string().optional(),
         lightAccent: z.string().optional(),
         lightSurfaceAccent: z.string().optional(),
         darkAccent: z.string().optional(),
@@ -158,18 +155,6 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
       }
 
       if (patch.theme) {
-        if (patch.theme.useSharedAccent !== undefined) {
-          store.settings.theme.useSharedAccent = patch.theme.useSharedAccent;
-        }
-
-        if (patch.theme.sharedAccent !== undefined) {
-          store.settings.theme.sharedAccent = patch.theme.sharedAccent.trim();
-        }
-
-        if (patch.theme.sharedSurfaceAccent !== undefined) {
-          store.settings.theme.sharedSurfaceAccent = patch.theme.sharedSurfaceAccent.trim();
-        }
-
         if (patch.theme.lightAccent !== undefined) {
           store.settings.theme.lightAccent = patch.theme.lightAccent.trim();
         }

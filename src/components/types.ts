@@ -1,9 +1,6 @@
 export type ThemeMode = "light" | "dark";
 
 export type ThemeCustomization = {
-  useSharedAccent: boolean;
-  sharedAccent: string;
-  sharedSurfaceAccent: string;
   lightAccent: string;
   lightSurfaceAccent: string;
   darkAccent: string;
@@ -69,9 +66,6 @@ export type AdminSettings = {
   githubDocsPath: string;
   githubToken: string;
   tokenConfigured: boolean;
-  themeUseSharedAccent: boolean;
-  themeSharedAccent: string;
-  themeSharedSurfaceAccent: string;
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;

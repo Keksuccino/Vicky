@@ -114,9 +114,6 @@ export const normalizeAccentColor = (value: unknown, fallback: string): string =
 };
 
 export const DEFAULT_THEME_CUSTOMIZATION = (): ThemeCustomizationSettings => ({
-  useSharedAccent: false,
-  sharedAccent: LIGHT_DEFAULT_ACCENT,
-  sharedSurfaceAccent: LIGHT_DEFAULT_SURFACE_ACCENT,
   lightAccent: LIGHT_DEFAULT_ACCENT,
   lightSurfaceAccent: LIGHT_DEFAULT_SURFACE_ACCENT,
   darkAccent: DARK_DEFAULT_ACCENT,
@@ -131,12 +128,6 @@ export const normalizeThemeCustomization = (
   const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 
   return {
-    useSharedAccent: typeof source.useSharedAccent === "boolean" ? source.useSharedAccent : fallback.useSharedAccent,
-    sharedAccent: normalizeAccentColor(source.sharedAccent, fallback.sharedAccent),
-    sharedSurfaceAccent: normalizeAccentColor(
-      source.sharedSurfaceAccent,
-      typeof source.sharedAccent === "string" ? normalizeAccentColor(source.sharedAccent, fallback.sharedSurfaceAccent) : fallback.sharedSurfaceAccent,
-    ),
     lightAccent: normalizeAccentColor(source.lightAccent, fallback.lightAccent),
     lightSurfaceAccent: normalizeAccentColor(
       source.lightSurfaceAccent,
@@ -152,21 +143,14 @@ export const normalizeThemeCustomization = (
 };
 
 export const resolveAccentColor = (settings: ThemeCustomizationSettings, mode: ThemeMode): string =>
-  settings.useSharedAccent
-    ? normalizeAccentColor(settings.sharedAccent, mode === "dark" ? DARK_DEFAULT_ACCENT : LIGHT_DEFAULT_ACCENT)
-    : mode === "dark"
-      ? normalizeAccentColor(settings.darkAccent, DARK_DEFAULT_ACCENT)
-      : normalizeAccentColor(settings.lightAccent, LIGHT_DEFAULT_ACCENT);
+  mode === "dark"
+    ? normalizeAccentColor(settings.darkAccent, DARK_DEFAULT_ACCENT)
+    : normalizeAccentColor(settings.lightAccent, LIGHT_DEFAULT_ACCENT);
 
 export const resolveSurfaceAccentColor = (settings: ThemeCustomizationSettings, mode: ThemeMode): string =>
-  settings.useSharedAccent
-    ? normalizeAccentColor(
-        settings.sharedSurfaceAccent,
-        mode === "dark" ? DARK_DEFAULT_SURFACE_ACCENT : LIGHT_DEFAULT_SURFACE_ACCENT,
-      )
-    : mode === "dark"
-      ? normalizeAccentColor(settings.darkSurfaceAccent, DARK_DEFAULT_SURFACE_ACCENT)
-      : normalizeAccentColor(settings.lightSurfaceAccent, LIGHT_DEFAULT_SURFACE_ACCENT);
+  mode === "dark"
+    ? normalizeAccentColor(settings.darkSurfaceAccent, DARK_DEFAULT_SURFACE_ACCENT)
+    : normalizeAccentColor(settings.lightSurfaceAccent, LIGHT_DEFAULT_SURFACE_ACCENT);
 
 const buildSoftColor = (mode: ThemeMode, accent: string, ratio: number): string =>
   mixHexColors(mode === "dark" ? DARK_THEME_BASE_VARIABLES["--surface"] : LIGHT_THEME_BASE_VARIABLES["--surface"], accent, ratio);

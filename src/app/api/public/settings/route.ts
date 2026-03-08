@@ -29,9 +29,6 @@ export const GET = async (): Promise<NextResponse> => {
           customDomain: store.settings.domain.customDomain,
         },
         theme: {
-          useSharedAccent: store.settings.theme.useSharedAccent,
-          sharedAccent: store.settings.theme.sharedAccent,
-          sharedSurfaceAccent: store.settings.theme.sharedSurfaceAccent,
           lightAccent: store.settings.theme.lightAccent,
           lightSurfaceAccent: store.settings.theme.lightSurfaceAccent,
           darkAccent: store.settings.theme.darkAccent,
