@@ -38,13 +38,13 @@ This repo contains the app itself, not your docs content.
 
 ## Quick Start
 
-1. Install dependencies:
+### 1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-2. Create a local env file:
+### 2. Create a local env file:
 
 **Unix**
 ```bash
@@ -61,19 +61,19 @@ copy .env.example .env.local
 Copy-Item .env.example .env.local
 ```
 
-3. Set the required values in `.env.local`:
+### 3. Set the required values in `.env.local`:
 
 - `AUTH_JWT_SECRET`
 - `ADMIN_PASSWORD`
 - `ENCRYPTION_SECRET`
 
-4. Start the dev server:
+### 4. Start the dev server:
 
 ```bash
 npm run dev
 ```
 
-5. Open:
+### 5. Open:
 
 - Admin login: `http://localhost:3000/admin/login`
 - Docs site: `http://localhost:3000/`
