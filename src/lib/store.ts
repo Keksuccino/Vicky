@@ -4,6 +4,7 @@ import path from "node:path";
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
+import { normalizeFooterTemplate } from "@/lib/footer";
 import { normalizeStartPage } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
 import type { AppSettings, DocsStore } from "@/lib/types";
@@ -136,7 +137,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
     siteDescription: normalizeString(source.siteDescription, defaults.siteDescription),
-    footerText: normalizeTrimmedString(source.footerText, defaults.footerText),
+    footerText: normalizeFooterTemplate(normalizeTrimmedString(source.footerText, defaults.footerText)),
     startPage: normalizeStartPage(source.startPage),
     siteTitleGradient: {
       from: normalizeTrimmedString(sourceSiteTitleGradient.from, defaults.siteTitleGradient.from),

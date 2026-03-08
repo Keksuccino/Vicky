@@ -1,4 +1,5 @@
 import { DOCS_CACHE_TTL_MS } from "@/lib/cache";
+import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { DEFAULT_START_PAGE } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 import type { AppSettings, DocsStore } from "@/lib/types";
@@ -10,7 +11,7 @@ const now = (): string => new Date().toISOString();
 export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
-  footerText: "Copyright © {{year}} {{owner}}. All rights reserved.",
+  footerText: DEFAULT_FOOTER_TEXT,
   startPage: DEFAULT_START_PAGE,
   siteTitleGradient: {
     from: "",

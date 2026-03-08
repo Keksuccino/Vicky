@@ -2,10 +2,12 @@ import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { Manrope, Space_Grotesk } from "next/font/google";
 import localFont from "next/font/local";
+import { Fragment } from "react";
 
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { normalizeCustomDomain } from "@/lib/domain-settings";
+import { DEFAULT_FOOTER_TEXT, FALLBACK_FOOTER_OWNER, resolveFooterTemplateParts, VICKY_REPO_URL } from "@/lib/footer";
 import { createThemeBootstrapScript, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 import { getStore } from "@/lib/store";
 
@@ -37,9 +39,6 @@ const fontMono = localFont({
 const FALLBACK_SITE_TITLE = "Vicky Docs";
 const FALLBACK_SITE_DESCRIPTION = "Docs/wiki frontend with navigation, search, editor, and admin appearance settings.";
 const FALLBACK_ICON_VERSION = "default";
-const FALLBACK_FOOTER_TEXT = "Copyright © {{year}} {{owner}}. All rights reserved.";
-const FALLBACK_FOOTER_OWNER = "Repository Owner";
-const MIN_FOOTER_YEAR = 2026;
 
 const appendVersion = (url: string, version: string): string => `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
 
@@ -58,15 +57,6 @@ const createIconVersion = (settings: Awaited<ReturnType<typeof getStore>>["setti
   }
 
   return (hash >>> 0).toString(36);
-};
-
-const resolveFooterText = (template: string, owner: string): string => {
-  const year = String(Math.max(new Date().getFullYear(), MIN_FOOTER_YEAR));
-  const resolvedOwner = owner.trim() || FALLBACK_FOOTER_OWNER;
-
-  return template
-    .replace(/{{\s*year\s*}}/gi, year)
-    .replace(/{{\s*owner\s*}}/gi, resolvedOwner);
 };
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -115,13 +105,13 @@ export default async function RootLayout({
 }>) {
   noStore();
 
-  let footerText = resolveFooterText(FALLBACK_FOOTER_TEXT, FALLBACK_FOOTER_OWNER);
+  let footerParts = resolveFooterTemplateParts(DEFAULT_FOOTER_TEXT, FALLBACK_FOOTER_OWNER);
   let initialThemeSettings = DEFAULT_THEME_CUSTOMIZATION();
 
   try {
     const store = await getStore();
-    const template = store.settings.footerText.trim() || FALLBACK_FOOTER_TEXT;
-    footerText = resolveFooterText(template, store.settings.github.owner);
+    const template = store.settings.footerText.trim() || DEFAULT_FOOTER_TEXT;
+    footerParts = resolveFooterTemplateParts(template, store.settings.github.owner);
     initialThemeSettings = store.settings.theme;
   } catch {
     // Keep fallback footer text when settings storage is temporarily unavailable.
@@ -144,7 +134,23 @@ export default async function RootLayout({
             <div className="app-content">
               {children}
               <footer className="app-footer" aria-label="Site footer">
-                <div className="app-footer-card">{footerText}</div>
+                <div className="app-footer-card">
+                  {footerParts.map((part, index) =>
+                    part.type === "vicky" ? (
+                      <a
+                        key={`footer-vicky-${index}`}
+                        className="app-footer-link"
+                        href={VICKY_REPO_URL}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                      >
+                        Vicky
+                      </a>
+                    ) : (
+                      <Fragment key={`footer-text-${index}`}>{part.value}</Fragment>
+                    ),
+                  )}
+                </div>
               </footer>
             </div>
           </div>

@@ -17,6 +17,7 @@ import { ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
 import type { AdminSettings, DomainSslRuntimeStatus, ThemeCustomization } from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
+import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 
 const THEME_DEFAULTS = DEFAULT_THEME_CUSTOMIZATION();
@@ -24,7 +25,7 @@ const THEME_DEFAULTS = DEFAULT_THEME_CUSTOMIZATION();
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
-  footerText: "Copyright © {{year}} {{owner}}. All rights reserved.",
+  footerText: DEFAULT_FOOTER_TEXT,
   startPage: "/home",
   siteTitleGradientFrom: "",
   siteTitleGradientTo: "",
@@ -691,18 +692,18 @@ export function AdminSettingsPanel() {
             </div>
 
             <label className="field-row" htmlFor="site-footer-text">
-              <span className="field-label">Footer text (supports {`{{year}}`} and {`{{owner}}`})</span>
+              <span className="field-label">Footer text (supports {`{{year}}`}, {`{{owner}}`}, and {`{{vicky}}`})</span>
               <input
                 id="site-footer-text"
                 className="input"
                 value={settings.footerText}
                 onChange={(event) => setSettings((prev) => ({ ...prev, footerText: event.target.value }))}
-                placeholder="Copyright © {{year}} {{owner}}. All rights reserved."
+                placeholder={DEFAULT_FOOTER_TEXT}
                 required
               />
               <span className="field-hint">
-                <code>{`{{year}}`}</code> and <code>{`{{owner}}`}</code> are replaced automatically; all other text is
-                rendered as-is.
+                <code>{`{{year}}`}</code>, <code>{`{{owner}}`}</code>, and <code>{`{{vicky}}`}</code> are replaced
+                automatically. <code>{`{{vicky}}`}</code> becomes a clickable link to the Vicky repository.
               </span>
             </label>
 

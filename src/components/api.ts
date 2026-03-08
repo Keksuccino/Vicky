@@ -9,6 +9,7 @@ import {
   type EditableDoc,
   type MarkdownHeading,
 } from "@/components/types";
+import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -51,7 +52,7 @@ const DOMAIN_SSL_CERTIFICATE_STATES: DomainSslCertificateState[] = [
 const DEFAULT_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
   siteDescription: "Documentation knowledge base",
-  footerText: "Copyright © {{year}} {{owner}}. All rights reserved.",
+  footerText: DEFAULT_FOOTER_TEXT,
   startPage: "/home",
   siteTitleGradientFrom: "",
   siteTitleGradientTo: "",
