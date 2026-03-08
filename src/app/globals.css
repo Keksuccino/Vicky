@@ -11,6 +11,9 @@
   --accent: #006ecf;
   --accent-soft: #d6ecff;
   --accent-contrast: #f8fbff;
+  --accent-surface: #7db8f0;
+  --accent-surface-soft: #dceeff;
+  --accent-surface-contrast: #07121e;
   --info-accent: #2f7fd8;
   --success: #0f8a58;
   --danger: #ca3f54;
@@ -63,6 +66,9 @@ html[data-color-mode="custom"] {
   --accent: #5caedf;
   --accent-soft: #22384d;
   --accent-contrast: #07121e;
+  --accent-surface: #47729c;
+  --accent-surface-soft: #1f3143;
+  --accent-surface-contrast: #e8edf5;
   --info-accent: #79b9ff;
   --success: #2bd08a;
   --danger: #ff6a7f;
@@ -377,8 +383,8 @@ select {
   display: inline-flex;
   border-radius: 999px;
   padding: 0.2rem;
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
 }
 
 .mode-toggle-compact {
@@ -386,9 +392,9 @@ select {
   height: var(--header-control-size);
   flex: 0 0 var(--header-control-size);
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
-  color: var(--text-secondary);
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  color: color-mix(in srgb, var(--accent-surface) 76%, var(--text-secondary));
   display: none;
   align-items: center;
   justify-content: center;
@@ -404,7 +410,7 @@ select {
 .mode-toggle-compact:hover,
 .mode-toggle-compact:focus-visible {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface-elevated));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
 }
 
 .mode-toggle-compact:focus-visible {
@@ -421,9 +427,9 @@ select {
   height: var(--header-control-size);
   flex: 0 0 var(--header-control-size);
   border-radius: 999px;
-  border: 1px solid var(--border);
-  background: var(--surface-muted);
-  color: var(--text-secondary);
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  color: color-mix(in srgb, var(--accent-surface) 76%, var(--text-secondary));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -438,7 +444,7 @@ select {
 
 .admin-icon-link:hover {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-muted) 82%, var(--surface-elevated));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
 }
 
 .admin-icon-link .material-icon {
@@ -447,7 +453,7 @@ select {
 
 .admin-icon-link-active {
   color: var(--text-primary);
-  background: var(--surface-elevated);
+  background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   box-shadow: 0 4px 14px rgba(22, 38, 66, 0.14);
 }
 
@@ -467,7 +473,7 @@ select {
 }
 
 .mode-button-active {
-  background: var(--surface-elevated);
+  background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   color: var(--text-primary);
   box-shadow: 0 4px 14px rgba(22, 38, 66, 0.14);
 }
@@ -722,8 +728,8 @@ select {
   gap: 0.25rem;
   border-radius: 12px;
   padding: 0.2rem;
-  background: var(--surface-muted);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 20%, var(--border));
 }
 
 .sidebar-view-button {
@@ -749,7 +755,7 @@ select {
 }
 
 .sidebar-view-button-active {
-  background: var(--surface-elevated);
+  background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   color: var(--text-primary);
   box-shadow: 0 4px 14px rgba(22, 38, 66, 0.13);
 }
@@ -1712,11 +1718,11 @@ html[data-color-mode="light"] .meta-item {
 }
 
 .tree-row:hover:not(.tree-row-active) {
-  background: var(--surface-muted);
+  background: color-mix(in srgb, var(--accent-surface-soft) 76%, transparent);
 }
 
 .tree-row-active {
-  background: color-mix(in srgb, var(--accent-soft) 88%, transparent);
+  background: color-mix(in srgb, var(--accent-surface-soft) 90%, transparent);
 }
 
 .tree-toggle {
@@ -2162,6 +2168,16 @@ html[data-color-mode="light"] .meta-item {
   gap: 0.8rem;
 }
 
+.theme-color-section {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.theme-color-section-title {
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
 .theme-color-input-row {
   display: inline-flex;
   align-items: center;
@@ -2212,9 +2228,7 @@ html[data-color-mode="light"] .meta-item {
 .theme-preview-card {
   border: 1px solid var(--theme-preview-border);
   border-radius: 14px;
-  background:
-    radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--theme-preview-accent) 18%, transparent) 0%, transparent 44%),
-    var(--theme-preview-surface);
+  background: var(--theme-preview-page-gradient);
   color: var(--theme-preview-text);
   padding: 0.85rem;
   display: grid;
@@ -2234,8 +2248,8 @@ html[data-color-mode="light"] .meta-item {
   align-items: center;
   border-radius: 999px;
   padding: 0.22rem 0.6rem;
-  background: var(--theme-preview-accent-soft);
-  color: var(--theme-preview-accent);
+  background: var(--theme-preview-accent-primary-soft);
+  color: var(--theme-preview-accent-primary);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -2255,7 +2269,18 @@ html[data-color-mode="light"] .meta-item {
 }
 
 .theme-preview-link {
-  color: var(--theme-preview-accent);
+  color: var(--theme-preview-accent-primary);
+  font-weight: 700;
+}
+
+.theme-preview-surface-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0.24rem 0.65rem;
+  background: var(--theme-preview-accent-surface-soft);
+  color: var(--theme-preview-accent-surface);
+  font-size: 0.8rem;
   font-weight: 700;
 }
 
@@ -2263,8 +2288,8 @@ html[data-color-mode="light"] .meta-item {
   border: 0;
   border-radius: 10px;
   padding: 0.55rem 0.8rem;
-  background: var(--theme-preview-accent);
-  color: var(--theme-preview-accent-contrast);
+  background: var(--theme-preview-accent-primary);
+  color: var(--theme-preview-accent-primary-contrast);
   font: inherit;
   font-weight: 650;
 }

@@ -31,8 +31,11 @@ export type PublicSiteSettings = {
   customDomain: string;
   themeUseSharedAccent: boolean;
   themeSharedAccent: string;
+  themeSharedSurfaceAccent: string;
   themeLightAccent: string;
+  themeLightSurfaceAccent: string;
   themeDarkAccent: string;
+  themeDarkSurfaceAccent: string;
   themeCustomCss: string;
 };
 
@@ -69,8 +72,11 @@ const DEFAULT_SETTINGS: AdminSettings = {
   tokenConfigured: false,
   themeUseSharedAccent: false,
   themeSharedAccent: "#006ecf",
+  themeSharedSurfaceAccent: "#7db8f0",
   themeLightAccent: "#006ecf",
+  themeLightSurfaceAccent: "#7db8f0",
   themeDarkAccent: "#5caedf",
+  themeDarkSurfaceAccent: "#47729c",
   themeCustomCss: "",
 };
 
@@ -424,8 +430,11 @@ function normalizeSettings(source: unknown): AdminSettings {
     tokenConfigured: asBoolean(github.tokenConfigured, false),
     themeUseSharedAccent: asBoolean(theme.useSharedAccent, DEFAULT_SETTINGS.themeUseSharedAccent),
     themeSharedAccent: asString(theme.sharedAccent, DEFAULT_SETTINGS.themeSharedAccent),
+    themeSharedSurfaceAccent: asString(theme.sharedSurfaceAccent, DEFAULT_SETTINGS.themeSharedSurfaceAccent),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
+    themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
+    themeDarkSurfaceAccent: asString(theme.darkSurfaceAccent, DEFAULT_SETTINGS.themeDarkSurfaceAccent),
     themeCustomCss: asString(theme.customCss, DEFAULT_SETTINGS.themeCustomCss),
   };
 }
@@ -450,8 +459,11 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
     themeUseSharedAccent: asBoolean(theme.useSharedAccent, DEFAULT_SETTINGS.themeUseSharedAccent),
     themeSharedAccent: asString(theme.sharedAccent, DEFAULT_SETTINGS.themeSharedAccent),
+    themeSharedSurfaceAccent: asString(theme.sharedSurfaceAccent, DEFAULT_SETTINGS.themeSharedSurfaceAccent),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
+    themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
+    themeDarkSurfaceAccent: asString(theme.darkSurfaceAccent, DEFAULT_SETTINGS.themeDarkSurfaceAccent),
     themeCustomCss: asString(theme.customCss, DEFAULT_SETTINGS.themeCustomCss),
   };
 }
@@ -582,8 +594,11 @@ export async function saveAdminSettings(
     theme: {
       useSharedAccent: settings.themeUseSharedAccent,
       sharedAccent: settings.themeSharedAccent,
+      sharedSurfaceAccent: settings.themeSharedSurfaceAccent,
       lightAccent: settings.themeLightAccent,
+      lightSurfaceAccent: settings.themeLightSurfaceAccent,
       darkAccent: settings.themeDarkAccent,
+      darkSurfaceAccent: settings.themeDarkSurfaceAccent,
       customCss: settings.themeCustomCss,
     },
     github: {

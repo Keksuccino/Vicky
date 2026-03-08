@@ -3,8 +3,11 @@ export type ThemeMode = "light" | "dark";
 export type ThemeCustomization = {
   useSharedAccent: boolean;
   sharedAccent: string;
+  sharedSurfaceAccent: string;
   lightAccent: string;
+  lightSurfaceAccent: string;
   darkAccent: string;
+  darkSurfaceAccent: string;
   customCss: string;
 };
 
@@ -68,8 +71,11 @@ export type AdminSettings = {
   tokenConfigured: boolean;
   themeUseSharedAccent: boolean;
   themeSharedAccent: string;
+  themeSharedSurfaceAccent: string;
   themeLightAccent: string;
+  themeLightSurfaceAccent: string;
   themeDarkAccent: string;
+  themeDarkSurfaceAccent: string;
   themeCustomCss: string;
 };
 

@@ -31,8 +31,11 @@ export const GET = async (): Promise<NextResponse> => {
         theme: {
           useSharedAccent: store.settings.theme.useSharedAccent,
           sharedAccent: store.settings.theme.sharedAccent,
+          sharedSurfaceAccent: store.settings.theme.sharedSurfaceAccent,
           lightAccent: store.settings.theme.lightAccent,
+          lightSurfaceAccent: store.settings.theme.lightSurfaceAccent,
           darkAccent: store.settings.theme.darkAccent,
+          darkSurfaceAccent: store.settings.theme.darkSurfaceAccent,
           customCss: store.settings.theme.customCss,
         },
       },

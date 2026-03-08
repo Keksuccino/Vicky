@@ -42,8 +42,11 @@ const INITIAL_SETTINGS: AdminSettings = {
   tokenConfigured: false,
   themeUseSharedAccent: THEME_DEFAULTS.useSharedAccent,
   themeSharedAccent: THEME_DEFAULTS.sharedAccent,
+  themeSharedSurfaceAccent: THEME_DEFAULTS.sharedSurfaceAccent,
   themeLightAccent: THEME_DEFAULTS.lightAccent,
+  themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
   themeDarkAccent: THEME_DEFAULTS.darkAccent,
+  themeDarkSurfaceAccent: THEME_DEFAULTS.darkSurfaceAccent,
   themeCustomCss: THEME_DEFAULTS.customCss,
 };
 
@@ -93,8 +96,11 @@ const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings =>
 const themeCustomizationFromSettings = (settings: AdminSettings): ThemeCustomization => ({
   useSharedAccent: settings.themeUseSharedAccent,
   sharedAccent: settings.themeSharedAccent,
+  sharedSurfaceAccent: settings.themeSharedSurfaceAccent,
   lightAccent: settings.themeLightAccent,
+  lightSurfaceAccent: settings.themeLightSurfaceAccent,
   darkAccent: settings.themeDarkAccent,
+  darkSurfaceAccent: settings.themeDarkSurfaceAccent,
   customCss: settings.themeCustomCss,
 });
 
@@ -110,9 +116,13 @@ const createThemePreviewStyle = (
     "--theme-preview-text": variables["--text-primary"],
     "--theme-preview-text-secondary": variables["--text-secondary"],
     "--theme-preview-border": variables["--border"],
-    "--theme-preview-accent": variables["--accent"],
-    "--theme-preview-accent-soft": variables["--accent-soft"],
-    "--theme-preview-accent-contrast": variables["--accent-contrast"],
+    "--theme-preview-page-gradient": variables["--page-gradient"],
+    "--theme-preview-accent-primary": variables["--accent"],
+    "--theme-preview-accent-primary-soft": variables["--accent-soft"],
+    "--theme-preview-accent-primary-contrast": variables["--accent-contrast"],
+    "--theme-preview-accent-surface": variables["--accent-surface"],
+    "--theme-preview-accent-surface-soft": variables["--accent-surface-soft"],
+    "--theme-preview-accent-surface-contrast": variables["--accent-surface-contrast"],
   } as CSSProperties;
 };
 
@@ -524,10 +534,11 @@ export function AdminSettingsPanel() {
             }}
           >
             <div className="theme-customization-intro">
-              <strong>Simple accent color customization</strong>
+              <strong>Two simple accents per built-in theme</strong>
               <p>
-                The Light/Dark switch in the top-right stays the same. This section only changes the built-in accents, so
-                there are no extra themes to create or manage.
+                The Light/Dark switch in the top-right stays the same. Use a main accent for links, highlights, and
+                primary buttons, then a surface/background accent for the sidebar, header controls, hover surfaces, and
+                page background glow.
               </p>
             </div>
 
@@ -542,35 +553,69 @@ export function AdminSettingsPanel() {
                   }))
                 }
               />
-              <span>Use the same accent color for Light and Dark mode</span>
+              <span>Use the same accent colors for Light and Dark mode</span>
             </label>
 
             <div className="theme-color-grid">
               {settings.themeUseSharedAccent ? (
-                <AccentColorField
-                  id="theme-shared-accent"
-                  label="Shared accent color"
-                  value={settings.themeSharedAccent}
-                  hint="Used for buttons, links, highlights, and focus states in both built-in modes."
-                  onChange={(value) => setSettings((prev) => ({ ...prev, themeSharedAccent: value }))}
-                />
-              ) : (
                 <div className="field-inline">
                   <AccentColorField
-                    id="theme-light-accent"
-                    label="Light mode accent"
-                    value={settings.themeLightAccent}
-                    hint="Used when visitors switch to the built-in Light mode."
-                    onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
+                    id="theme-shared-accent"
+                    label="Shared main accent"
+                    value={settings.themeSharedAccent}
+                    hint="Used for links, highlights, focus states, and primary action buttons in both modes."
+                    onChange={(value) => setSettings((prev) => ({ ...prev, themeSharedAccent: value }))}
                   />
                   <AccentColorField
-                    id="theme-dark-accent"
-                    label="Dark mode accent"
-                    value={settings.themeDarkAccent}
-                    hint="Used when visitors switch to the built-in Dark mode."
-                    onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
+                    id="theme-shared-surface-accent"
+                    label="Shared surface/background accent"
+                    value={settings.themeSharedSurfaceAccent}
+                    hint="Used for sidebar surfaces, header controls, page-entry hovers, and the page background glow."
+                    onChange={(value) => setSettings((prev) => ({ ...prev, themeSharedSurfaceAccent: value }))}
                   />
                 </div>
+              ) : (
+                <>
+                  <div className="theme-color-section">
+                    <strong className="theme-color-section-title">Light mode</strong>
+                    <div className="field-inline">
+                      <AccentColorField
+                        id="theme-light-accent"
+                        label="Main accent"
+                        value={settings.themeLightAccent}
+                        hint="Used for links, highlights, focus states, and primary action buttons in Light mode."
+                        onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
+                      />
+                      <AccentColorField
+                        id="theme-light-surface-accent"
+                        label="Surface/background accent"
+                        value={settings.themeLightSurfaceAccent}
+                        hint="Used for sidebar surfaces, header controls, page-entry hovers, and the page glow in Light mode."
+                        onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="theme-color-section">
+                    <strong className="theme-color-section-title">Dark mode</strong>
+                    <div className="field-inline">
+                      <AccentColorField
+                        id="theme-dark-accent"
+                        label="Main accent"
+                        value={settings.themeDarkAccent}
+                        hint="Used for links, highlights, focus states, and primary action buttons in Dark mode."
+                        onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
+                      />
+                      <AccentColorField
+                        id="theme-dark-surface-accent"
+                        label="Surface/background accent"
+                        value={settings.themeDarkSurfaceAccent}
+                        hint="Used for sidebar surfaces, header controls, page-entry hovers, and the page glow in Dark mode."
+                        onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
+                      />
+                    </div>
+                  </div>
+                </>
               )}
 
               <div className="action-row">
@@ -582,8 +627,11 @@ export function AdminSettingsPanel() {
                       ...prev,
                       themeUseSharedAccent: THEME_DEFAULTS.useSharedAccent,
                       themeSharedAccent: THEME_DEFAULTS.sharedAccent,
+                      themeSharedSurfaceAccent: THEME_DEFAULTS.sharedSurfaceAccent,
                       themeLightAccent: THEME_DEFAULTS.lightAccent,
+                      themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
                       themeDarkAccent: THEME_DEFAULTS.darkAccent,
+                      themeDarkSurfaceAccent: THEME_DEFAULTS.darkSurfaceAccent,
                     }))
                   }
                 >
@@ -599,9 +647,12 @@ export function AdminSettingsPanel() {
                   <strong>Light mode</strong>
                   <span className="theme-preview-chip">Preview</span>
                 </div>
-                <p className="theme-preview-copy">Buttons, links, and highlights use this accent while Light mode is active.</p>
+                <p className="theme-preview-copy">
+                  Main accent drives links and primary actions. Surface/background accent drives sidebar and header UI.
+                </p>
                 <div className="theme-preview-actions">
                   <span className="theme-preview-link">Example link</span>
+                  <span className="theme-preview-surface-chip">Sidebar tab</span>
                   <button type="button" className="theme-preview-button">
                     Primary action
                   </button>
@@ -613,9 +664,12 @@ export function AdminSettingsPanel() {
                   <strong>Dark mode</strong>
                   <span className="theme-preview-chip">Preview</span>
                 </div>
-                <p className="theme-preview-copy">The Dark mode switch uses this accent while keeping the built-in layout.</p>
+                <p className="theme-preview-copy">
+                  The page glow, top-right controls, and sidebar surfaces all reuse the secondary accent in Dark mode.
+                </p>
                 <div className="theme-preview-actions">
                   <span className="theme-preview-link">Example link</span>
+                  <span className="theme-preview-surface-chip">Header control</span>
                   <button type="button" className="theme-preview-button">
                     Primary action
                   </button>

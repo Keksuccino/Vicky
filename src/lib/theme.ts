@@ -3,6 +3,13 @@ import type { ThemeCustomizationSettings } from "@/lib/types";
 export type ThemeMode = "light" | "dark";
 export type ThemeVariables = Record<string, string>;
 
+const LIGHT_DEFAULT_ACCENT = "#006ecf";
+const LIGHT_DEFAULT_SURFACE_ACCENT = "#7db8f0";
+const DARK_DEFAULT_ACCENT = "#5caedf";
+const DARK_DEFAULT_SURFACE_ACCENT = "#47729c";
+const LIGHT_CONTRAST = "#f8fbff";
+const DARK_CONTRAST = "#07121e";
+
 export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
   "--surface": "#f8fbff",
   "--surface-elevated": "#ffffff",
@@ -11,9 +18,12 @@ export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
   "--text-secondary": "#334869",
   "--text-muted": "#5f7393",
   "--border": "#d6e2f2",
-  "--accent": "#006ecf",
+  "--accent": LIGHT_DEFAULT_ACCENT,
   "--accent-soft": "#d6ecff",
-  "--accent-contrast": "#f8fbff",
+  "--accent-contrast": LIGHT_CONTRAST,
+  "--accent-surface": LIGHT_DEFAULT_SURFACE_ACCENT,
+  "--accent-surface-soft": "#dceeff",
+  "--accent-surface-contrast": DARK_CONTRAST,
   "--success": "#0f8a58",
   "--danger": "#ca3f54",
   "--header-bg": "rgba(248, 251, 255, 0.88)",
@@ -29,20 +39,18 @@ export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
   "--text-secondary": "#c0c9d7",
   "--text-muted": "#96a3b5",
   "--border": "#334153",
-  "--accent": "#5caedf",
+  "--accent": DARK_DEFAULT_ACCENT,
   "--accent-soft": "#22384d",
-  "--accent-contrast": "#07121e",
+  "--accent-contrast": DARK_CONTRAST,
+  "--accent-surface": DARK_DEFAULT_SURFACE_ACCENT,
+  "--accent-surface-soft": "#1f3143",
+  "--accent-surface-contrast": "#e8edf5",
   "--success": "#2bd08a",
   "--danger": "#ff6a7f",
   "--header-bg": "rgba(19, 27, 38, 0.8)",
   "--page-gradient":
     "radial-gradient(circle at 10% 2%, #273448 0%, transparent 32%), radial-gradient(circle at 88% 6%, #1f3445 0%, transparent 30%), linear-gradient(180deg, #0d141f 0%, #111a28 50%, #0c141f 100%)",
 };
-
-const LIGHT_DEFAULT_ACCENT = LIGHT_THEME_BASE_VARIABLES["--accent"];
-const DARK_DEFAULT_ACCENT = DARK_THEME_BASE_VARIABLES["--accent"];
-const LIGHT_CONTRAST = "#f8fbff";
-const DARK_CONTRAST = "#07121e";
 
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(value)));
 
@@ -71,6 +79,11 @@ const rgbToHex = ({ r, g, b }: { r: number; g: number; b: number }): string =>
   `#${[r, g, b]
     .map((value) => clampByte(value).toString(16).padStart(2, "0"))
     .join("")}`;
+
+const hexToRgba = (hex: string, alpha: number): string => {
+  const { r, g, b } = hexToRgb(hex);
+  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
+};
 
 const mixHexColors = (baseHex: string, overlayHex: string, overlayWeight: number): string => {
   const base = hexToRgb(baseHex);
@@ -105,8 +118,11 @@ export const normalizeAccentColor = (value: unknown, fallback: string): string =
 export const DEFAULT_THEME_CUSTOMIZATION = (): ThemeCustomizationSettings => ({
   useSharedAccent: false,
   sharedAccent: LIGHT_DEFAULT_ACCENT,
+  sharedSurfaceAccent: LIGHT_DEFAULT_SURFACE_ACCENT,
   lightAccent: LIGHT_DEFAULT_ACCENT,
+  lightSurfaceAccent: LIGHT_DEFAULT_SURFACE_ACCENT,
   darkAccent: DARK_DEFAULT_ACCENT,
+  darkSurfaceAccent: DARK_DEFAULT_SURFACE_ACCENT,
   customCss: "",
 });
 
@@ -119,8 +135,20 @@ export const normalizeThemeCustomization = (
   return {
     useSharedAccent: typeof source.useSharedAccent === "boolean" ? source.useSharedAccent : fallback.useSharedAccent,
     sharedAccent: normalizeAccentColor(source.sharedAccent, fallback.sharedAccent),
+    sharedSurfaceAccent: normalizeAccentColor(
+      source.sharedSurfaceAccent,
+      typeof source.sharedAccent === "string" ? normalizeAccentColor(source.sharedAccent, fallback.sharedSurfaceAccent) : fallback.sharedSurfaceAccent,
+    ),
     lightAccent: normalizeAccentColor(source.lightAccent, fallback.lightAccent),
+    lightSurfaceAccent: normalizeAccentColor(
+      source.lightSurfaceAccent,
+      typeof source.lightAccent === "string" ? normalizeAccentColor(source.lightAccent, fallback.lightSurfaceAccent) : fallback.lightSurfaceAccent,
+    ),
     darkAccent: normalizeAccentColor(source.darkAccent, fallback.darkAccent),
+    darkSurfaceAccent: normalizeAccentColor(
+      source.darkSurfaceAccent,
+      typeof source.darkAccent === "string" ? normalizeAccentColor(source.darkAccent, fallback.darkSurfaceAccent) : fallback.darkSurfaceAccent,
+    ),
     customCss: typeof source.customCss === "string" ? source.customCss : fallback.customCss,
   };
 };
@@ -132,20 +160,71 @@ export const resolveAccentColor = (settings: ThemeCustomizationSettings, mode: T
       ? normalizeAccentColor(settings.darkAccent, DARK_DEFAULT_ACCENT)
       : normalizeAccentColor(settings.lightAccent, LIGHT_DEFAULT_ACCENT);
 
-const buildAccentSoft = (mode: ThemeMode, accent: string): string =>
-  mixHexColors(mode === "dark" ? DARK_THEME_BASE_VARIABLES["--surface"] : LIGHT_THEME_BASE_VARIABLES["--surface"], accent, mode === "dark" ? 0.22 : 0.16);
+export const resolveSurfaceAccentColor = (settings: ThemeCustomizationSettings, mode: ThemeMode): string =>
+  settings.useSharedAccent
+    ? normalizeAccentColor(
+        settings.sharedSurfaceAccent,
+        mode === "dark" ? DARK_DEFAULT_SURFACE_ACCENT : LIGHT_DEFAULT_SURFACE_ACCENT,
+      )
+    : mode === "dark"
+      ? normalizeAccentColor(settings.darkSurfaceAccent, DARK_DEFAULT_SURFACE_ACCENT)
+      : normalizeAccentColor(settings.lightSurfaceAccent, LIGHT_DEFAULT_SURFACE_ACCENT);
+
+const buildSoftColor = (mode: ThemeMode, accent: string, ratio: number): string =>
+  mixHexColors(mode === "dark" ? DARK_THEME_BASE_VARIABLES["--surface"] : LIGHT_THEME_BASE_VARIABLES["--surface"], accent, ratio);
 
 const buildAccentContrast = (accent: string): string => (relativeLuminance(accent) >= 0.42 ? DARK_CONTRAST : LIGHT_CONTRAST);
+
+const buildPageGradient = (mode: ThemeMode, primaryAccent: string, surfaceAccent: string): string => {
+  if (mode === "dark") {
+    return [
+      `radial-gradient(circle at 10% 2%, ${hexToRgba(surfaceAccent, 0.34)} 0%, transparent 32%)`,
+      `radial-gradient(circle at 88% 6%, ${hexToRgba(primaryAccent, 0.24)} 0%, transparent 30%)`,
+      `linear-gradient(180deg, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.18)} 0%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.1)} 50%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.12)} 100%)`,
+    ].join(", ");
+  }
+
+  return [
+    `radial-gradient(circle at 12% 0%, ${hexToRgba(surfaceAccent, 0.28)} 0%, transparent 35%)`,
+    `radial-gradient(circle at 88% 8%, ${hexToRgba(primaryAccent, 0.18)} 0%, transparent 25%)`,
+    `linear-gradient(180deg, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.08)} 0%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.04)} 45%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.06)} 100%)`,
+  ].join(", ");
+};
+
+const buildMobileFabVariables = (mode: ThemeMode, surfaceAccent: string): ThemeVariables =>
+  mode === "dark"
+    ? {
+        "--mobile-fab-bg": hexToRgba(surfaceAccent, 0.22),
+        "--mobile-fab-bg-hover": hexToRgba(surfaceAccent, 0.33),
+        "--mobile-fab-bg-active": hexToRgba(surfaceAccent, 0.4),
+        "--mobile-fab-border": hexToRgba(surfaceAccent, 0.62),
+        "--mobile-fab-shadow": "rgba(2, 8, 18, 0.56)",
+        "--mobile-fab-icon": "#eef8ff",
+      }
+    : {
+        "--mobile-fab-bg": hexToRgba(surfaceAccent, 0.24),
+        "--mobile-fab-bg-hover": hexToRgba(surfaceAccent, 0.34),
+        "--mobile-fab-bg-active": hexToRgba(surfaceAccent, 0.42),
+        "--mobile-fab-border": hexToRgba(surfaceAccent, 0.58),
+        "--mobile-fab-shadow": "rgba(26, 62, 110, 0.27)",
+        "--mobile-fab-icon": "#0f5698",
+      };
 
 export const buildThemeVariables = (mode: ThemeMode, settings: ThemeCustomizationSettings): ThemeVariables => {
   const defaults = mode === "dark" ? DARK_THEME_BASE_VARIABLES : LIGHT_THEME_BASE_VARIABLES;
   const accent = resolveAccentColor(settings, mode);
+  const surfaceAccent = resolveSurfaceAccentColor(settings, mode);
 
   return {
     ...defaults,
     "--accent": accent,
-    "--accent-soft": buildAccentSoft(mode, accent),
+    "--accent-soft": buildSoftColor(mode, accent, mode === "dark" ? 0.22 : 0.16),
     "--accent-contrast": buildAccentContrast(accent),
+    "--accent-surface": surfaceAccent,
+    "--accent-surface-soft": buildSoftColor(mode, surfaceAccent, mode === "dark" ? 0.2 : 0.14),
+    "--accent-surface-contrast": buildAccentContrast(surfaceAccent),
+    "--page-gradient": buildPageGradient(mode, accent, surfaceAccent),
+    ...buildMobileFabVariables(mode, surfaceAccent),
   };
 };
 
