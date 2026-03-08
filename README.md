@@ -243,6 +243,7 @@ Vicky uses Google's Material Symbols Outlined icon font for UI icons via `@fonts
 - Source: <https://github.com/google/material-design-icons>
 - License: Apache-2.0
 
-## License
+## Copyright & License
 
-MIT. See [LICENSE.md](LICENSE.md).
+Vicky Copyright © 2026 Keksuccino.<br>
+Vicky is licensed under MIT. See [LICENSE.md](LICENSE.md).
