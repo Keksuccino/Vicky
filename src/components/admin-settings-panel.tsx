@@ -18,9 +18,11 @@ import { useTheme } from "@/components/theme-provider";
 import type { AdminSettings, DomainSslRuntimeStatus, ThemeCustomization } from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
-import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
+import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor } from "@/lib/theme";
 
 const THEME_DEFAULTS = DEFAULT_THEME_CUSTOMIZATION();
+const DEFAULT_SITE_TITLE_GRADIENT_FROM = "#3b82f6";
+const DEFAULT_SITE_TITLE_GRADIENT_TO = "#22d3ee";
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -122,6 +124,9 @@ const createThemePreviewStyle = (
 };
 
 type AccentColorFieldProps = {
+  allowEmpty?: boolean;
+  emptyLabel?: string;
+  fallbackColor?: string;
   hint: string;
   id: string;
   label: string;
@@ -129,21 +134,47 @@ type AccentColorFieldProps = {
   onChange: (value: string) => void;
 };
 
-function AccentColorField({ hint, id, label, value, onChange }: AccentColorFieldProps) {
+function AccentColorField({
+  allowEmpty = false,
+  emptyLabel = "OFF",
+  fallbackColor = "#000000",
+  hint,
+  id,
+  label,
+  value,
+  onChange,
+}: AccentColorFieldProps) {
+  const trimmedValue = value.trim();
+  const normalizedPickerValue = normalizeAccentColor(trimmedValue, fallbackColor);
+  const displayValue = trimmedValue ? trimmedValue.toUpperCase() : emptyLabel;
+  const previewStyle = trimmedValue
+    ? ({
+        "--theme-color-preview": trimmedValue,
+      } as CSSProperties)
+    : undefined;
+
   return (
     <label className="field-row" htmlFor={id}>
       <span className="field-label">{label}</span>
       <div className="theme-color-input-row">
-        <input
-          id={id}
-          className="theme-color-picker"
-          type="color"
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-        />
-        <span className="theme-color-value" aria-live="polite">
-          {value.toUpperCase()}
+        <span className={`theme-color-picker-shell${trimmedValue ? "" : " theme-color-picker-shell-empty"}`} style={previewStyle}>
+          <span className="theme-color-picker-preview" aria-hidden="true" />
+          <input
+            id={id}
+            className="theme-color-picker"
+            type="color"
+            value={normalizedPickerValue}
+            onChange={(event) => onChange(event.target.value)}
+          />
         </span>
+        <span className={`theme-color-value${trimmedValue ? "" : " theme-color-value-empty"}`} aria-live="polite">
+          {displayValue}
+        </span>
+        {allowEmpty ? (
+          <button type="button" className="btn btn-ghost theme-color-clear" disabled={!trimmedValue} onClick={() => onChange("")}>
+            Clear
+          </button>
+        ) : null}
       </div>
       <span className="field-hint">{hint}</span>
     </label>
@@ -537,6 +568,7 @@ export function AdminSettingsPanel() {
                     id="theme-light-accent"
                     label="Main accent"
                     value={settings.themeLightAccent}
+                    fallbackColor={THEME_DEFAULTS.lightAccent}
                     hint="Used for links, highlights, focus states, and primary action buttons in Light mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
                   />
@@ -544,6 +576,7 @@ export function AdminSettingsPanel() {
                     id="theme-light-surface-accent"
                     label="Surface/background accent"
                     value={settings.themeLightSurfaceAccent}
+                    fallbackColor={THEME_DEFAULTS.lightSurfaceAccent}
                     hint="Used for sidebar surfaces, header controls, and page-entry hovers in Light mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
                   />
@@ -557,6 +590,7 @@ export function AdminSettingsPanel() {
                     id="theme-dark-accent"
                     label="Main accent"
                     value={settings.themeDarkAccent}
+                    fallbackColor={THEME_DEFAULTS.darkAccent}
                     hint="Used for links, highlights, focus states, and primary action buttons in Dark mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
                   />
@@ -564,6 +598,7 @@ export function AdminSettingsPanel() {
                     id="theme-dark-surface-accent"
                     label="Surface/background accent"
                     value={settings.themeDarkSurfaceAccent}
+                    fallbackColor={THEME_DEFAULTS.darkSurfaceAccent}
                     hint="Used for sidebar surfaces, header controls, and page-entry hovers in Dark mode."
                     onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
                   />
@@ -708,29 +743,25 @@ export function AdminSettingsPanel() {
             </label>
 
             <div className="field-inline">
-              <label className="field-row" htmlFor="site-title-gradient-from">
-                <span className="field-label">Site title gradient from (optional)</span>
-                <input
-                  id="site-title-gradient-from"
-                  className="input"
-                  value={settings.siteTitleGradientFrom}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, siteTitleGradientFrom: event.target.value }))}
-                  placeholder="#3b82f6"
-                />
-                <span className="field-hint">Any CSS color value. Example: `#3b82f6`, `rgb(59 130 246)`.</span>
-              </label>
+              <AccentColorField
+                id="site-title-gradient-from"
+                label="Site title gradient from (optional)"
+                value={settings.siteTitleGradientFrom}
+                allowEmpty
+                fallbackColor={DEFAULT_SITE_TITLE_GRADIENT_FROM}
+                hint="Pick the start color for the site title gradient. Clear both gradient colors to disable it."
+                onChange={(value) => setSettings((prev) => ({ ...prev, siteTitleGradientFrom: value }))}
+              />
 
-              <label className="field-row" htmlFor="site-title-gradient-to">
-                <span className="field-label">Site title gradient to (optional)</span>
-                <input
-                  id="site-title-gradient-to"
-                  className="input"
-                  value={settings.siteTitleGradientTo}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, siteTitleGradientTo: event.target.value }))}
-                  placeholder="#22d3ee"
-                />
-                <span className="field-hint">Any CSS color value. Leave both gradient fields empty to disable.</span>
-              </label>
+              <AccentColorField
+                id="site-title-gradient-to"
+                label="Site title gradient to (optional)"
+                value={settings.siteTitleGradientTo}
+                allowEmpty
+                fallbackColor={DEFAULT_SITE_TITLE_GRADIENT_TO}
+                hint="Pick the end color for the site title gradient. Clear both gradient colors to disable it."
+                onChange={(value) => setSettings((prev) => ({ ...prev, siteTitleGradientTo: value }))}
+              />
             </div>
 
             <label className="field-row" htmlFor="site-start-page">
