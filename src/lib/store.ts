@@ -2,10 +2,11 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
-import { BUILTIN_THEME_IDS, DEFAULT_SETTINGS, DEFAULT_STORE, DEFAULT_THEMES, STORE_VERSION } from "@/lib/defaults";
+import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeStartPage } from "@/lib/start-page";
-import type { AppSettings, DocsStore, ThemeDefinition, ThemeVariables } from "@/lib/types";
+import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
+import type { AppSettings, DocsStore } from "@/lib/types";
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
@@ -38,115 +39,74 @@ const normalizeOptionalString = (value: unknown): string | null => {
   return trimmed || null;
 };
 
-const normalizeThemeVariables = (variables: unknown, fallback: ThemeVariables): ThemeVariables => {
+const normalizeThemeAccentValue = (variables: unknown): string | null => {
   const source = typeof variables === "object" && variables !== null ? (variables as Record<string, unknown>) : {};
-  const entries = Object.entries(source)
-    .map(([rawKey, rawValue]) => {
-      if (typeof rawValue !== "string") {
-        return null;
-      }
-
-      const key = rawKey.trim();
-      const value = rawValue.trim();
-      if (!key || !value) {
-        return null;
-      }
-
-      const normalizedKey = key.startsWith("--") ? key : `--${key}`;
-      return [normalizedKey, value] as const;
-    })
-    .filter((entry): entry is readonly [string, string] => Boolean(entry));
-
-  if (entries.length === 0) {
-    return { ...fallback };
-  }
-
-  return Object.fromEntries(entries);
+  const rawAccent = source["--accent"] ?? source.accent;
+  return typeof rawAccent === "string" && rawAccent.trim() ? rawAccent.trim() : null;
 };
 
-const normalizeTheme = (value: unknown, fallback?: ThemeDefinition): ThemeDefinition | null => {
+type LegacyTheme = {
+  id: string;
+  mode: "light" | "dark";
+  isBuiltin: boolean;
+  accent: string | null;
+  customCss: string;
+};
+
+const normalizeLegacyTheme = (value: unknown): LegacyTheme | null => {
   if (typeof value !== "object" || value === null) {
-    return fallback ?? null;
+    return null;
   }
 
   const source = value as Record<string, unknown>;
-  const reference = fallback;
-
-  const id = normalizeString(source.id, reference?.id ?? "");
-  const name = normalizeString(source.name, reference?.name ?? "");
-  const mode = source.mode === "dark" ? "dark" : source.mode === "light" ? "light" : reference?.mode;
-
-  if (!id || !name || !mode) {
-    return fallback ?? null;
+  const id = normalizeString(source.id, "");
+  const mode = source.mode === "dark" ? "dark" : source.mode === "light" ? "light" : null;
+  if (!id || !mode) {
+    return null;
   }
-
-  const createdAt = normalizeString(source.createdAt, reference?.createdAt ?? now());
-  const updatedAt = normalizeString(source.updatedAt, reference?.updatedAt ?? createdAt);
-  const isBuiltin = typeof source.isBuiltin === "boolean" ? source.isBuiltin : reference?.isBuiltin ?? false;
-
-  const variableSource = source.variables ?? source.tokens;
-  const baseVariables = reference?.variables ?? DEFAULT_THEMES()[0].variables;
-  const variables = normalizeThemeVariables(variableSource, baseVariables);
-  const customCss = typeof source.customCss === "string" ? source.customCss : reference?.customCss ?? "";
 
   return {
     id,
-    name,
     mode,
-    isBuiltin,
-    createdAt,
-    updatedAt,
-    variables,
-    customCss,
+    isBuiltin: typeof source.isBuiltin === "boolean" ? source.isBuiltin : false,
+    accent: normalizeThemeAccentValue(source.variables ?? source.tokens),
+    customCss: typeof source.customCss === "string" ? source.customCss : "",
   };
 };
 
-const normalizeThemes = (value: unknown): ThemeDefinition[] => {
-  const defaults = DEFAULT_THEMES();
-  const builtinMap = new Map(defaults.map((theme) => [theme.id, theme]));
+const normalizeLegacyThemes = (value: unknown): LegacyTheme[] =>
+  (Array.isArray(value) ? value : [])
+    .map((entry) => normalizeLegacyTheme(entry))
+    .filter((entry): entry is LegacyTheme => Boolean(entry));
 
-  const sourceThemes = Array.isArray(value) ? value : [];
-  const normalized = new Map<string, ThemeDefinition>();
+const deriveThemeCustomizationFromLegacyStore = (
+  settingsSource: Record<string, unknown>,
+  legacyThemes: LegacyTheme[],
+): AppSettings["theme"] => {
+  const defaults = DEFAULT_THEME_CUSTOMIZATION();
+  const activeThemeId = normalizeOptionalString(settingsSource.activeThemeId);
+  const activeTheme = activeThemeId ? legacyThemes.find((theme) => theme.id === activeThemeId) ?? null : null;
+  const builtinLightTheme = legacyThemes.find((theme) => theme.isBuiltin && theme.mode === "light") ?? null;
+  const builtinDarkTheme = legacyThemes.find((theme) => theme.isBuiltin && theme.mode === "dark") ?? null;
 
-  for (const defaultTheme of defaults) {
-    normalized.set(defaultTheme.id, defaultTheme);
-  }
+  const lightAccentSource = activeTheme?.mode === "light" ? activeTheme.accent : builtinLightTheme?.accent;
+  const darkAccentSource = activeTheme?.mode === "dark" ? activeTheme.accent : builtinDarkTheme?.accent;
+  const customCssSource =
+    activeTheme?.customCss.trim() ||
+    builtinLightTheme?.customCss.trim() ||
+    builtinDarkTheme?.customCss.trim() ||
+    defaults.customCss;
 
-  for (const themeValue of sourceThemes) {
-    const parsed = normalizeTheme(themeValue);
-    if (!parsed) {
-      continue;
-    }
-
-    if (builtinMap.has(parsed.id)) {
-      const builtinFallback = builtinMap.get(parsed.id);
-      const builtinTheme = normalizeTheme(parsed, builtinFallback);
-      if (builtinTheme && builtinFallback) {
-        builtinTheme.isBuiltin = true;
-        builtinTheme.mode = builtinFallback.mode;
-        builtinTheme.name = builtinFallback.name;
-        // Built-in themes are versioned with the app; keep their default tokens current.
-        builtinTheme.variables = {
-          ...builtinTheme.variables,
-          ...builtinFallback.variables,
-        };
-        normalized.set(parsed.id, builtinTheme);
-      }
-      continue;
-    }
-
-    normalized.set(parsed.id, {
-      ...parsed,
-      isBuiltin: false,
-      createdAt: parsed.createdAt || now(),
-      updatedAt: parsed.updatedAt || parsed.createdAt || now(),
-    });
-  }
-
-  return [...normalized.values()];
+  return {
+    useSharedAccent: defaults.useSharedAccent,
+    sharedAccent: defaults.sharedAccent,
+    lightAccent: normalizeAccentColor(lightAccentSource, defaults.lightAccent),
+    darkAccent: normalizeAccentColor(darkAccentSource, defaults.darkAccent),
+    customCss: customCssSource,
+  };
 };
 
-const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettings => {
+const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSettings => {
   const defaults = DEFAULT_SETTINGS();
   const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
   const sourceGitHub =
@@ -165,6 +125,13 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
     typeof source.domain === "object" && source.domain !== null
       ? (source.domain as Record<string, unknown>)
       : ({} as Record<string, unknown>);
+  const sourceTheme =
+    typeof source.theme === "object" && source.theme !== null
+      ? (source.theme as Record<string, unknown>)
+      : typeof source.themeCustomization === "object" && source.themeCustomization !== null
+        ? (source.themeCustomization as Record<string, unknown>)
+        : null;
+  const fallbackTheme = sourceTheme ? defaults.theme : deriveThemeCustomizationFromLegacyStore(source, legacyThemes);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
@@ -192,27 +159,23 @@ const normalizeSettings = (value: unknown, themes: ThemeDefinition[]): AppSettin
       docsPath: normalizeString(sourceGitHub.docsPath, defaults.github.docsPath),
       tokenEncrypted: normalizeOptionalString(sourceGitHub.tokenEncrypted),
     },
-    activeThemeId: normalizeString(source.activeThemeId, defaults.activeThemeId),
+    theme: normalizeThemeCustomization(sourceTheme, fallbackTheme),
     updatedAt: normalizeString(source.updatedAt, defaults.updatedAt),
   };
-
-  const themeExists = themes.some((theme) => theme.id === settings.activeThemeId);
-  if (!themeExists) {
-    settings.activeThemeId = BUILTIN_THEME_IDS.light;
-  }
 
   return settings;
 };
 
 const normalizeStore = (value: unknown): DocsStore => {
   const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const themes = normalizeThemes(source.themes);
-  const settings = normalizeSettings(source.settings, themes);
+  const settingsSource =
+    typeof source.settings === "object" && source.settings !== null ? (source.settings as Record<string, unknown>) : {};
+  const legacyThemes = normalizeLegacyThemes(source.themes);
+  const settings = normalizeSettings(settingsSource, legacyThemes);
 
   return {
     version: STORE_VERSION,
     settings,
-    themes,
   };
 };
 

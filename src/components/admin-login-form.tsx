@@ -135,7 +135,7 @@ export function AdminLoginForm() {
         <div className="auth-hero">
           <MaterialIcon name="verified_user" className="auth-icon" />
           <h1>Admin sign in</h1>
-          <p>Sign in with your admin password to manage repository settings, themes, and pages.</p>
+          <p>Sign in with your admin password to manage repository settings, appearance, and pages.</p>
         </div>
 
         <form

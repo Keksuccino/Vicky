@@ -8,8 +8,6 @@ import {
   type DomainSslRuntimeStatus,
   type EditableDoc,
   type MarkdownHeading,
-  type ThemeDefinition,
-  type ThemeDraft,
 } from "@/components/types";
 
 type JsonRecord = Record<string, unknown>;
@@ -31,6 +29,11 @@ export type PublicSiteSettings = {
   docsIconPng32Url: string;
   docsIconPng180Url: string;
   customDomain: string;
+  themeUseSharedAccent: boolean;
+  themeSharedAccent: string;
+  themeLightAccent: string;
+  themeDarkAccent: string;
+  themeCustomCss: string;
 };
 
 const DEFAULT_DOCS_CACHE_TTL_SECONDS = 30;
@@ -64,6 +67,11 @@ const DEFAULT_SETTINGS: AdminSettings = {
   githubDocsPath: "docs",
   githubToken: "",
   tokenConfigured: false,
+  themeUseSharedAccent: false,
+  themeSharedAccent: "#006ecf",
+  themeLightAccent: "#006ecf",
+  themeDarkAccent: "#5caedf",
+  themeCustomCss: "",
 };
 
 export class ApiError extends Error {
@@ -392,6 +400,7 @@ function normalizeSettings(source: unknown): AdminSettings {
   const docsIcon = asRecord(payload.docsIcon);
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const domain = asRecord(payload.domain);
+  const theme = asRecord(payload.theme);
   const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
 
   return {
@@ -413,6 +422,11 @@ function normalizeSettings(source: unknown): AdminSettings {
     githubDocsPath: asString(github.docsPath, DEFAULT_SETTINGS.githubDocsPath),
     githubToken: "",
     tokenConfigured: asBoolean(github.tokenConfigured, false),
+    themeUseSharedAccent: asBoolean(theme.useSharedAccent, DEFAULT_SETTINGS.themeUseSharedAccent),
+    themeSharedAccent: asString(theme.sharedAccent, DEFAULT_SETTINGS.themeSharedAccent),
+    themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
+    themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
+    themeCustomCss: asString(theme.customCss, DEFAULT_SETTINGS.themeCustomCss),
   };
 }
 
@@ -421,6 +435,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const docsIcon = asRecord(payload.docsIcon);
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const domain = asRecord(payload.domain);
+  const theme = asRecord(payload.theme);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
@@ -433,6 +448,11 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
+    themeUseSharedAccent: asBoolean(theme.useSharedAccent, DEFAULT_SETTINGS.themeUseSharedAccent),
+    themeSharedAccent: asString(theme.sharedAccent, DEFAULT_SETTINGS.themeSharedAccent),
+    themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
+    themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
+    themeCustomCss: asString(theme.customCss, DEFAULT_SETTINGS.themeCustomCss),
   };
 }
 
@@ -458,61 +478,6 @@ function normalizeDomainSslRuntimeStatus(source: unknown): DomainSslRuntimeStatu
     certificateExpiresAt: expiresAt || null,
     checkedAt: checkedAt || new Date().toISOString(),
     message: asString(payload.message, "SSL runtime status is unavailable."),
-  };
-}
-
-function normalizeTheme(source: unknown, activeThemeId: string | null): ThemeDefinition | null {
-  const payload = asRecord(source);
-  const id = asString(payload.id).trim();
-  const name = asString(payload.name).trim();
-
-  if (!id || !name) {
-    return null;
-  }
-
-  const variablesSource = payload.variables ?? payload.tokens;
-  const variables: Record<string, string> = {};
-
-  if (typeof variablesSource === "object" && variablesSource !== null) {
-    for (const [key, value] of Object.entries(variablesSource as Record<string, unknown>)) {
-      if (typeof value !== "string") {
-        continue;
-      }
-
-      const normalizedKey = key.startsWith("--") ? key : `--${key}`;
-      variables[normalizedKey] = value;
-    }
-  }
-
-  return {
-    id,
-    name,
-    mode: payload.mode === "dark" ? "dark" : "light",
-    isBuiltin: asBoolean(payload.isBuiltin, false),
-    variables,
-    customCss: asString(payload.customCss),
-    createdAt: asString(payload.createdAt),
-    updatedAt: asString(payload.updatedAt),
-    isActive: activeThemeId === id,
-  };
-}
-
-function normalizeThemes(source: unknown): { themes: ThemeDefinition[]; activeThemeId: string | null } {
-  const payload = asRecord(source);
-  const activeThemeId = asString(payload.activeThemeId).trim() || null;
-  const themesRaw = payload.themes;
-
-  if (!Array.isArray(themesRaw)) {
-    return { themes: [], activeThemeId };
-  }
-
-  const themes = themesRaw
-    .map((entry) => normalizeTheme(entry, activeThemeId))
-    .filter((entry): entry is ThemeDefinition => Boolean(entry));
-
-  return {
-    themes,
-    activeThemeId,
   };
 }
 
@@ -581,15 +546,9 @@ export async function logout(): Promise<void> {
   await requestJson("/api/auth/logout", { method: "POST" });
 }
 
-export async function fetchAdminSettings(): Promise<{ settings: AdminSettings; themes: ThemeDefinition[] }> {
+export async function fetchAdminSettings(): Promise<AdminSettings> {
   const response = await requestJson<unknown>("/api/admin/settings");
-  const settings = normalizeSettings(response);
-  const { themes } = normalizeThemes(response);
-
-  return {
-    settings,
-    themes,
-  };
+  return normalizeSettings(response);
 }
 
 export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatus> {
@@ -619,6 +578,13 @@ export async function saveAdminSettings(
     domain: {
       customDomain: settings.customDomain.trim(),
       letsEncryptEmail: settings.letsEncryptEmail.trim(),
+    },
+    theme: {
+      useSharedAccent: settings.themeUseSharedAccent,
+      sharedAccent: settings.themeSharedAccent,
+      lightAccent: settings.themeLightAccent,
+      darkAccent: settings.themeDarkAccent,
+      customCss: settings.themeCustomCss,
     },
     github: {
       owner: settings.githubOwner,
@@ -670,85 +636,6 @@ export async function testAdminConnection(settings: AdminSettings): Promise<stri
 
   const defaultBranch = asString(payload.defaultBranch).trim();
   return defaultBranch ? `Connection OK. Repo default branch: ${defaultBranch}.` : "Connection OK.";
-}
-
-export async function fetchThemes(): Promise<{ themes: ThemeDefinition[]; activeThemeId: string | null }> {
-  const response = await requestJson<unknown>("/api/themes");
-  return normalizeThemes(response);
-}
-
-export async function createTheme(theme: ThemeDraft): Promise<ThemeDefinition> {
-  const response = await requestJson<unknown>("/api/themes", {
-    method: "POST",
-    body: JSON.stringify({
-      name: theme.name,
-      mode: theme.mode,
-      variables: Object.fromEntries(
-        theme.variables
-          .map((entry) => [entry.key.trim(), entry.value.trim()] as const)
-          .filter(([key, value]) => key && value),
-      ),
-      customCss: theme.customCss,
-    }),
-  });
-
-  const payload = asRecord(response).theme;
-  const activeThemeId = asString(asRecord(response).activeThemeId) || null;
-  const normalized = normalizeTheme(payload, activeThemeId);
-
-  if (!normalized) {
-    throw new Error("Failed to parse created theme.");
-  }
-
-  return normalized;
-}
-
-export async function updateTheme(theme: ThemeDraft & { id: string }): Promise<ThemeDefinition> {
-  const response = await requestJson<unknown>(`/api/themes/${encodeURIComponent(theme.id)}`, {
-    method: "PATCH",
-    body: JSON.stringify({
-      name: theme.name,
-      mode: theme.mode,
-      variables: Object.fromEntries(
-        theme.variables
-          .map((entry) => [entry.key.trim(), entry.value.trim()] as const)
-          .filter(([key, value]) => key && value),
-      ),
-      customCss: theme.customCss,
-    }),
-  });
-
-  const payload = asRecord(response).theme;
-  const normalized = normalizeTheme(payload, null);
-
-  if (!normalized) {
-    throw new Error("Failed to parse updated theme.");
-  }
-
-  return normalized;
-}
-
-export async function deleteTheme(themeId: string): Promise<string | null> {
-  const response = await requestJson<unknown>(`/api/themes/${encodeURIComponent(themeId)}`, {
-    method: "DELETE",
-  });
-
-  const payload = asRecord(response);
-  return asString(payload.activeThemeId).trim() || null;
-}
-
-export async function activateTheme(themeId: string): Promise<string> {
-  const response = await requestJson<unknown>("/api/themes/activate", {
-    method: "POST",
-    body: JSON.stringify({ id: themeId }),
-  });
-
-  const activeThemeId = asString(asRecord(response).activeThemeId).trim();
-  if (!activeThemeId) {
-    throw new Error("Theme activation did not return an active theme id.");
-  }
-
-  return activeThemeId;
 }
 
 export async function fetchAdminDocs(): Promise<DocTreeNode[]> {

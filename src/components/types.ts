@@ -1,5 +1,12 @@
-export type ThemeMode = "light" | "dark" | "custom";
-export type StoredThemeMode = "light" | "dark";
+export type ThemeMode = "light" | "dark";
+
+export type ThemeCustomization = {
+  useSharedAccent: boolean;
+  sharedAccent: string;
+  lightAccent: string;
+  darkAccent: string;
+  customCss: string;
+};
 
 export type MarkdownHeading = {
   depth: number;
@@ -59,6 +66,11 @@ export type AdminSettings = {
   githubDocsPath: string;
   githubToken: string;
   tokenConfigured: boolean;
+  themeUseSharedAccent: boolean;
+  themeSharedAccent: string;
+  themeLightAccent: string;
+  themeDarkAccent: string;
+  themeCustomCss: string;
 };
 
 export type DomainSslCertificateState = "missing" | "valid" | "expiring_soon" | "expired" | "domain_mismatch" | "invalid";
@@ -74,26 +86,6 @@ export type DomainSslRuntimeStatus = {
   certificateExpiresAt: string | null;
   checkedAt: string;
   message: string;
-};
-
-export type ThemeDefinition = {
-  id: string;
-  name: string;
-  mode: StoredThemeMode;
-  isBuiltin: boolean;
-  variables: Record<string, string>;
-  customCss: string;
-  createdAt: string;
-  updatedAt: string;
-  isActive: boolean;
-};
-
-export type ThemeDraft = {
-  id?: string;
-  name: string;
-  mode: StoredThemeMode;
-  variables: Array<{ key: string; value: string }>;
-  customCss: string;
 };
 
 export type EditableDoc = {

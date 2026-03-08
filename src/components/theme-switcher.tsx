@@ -12,7 +12,7 @@ const modeLabels: Array<{ mode: ThemeMode; label: string; icon: string }> = [
 ];
 
 export function ThemeSwitcher() {
-  const { mode, themes, activeThemeId, setMode, setActiveThemeId } = useTheme();
+  const { mode, setMode } = useTheme();
   const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
@@ -56,24 +56,6 @@ export function ThemeSwitcher() {
         <MaterialIcon name={compactIcon} />
       </button>
 
-      {hydrated && mode === "custom" ? (
-        <label className="theme-picker" htmlFor="custom-theme-select">
-          <span className="field-label">Custom theme</span>
-          <select
-            id="custom-theme-select"
-            className="input"
-            value={activeThemeId ?? ""}
-            onChange={(event) => setActiveThemeId(event.target.value || null)}
-          >
-            <option value="">System custom theme</option>
-            {themes.map((theme) => (
-              <option key={theme.id} value={theme.id}>
-                {theme.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      ) : null}
     </div>
   );
 }

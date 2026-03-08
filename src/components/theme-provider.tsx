@@ -2,7 +2,6 @@
 
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -11,22 +10,20 @@ import {
   type ReactNode,
 } from "react";
 
-import { fetchThemes } from "@/components/api";
-import type { ThemeDefinition, ThemeMode } from "@/components/types";
+import { buildThemeVariables } from "@/lib/theme";
+
+import type { ThemeCustomization, ThemeMode } from "@/components/types";
 
 type ThemeContextValue = {
   mode: ThemeMode;
-  themes: ThemeDefinition[];
-  activeThemeId: string | null;
+  themeSettings: ThemeCustomization;
   setMode: (mode: ThemeMode) => void;
-  setActiveThemeId: (themeId: string | null) => void;
-  refreshThemes: () => Promise<void>;
+  setThemeSettings: (settings: ThemeCustomization) => void;
 };
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const MODE_STORAGE_KEY = "wiki-theme-mode";
-const ACTIVE_THEME_STORAGE_KEY = "wiki-active-theme-id";
 const CUSTOM_STYLE_ID = "wiki-custom-theme-style";
 
 function upsertCustomStyle(cssText: string): void {
@@ -50,74 +47,34 @@ function upsertCustomStyle(cssText: string): void {
   document.head.appendChild(style);
 }
 
-function findBuiltinByMode(themes: ThemeDefinition[], mode: "light" | "dark"): ThemeDefinition | null {
-  return themes.find((theme) => theme.isBuiltin && theme.mode === mode) ?? null;
-}
-
-function pickThemeForMode(
-  themes: ThemeDefinition[],
-  mode: ThemeMode,
-  selectedThemeId: string | null,
-): ThemeDefinition | null {
-  if (mode === "custom") {
-    if (selectedThemeId) {
-      return themes.find((theme) => theme.id === selectedThemeId) ?? null;
-    }
-
-    return themes.find((theme) => theme.isActive) ?? themes[0] ?? null;
-  }
-
-  return findBuiltinByMode(themes, mode) ?? themes.find((theme) => theme.mode === mode) ?? null;
-}
-
-export function ThemeProvider({ children }: { children: ReactNode }) {
+export function ThemeProvider({
+  children,
+  initialThemeSettings,
+}: {
+  children: ReactNode;
+  initialThemeSettings: ThemeCustomization;
+}) {
   const [mode, setMode] = useState<ThemeMode>("light");
-  const [themes, setThemes] = useState<ThemeDefinition[]>([]);
-  const [activeThemeId, setActiveThemeId] = useState<string | null>(null);
+  const [themeSettings, setThemeSettings] = useState<ThemeCustomization>(initialThemeSettings);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const appliedCustomVariablesRef = useRef<string[]>([]);
 
   useEffect(() => {
+    setThemeSettings(initialThemeSettings);
+  }, [initialThemeSettings]);
+
+  useEffect(() => {
     try {
       const storedMode = window.localStorage.getItem(MODE_STORAGE_KEY);
-      if (storedMode === "dark" || storedMode === "custom") {
-        setMode(storedMode);
+      if (storedMode === "dark") {
+        setMode("dark");
       }
-
-      const storedThemeId = window.localStorage.getItem(ACTIVE_THEME_STORAGE_KEY);
-      setActiveThemeId(storedThemeId);
     } catch {
       // Keep defaults if storage is unavailable.
     } finally {
       setStorageHydrated(true);
     }
   }, []);
-
-  const refreshThemes = useCallback(async () => {
-    try {
-      const { themes: nextThemes, activeThemeId: nextActiveThemeId } = await fetchThemes();
-      setThemes(nextThemes);
-      setActiveThemeId((previous) => {
-        if (previous && nextThemes.some((theme) => theme.id === previous)) {
-          return previous;
-        }
-
-        return nextActiveThemeId;
-      });
-    } catch {
-      setThemes([]);
-    }
-  }, []);
-
-  useEffect(() => {
-    const handle = window.setTimeout(() => {
-      void refreshThemes();
-    }, 0);
-
-    return () => {
-      window.clearTimeout(handle);
-    };
-  }, [refreshThemes]);
 
   useEffect(() => {
     if (!storageHydrated) {
@@ -132,18 +89,6 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (activeThemeId) {
-      window.localStorage.setItem(ACTIVE_THEME_STORAGE_KEY, activeThemeId);
-    } else {
-      window.localStorage.removeItem(ACTIVE_THEME_STORAGE_KEY);
-    }
-  }, [activeThemeId, storageHydrated]);
-
-  useEffect(() => {
-    if (!storageHydrated) {
-      return;
-    }
-
     const root = document.documentElement;
     root.dataset.colorMode = mode;
 
@@ -152,33 +97,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     }
     appliedCustomVariablesRef.current = [];
 
-    const theme = pickThemeForMode(themes, mode, activeThemeId);
-    if (!theme) {
-      upsertCustomStyle("");
-      return;
-    }
-
+    const variables = buildThemeVariables(mode, themeSettings);
     const keys: string[] = [];
-    for (const [key, value] of Object.entries(theme.variables)) {
-      const normalizedKey = key.startsWith("--") ? key : `--${key}`;
-      root.style.setProperty(normalizedKey, value);
-      keys.push(normalizedKey);
+
+    for (const [key, value] of Object.entries(variables)) {
+      root.style.setProperty(key, value);
+      keys.push(key);
     }
 
     appliedCustomVariablesRef.current = keys;
-    upsertCustomStyle(theme.customCss);
-  }, [activeThemeId, mode, storageHydrated, themes]);
+    upsertCustomStyle(themeSettings.customCss);
+  }, [mode, storageHydrated, themeSettings]);
 
   const value = useMemo<ThemeContextValue>(
     () => ({
       mode,
-      themes,
-      activeThemeId,
+      themeSettings,
       setMode,
-      setActiveThemeId,
-      refreshThemes,
+      setThemeSettings,
     }),
-    [activeThemeId, mode, refreshThemes, themes],
+    [mode, themeSettings],
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

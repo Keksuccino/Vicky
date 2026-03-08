@@ -6,6 +6,7 @@ import localFont from "next/font/local";
 import { AppHeader } from "@/components/app-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { normalizeCustomDomain } from "@/lib/domain-settings";
+import { createThemeBootstrapScript, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 import { getStore } from "@/lib/store";
 
 import "@fontsource/material-symbols-outlined";
@@ -34,12 +35,11 @@ const fontMono = localFont({
 });
 
 const FALLBACK_SITE_TITLE = "Vicky Docs";
-const FALLBACK_SITE_DESCRIPTION = "Docs/wiki frontend with navigation, search, editor, and admin theme management.";
+const FALLBACK_SITE_DESCRIPTION = "Docs/wiki frontend with navigation, search, editor, and admin appearance settings.";
 const FALLBACK_ICON_VERSION = "default";
 const FALLBACK_FOOTER_TEXT = "Copyright © {{year}} {{owner}}. All rights reserved.";
 const FALLBACK_FOOTER_OWNER = "Repository Owner";
 const MIN_FOOTER_YEAR = 2026;
-const INITIAL_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var mode=window.localStorage.getItem("wiki-theme-mode");document.documentElement.dataset.colorMode=mode==="dark"||mode==="custom"?mode:"light";}catch(_error){document.documentElement.dataset.colorMode="light";}})();`;
 
 const appendVersion = (url: string, version: string): string => `${url}${url.includes("?") ? "&" : "?"}v=${encodeURIComponent(version)}`;
 
@@ -116,22 +116,26 @@ export default async function RootLayout({
   noStore();
 
   let footerText = resolveFooterText(FALLBACK_FOOTER_TEXT, FALLBACK_FOOTER_OWNER);
+  let initialThemeSettings = DEFAULT_THEME_CUSTOMIZATION();
 
   try {
     const store = await getStore();
     const template = store.settings.footerText.trim() || FALLBACK_FOOTER_TEXT;
     footerText = resolveFooterText(template, store.settings.github.owner);
+    initialThemeSettings = store.settings.theme;
   } catch {
     // Keep fallback footer text when settings storage is temporarily unavailable.
   }
 
+  const initialThemeBootstrapScript = createThemeBootstrapScript(initialThemeSettings);
+
   return (
     <html lang="en" data-color-mode="light" suppressHydrationWarning>
       <head>
-        <script id="theme-bootstrap" dangerouslySetInnerHTML={{ __html: INITIAL_THEME_BOOTSTRAP_SCRIPT }} />
+        <script id="theme-bootstrap" dangerouslySetInnerHTML={{ __html: initialThemeBootstrapScript }} />
       </head>
       <body className={`${fontDisplay.variable} ${fontBody.variable} ${fontMono.variable}`}>
-        <ThemeProvider>
+        <ThemeProvider initialThemeSettings={initialThemeSettings}>
           <a href="#main-content" className="skip-link">
             Skip to content
           </a>

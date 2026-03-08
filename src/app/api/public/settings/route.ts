@@ -28,6 +28,13 @@ export const GET = async (): Promise<NextResponse> => {
         domain: {
           customDomain: store.settings.domain.customDomain,
         },
+        theme: {
+          useSharedAccent: store.settings.theme.useSharedAccent,
+          sharedAccent: store.settings.theme.sharedAccent,
+          lightAccent: store.settings.theme.lightAccent,
+          darkAccent: store.settings.theme.darkAccent,
+          customCss: store.settings.theme.customCss,
+        },
       },
     });
   } catch (error: unknown) {

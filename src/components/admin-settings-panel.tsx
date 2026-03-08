@@ -1,12 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
-  activateTheme,
-  createTheme,
-  deleteTheme,
   fetchAdminDomainSslStatus,
   fetchAdminSettings,
   formatApiError,
@@ -14,13 +11,15 @@ import {
   logout,
   saveAdminSettings,
   testAdminConnection,
-  updateTheme,
 } from "@/components/api";
 import { MaterialIcon } from "@/components/material-icon";
-import { EmptyState, ErrorState, LoadingState } from "@/components/states";
+import { ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
-import type { AdminSettings, DomainSslRuntimeStatus, ThemeDefinition, ThemeDraft } from "@/components/types";
+import type { AdminSettings, DomainSslRuntimeStatus, ThemeCustomization } from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
+import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
+
+const THEME_DEFAULTS = DEFAULT_THEME_CUSTOMIZATION();
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -41,29 +40,12 @@ const INITIAL_SETTINGS: AdminSettings = {
   githubDocsPath: "docs",
   githubToken: "",
   tokenConfigured: false,
+  themeUseSharedAccent: THEME_DEFAULTS.useSharedAccent,
+  themeSharedAccent: THEME_DEFAULTS.sharedAccent,
+  themeLightAccent: THEME_DEFAULTS.lightAccent,
+  themeDarkAccent: THEME_DEFAULTS.darkAccent,
+  themeCustomCss: THEME_DEFAULTS.customCss,
 };
-
-const INITIAL_THEME_DRAFT: ThemeDraft = {
-  name: "",
-  mode: "light",
-  variables: [
-    { key: "--surface", value: "#f8fbff" },
-    { key: "--surface-elevated", value: "#ffffff" },
-    { key: "--text-primary", value: "#111b2e" },
-    { key: "--accent", value: "#006ecf" },
-  ],
-  customCss: "",
-};
-
-function draftFromTheme(theme: ThemeDefinition): ThemeDraft {
-  return {
-    id: theme.id,
-    name: theme.name,
-    mode: theme.mode,
-    variables: Object.entries(theme.variables).map(([key, value]) => ({ key, value })),
-    customCss: theme.customCss,
-  };
-}
 
 type DomainFieldErrors = {
   customDomain: string | null;
@@ -108,6 +90,61 @@ const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings =>
   letsEncryptEmail: normalizeLetsEncryptEmail(settings.letsEncryptEmail),
 });
 
+const themeCustomizationFromSettings = (settings: AdminSettings): ThemeCustomization => ({
+  useSharedAccent: settings.themeUseSharedAccent,
+  sharedAccent: settings.themeSharedAccent,
+  lightAccent: settings.themeLightAccent,
+  darkAccent: settings.themeDarkAccent,
+  customCss: settings.themeCustomCss,
+});
+
+const createThemePreviewStyle = (
+  mode: "light" | "dark",
+  customization: ThemeCustomization,
+): CSSProperties => {
+  const variables = buildThemeVariables(mode, customization);
+
+  return {
+    "--theme-preview-surface": variables["--surface"],
+    "--theme-preview-surface-muted": variables["--surface-muted"],
+    "--theme-preview-text": variables["--text-primary"],
+    "--theme-preview-text-secondary": variables["--text-secondary"],
+    "--theme-preview-border": variables["--border"],
+    "--theme-preview-accent": variables["--accent"],
+    "--theme-preview-accent-soft": variables["--accent-soft"],
+    "--theme-preview-accent-contrast": variables["--accent-contrast"],
+  } as CSSProperties;
+};
+
+type AccentColorFieldProps = {
+  hint: string;
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+};
+
+function AccentColorField({ hint, id, label, value, onChange }: AccentColorFieldProps) {
+  return (
+    <label className="field-row" htmlFor={id}>
+      <span className="field-label">{label}</span>
+      <div className="theme-color-input-row">
+        <input
+          id={id}
+          className="theme-color-picker"
+          type="color"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <span className="theme-color-value" aria-live="polite">
+          {value.toUpperCase()}
+        </span>
+      </div>
+      <span className="field-hint">{hint}</span>
+    </label>
+  );
+}
+
 const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "warning-text" | "error-text" => {
   switch (status.certificateState) {
     case "valid":
@@ -136,7 +173,7 @@ const formatStatusTimestamp = (value: string): string => {
 
 export function AdminSettingsPanel() {
   const router = useRouter();
-  const { themes, refreshThemes, setMode, setActiveThemeId } = useTheme();
+  const { setThemeSettings } = useTheme();
 
   const [settings, setSettings] = useState<AdminSettings>(INITIAL_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -154,14 +191,19 @@ export function AdminSettingsPanel() {
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
   const [sslStatusError, setSslStatusError] = useState<string | null>(null);
 
-  const [themeDraft, setThemeDraft] = useState<ThemeDraft>(INITIAL_THEME_DRAFT);
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeMessage, setThemeMessage] = useState<string | null>(null);
   const [themeError, setThemeError] = useState<string | null>(null);
 
-  const isEditingTheme = Boolean(themeDraft.id);
-
-  const activeTheme = useMemo(() => themes.find((theme) => theme.isActive) ?? null, [themes]);
+  const themeCustomization = useMemo(() => themeCustomizationFromSettings(settings), [settings]);
+  const lightPreviewStyle = useMemo(
+    () => createThemePreviewStyle("light", themeCustomization),
+    [themeCustomization],
+  );
+  const darkPreviewStyle = useMemo(
+    () => createThemePreviewStyle("dark", themeCustomization),
+    [themeCustomization],
+  );
 
   const refreshSslStatus = useCallback(async () => {
     setSslStatusLoading(true);
@@ -199,18 +241,48 @@ export function AdminSettingsPanel() {
           ...saved,
           githubToken: "",
         });
+        setThemeSettings(themeCustomizationFromSettings(saved));
         setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
         setClearTokenOnSave(false);
         setSettingsMessage("Settings saved.");
-        await Promise.all([refreshThemes(), refreshSslStatus()]);
+        await refreshSslStatus();
       } catch (error) {
         setLoadingError(formatApiError(error));
       } finally {
         setSettingsSaving(false);
       }
     },
-    [refreshSslStatus, refreshThemes, settings],
+    [refreshSslStatus, setThemeSettings, settings],
   );
+
+  const saveThemeChanges = useCallback(async () => {
+    const domainErrors = validateDomainFields(settings.customDomain, settings.letsEncryptEmail);
+    setDomainFieldErrors(domainErrors);
+
+    if (hasDomainFieldErrors(domainErrors)) {
+      setThemeMessage(null);
+      setThemeError("Fix the domain settings errors first, then save the theme customization.");
+      return;
+    }
+
+    setThemeSaving(true);
+    setThemeMessage(null);
+    setThemeError(null);
+
+    try {
+      const saved = await saveAdminSettings(normalizeDomainFieldsForSave(settings), { clearToken: false });
+      setSettings({
+        ...saved,
+        githubToken: "",
+      });
+      setThemeSettings(themeCustomizationFromSettings(saved));
+      setThemeMessage("Theme customization saved.");
+    } catch (error) {
+      setThemeError(formatApiError(error));
+    } finally {
+      setThemeSaving(false);
+    }
+  }, [setThemeSettings, settings]);
 
   useEffect(() => {
     let isActive = true;
@@ -226,15 +298,16 @@ export function AdminSettingsPanel() {
           return;
         }
 
-        const { settings: loadedSettings } = await fetchAdminSettings();
+        const loadedSettings = await fetchAdminSettings();
         if (!isActive) {
           return;
         }
 
         setSettings(loadedSettings);
+        setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setClearTokenOnSave(false);
-        await Promise.all([refreshThemes(), refreshSslStatus()]);
+        await refreshSslStatus();
       } catch (error) {
         if (isActive) {
           setLoadingError(formatApiError(error));
@@ -251,7 +324,7 @@ export function AdminSettingsPanel() {
     return () => {
       isActive = false;
     };
-  }, [refreshSslStatus, refreshThemes, router]);
+  }, [refreshSslStatus, router, setThemeSettings]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;
@@ -440,229 +513,114 @@ export function AdminSettingsPanel() {
         <section className="panel-card panel-card-theme">
           <div className="panel-header">
             <h2>Theme Management</h2>
-            <p className="panel-description">Create and activate custom variable-driven themes.</p>
+            <p className="panel-description">Customize the built-in Light and Dark modes with a simpler accent setup.</p>
           </div>
-
-          {themes.length === 0 ? (
-            <EmptyState title="No themes available" message="Themes will appear once settings are loaded." />
-          ) : (
-            <ul className="theme-list">
-              {themes.map((theme) => (
-                <li key={theme.id} className="theme-item">
-                  <div>
-                    <strong>{theme.name}</strong>
-                    <p>
-                      {theme.mode} · {Object.keys(theme.variables).length} variables
-                      {theme.isBuiltin ? " · built-in" : ""}
-                    </p>
-                  </div>
-                  <div className="theme-item-actions">
-                    {activeTheme?.id === theme.id ? <span className="theme-badge">Active</span> : null}
-                    <button
-                      type="button"
-                      className="btn btn-ghost"
-                      onClick={async () => {
-                        try {
-                          const activeThemeId = await activateTheme(theme.id);
-                          setMode("custom");
-                          setActiveThemeId(activeThemeId);
-                          await refreshThemes();
-                          setThemeMessage(`Activated ${theme.name}.`);
-                          setThemeError(null);
-                        } catch (error) {
-                          setThemeError(formatApiError(error));
-                        }
-                      }}
-                    >
-                      <MaterialIcon name="published_with_changes" />
-                      <span>Activate</span>
-                    </button>
-                    {!theme.isBuiltin ? (
-                      <>
-                        <button
-                          type="button"
-                          className="btn btn-ghost"
-                          onClick={() => {
-                            setThemeDraft(draftFromTheme(theme));
-                            setThemeMessage(null);
-                            setThemeError(null);
-                          }}
-                        >
-                          <MaterialIcon name="edit" />
-                          <span>Edit</span>
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn-ghost danger"
-                          onClick={async () => {
-                            const confirmed = window.confirm(`Delete theme \"${theme.name}\"?`);
-                            if (!confirmed) {
-                              return;
-                            }
-
-                            try {
-                              const fallbackThemeId = await deleteTheme(theme.id);
-                              if (fallbackThemeId) {
-                                setActiveThemeId(fallbackThemeId);
-                              }
-                              await refreshThemes();
-                              if (themeDraft.id === theme.id) {
-                                setThemeDraft(INITIAL_THEME_DRAFT);
-                              }
-                              setThemeMessage(`Deleted ${theme.name}.`);
-                              setThemeError(null);
-                            } catch (error) {
-                              setThemeError(formatApiError(error));
-                            }
-                          }}
-                        >
-                          <MaterialIcon name="delete" />
-                          <span>Delete</span>
-                        </button>
-                      </>
-                    ) : null}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
 
           <form
             className="theme-editor"
             onSubmit={async (event) => {
               event.preventDefault();
-              setThemeSaving(true);
-              setThemeMessage(null);
-              setThemeError(null);
-
-              const name = themeDraft.name.trim();
-              if (!name) {
-                setThemeSaving(false);
-                setThemeError("Theme name is required.");
-                return;
-              }
-
-              try {
-                if (themeDraft.id) {
-                  await updateTheme({ ...themeDraft, id: themeDraft.id, name });
-                  setThemeMessage(`Updated ${name}.`);
-                } else {
-                  await createTheme({ ...themeDraft, name });
-                  setThemeMessage(`Created ${name}.`);
-                }
-
-                await refreshThemes();
-                setThemeDraft(INITIAL_THEME_DRAFT);
-              } catch (error) {
-                setThemeError(formatApiError(error));
-              } finally {
-                setThemeSaving(false);
-              }
+              await saveThemeChanges();
             }}
           >
-            <div className="panel-header compact">
-              <h3>{isEditingTheme ? "Edit theme" : "Create theme"}</h3>
-              {isEditingTheme ? (
-                <button
-                  type="button"
-                  className="btn btn-ghost"
-                  onClick={() => setThemeDraft(INITIAL_THEME_DRAFT)}
-                >
-                  <MaterialIcon name="close" />
-                  <span>Cancel</span>
-                </button>
-              ) : null}
+            <div className="theme-customization-intro">
+              <strong>Simple accent color customization</strong>
+              <p>
+                The Light/Dark switch in the top-right stays the same. This section only changes the built-in accents, so
+                there are no extra themes to create or manage.
+              </p>
             </div>
 
-            <div className="field-inline">
-              <label className="field-row" htmlFor="theme-name">
-                <span className="field-label">Theme name</span>
-                <input
-                  id="theme-name"
-                  className="input"
-                  value={themeDraft.name}
-                  onChange={(event) => setThemeDraft((prev) => ({ ...prev, name: event.target.value }))}
-                  required
+            <label className="checkbox-row theme-shared-toggle">
+              <input
+                type="checkbox"
+                checked={settings.themeUseSharedAccent}
+                onChange={(event) =>
+                  setSettings((prev) => ({
+                    ...prev,
+                    themeUseSharedAccent: event.target.checked,
+                  }))
+                }
+              />
+              <span>Use the same accent color for Light and Dark mode</span>
+            </label>
+
+            <div className="theme-color-grid">
+              {settings.themeUseSharedAccent ? (
+                <AccentColorField
+                  id="theme-shared-accent"
+                  label="Shared accent color"
+                  value={settings.themeSharedAccent}
+                  hint="Used for buttons, links, highlights, and focus states in both built-in modes."
+                  onChange={(value) => setSettings((prev) => ({ ...prev, themeSharedAccent: value }))}
                 />
-                <span className="field-hint">Human-readable name shown in the theme list.</span>
-              </label>
+              ) : (
+                <div className="field-inline">
+                  <AccentColorField
+                    id="theme-light-accent"
+                    label="Light mode accent"
+                    value={settings.themeLightAccent}
+                    hint="Used when visitors switch to the built-in Light mode."
+                    onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
+                  />
+                  <AccentColorField
+                    id="theme-dark-accent"
+                    label="Dark mode accent"
+                    value={settings.themeDarkAccent}
+                    hint="Used when visitors switch to the built-in Dark mode."
+                    onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
+                  />
+                </div>
+              )}
 
-              <label className="field-row" htmlFor="theme-mode">
-                <span className="field-label">Mode profile</span>
-                <select
-                  id="theme-mode"
-                  className="input"
-                  value={themeDraft.mode}
-                  onChange={(event) =>
-                    setThemeDraft((prev) => ({
-                      ...prev,
-                      mode: event.target.value === "dark" ? "dark" : "light",
-                    }))
-                  }
-                >
-                  <option value="light">Light</option>
-                  <option value="dark">Dark</option>
-                </select>
-                <span className="field-hint">Choose the base palette behavior for this theme.</span>
-              </label>
-            </div>
-
-            <div className="field-stack">
-              <div className="panel-header compact">
-                <span className="field-label">CSS variables</span>
+              <div className="action-row">
                 <button
                   type="button"
                   className="btn btn-ghost"
                   onClick={() =>
-                    setThemeDraft((prev) => ({
+                    setSettings((prev) => ({
                       ...prev,
-                      variables: [...prev.variables, { key: "", value: "" }],
+                      themeUseSharedAccent: THEME_DEFAULTS.useSharedAccent,
+                      themeSharedAccent: THEME_DEFAULTS.sharedAccent,
+                      themeLightAccent: THEME_DEFAULTS.lightAccent,
+                      themeDarkAccent: THEME_DEFAULTS.darkAccent,
                     }))
                   }
                 >
-                  <MaterialIcon name="add" />
-                  <span>Add variable</span>
+                  <MaterialIcon name="restart_alt" />
+                  <span>Reset accent colors</span>
                 </button>
               </div>
-              <span className="field-hint">Use CSS custom property names like `--accent` with valid CSS values.</span>
+            </div>
 
-              {themeDraft.variables.map((variable, index) => (
-                <div key={`${variable.key}-${index}`} className="field-inline variable-row">
-                  <input
-                    className="input"
-                    placeholder="--accent"
-                    value={variable.key}
-                    onChange={(event) => {
-                      const next = [...themeDraft.variables];
-                      next[index] = { ...next[index], key: event.target.value };
-                      setThemeDraft((prev) => ({ ...prev, variables: next }));
-                    }}
-                  />
-                  <input
-                    className="input"
-                    placeholder="#6ec3ff"
-                    value={variable.value}
-                    onChange={(event) => {
-                      const next = [...themeDraft.variables];
-                      next[index] = { ...next[index], value: event.target.value };
-                      setThemeDraft((prev) => ({ ...prev, variables: next }));
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-ghost danger"
-                    aria-label="Remove variable"
-                    onClick={() => {
-                      setThemeDraft((prev) => ({
-                        ...prev,
-                        variables: prev.variables.filter((_, variableIndex) => variableIndex !== index),
-                      }));
-                    }}
-                  >
-                    <MaterialIcon name="remove" />
+            <div className="theme-preview-grid">
+              <div className="theme-preview-card" style={lightPreviewStyle}>
+                <div className="theme-preview-header">
+                  <strong>Light mode</strong>
+                  <span className="theme-preview-chip">Preview</span>
+                </div>
+                <p className="theme-preview-copy">Buttons, links, and highlights use this accent while Light mode is active.</p>
+                <div className="theme-preview-actions">
+                  <span className="theme-preview-link">Example link</span>
+                  <button type="button" className="theme-preview-button">
+                    Primary action
                   </button>
                 </div>
-              ))}
+              </div>
+
+              <div className="theme-preview-card" style={darkPreviewStyle}>
+                <div className="theme-preview-header">
+                  <strong>Dark mode</strong>
+                  <span className="theme-preview-chip">Preview</span>
+                </div>
+                <p className="theme-preview-copy">The Dark mode switch uses this accent while keeping the built-in layout.</p>
+                <div className="theme-preview-actions">
+                  <span className="theme-preview-link">Example link</span>
+                  <button type="button" className="theme-preview-button">
+                    Primary action
+                  </button>
+                </div>
+              </div>
             </div>
 
             <label className="field-row" htmlFor="theme-custom-css">
@@ -671,18 +629,18 @@ export function AdminSettingsPanel() {
                 id="theme-custom-css"
                 className="input textarea"
                 rows={6}
-                value={themeDraft.customCss}
-                onChange={(event) => setThemeDraft((prev) => ({ ...prev, customCss: event.target.value }))}
+                value={settings.themeCustomCss}
+                onChange={(event) => setSettings((prev) => ({ ...prev, themeCustomCss: event.target.value }))}
                 placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
               />
               <span className="field-hint">
-                Optional raw CSS appended after theme variables. Use this for advanced overrides.
+                Optional advanced overrides applied on top of the built-in Light and Dark themes.
               </span>
             </label>
 
             <button type="submit" className="btn btn-primary" disabled={themeSaving}>
-              <MaterialIcon name={themeSaving ? "sync" : isEditingTheme ? "save" : "add_circle"} />
-              <span>{themeSaving ? "Saving..." : isEditingTheme ? "Update theme" : "Create theme"}</span>
+              <MaterialIcon name={themeSaving ? "sync" : "save"} />
+              <span>{themeSaving ? "Saving..." : "Save theme customization"}</span>
             </button>
           </form>
 

@@ -39,7 +39,15 @@ const settingsPatchSchema = z
         letsEncryptEmail: z.string().optional(),
       })
       .optional(),
-    activeThemeId: z.string().min(1).optional(),
+    theme: z
+      .object({
+        useSharedAccent: z.boolean().optional(),
+        sharedAccent: z.string().optional(),
+        lightAccent: z.string().optional(),
+        darkAccent: z.string().optional(),
+        customCss: z.string().optional(),
+      })
+      .optional(),
     github: z
       .object({
         owner: z.string().optional(),
@@ -63,7 +71,6 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
 
     return NextResponse.json({
       settings: getPublicSettings(store.settings),
-      themes: store.themes,
     });
   } catch (error: unknown) {
     return errorResponse(error);
@@ -147,12 +154,26 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
         }
       }
 
-      if (patch.activeThemeId !== undefined) {
-        const exists = store.themes.some((theme) => theme.id === patch.activeThemeId);
-        if (!exists) {
-          throw badRequest("activeThemeId does not match any existing theme.");
+      if (patch.theme) {
+        if (patch.theme.useSharedAccent !== undefined) {
+          store.settings.theme.useSharedAccent = patch.theme.useSharedAccent;
         }
-        store.settings.activeThemeId = patch.activeThemeId;
+
+        if (patch.theme.sharedAccent !== undefined) {
+          store.settings.theme.sharedAccent = patch.theme.sharedAccent.trim();
+        }
+
+        if (patch.theme.lightAccent !== undefined) {
+          store.settings.theme.lightAccent = patch.theme.lightAccent.trim();
+        }
+
+        if (patch.theme.darkAccent !== undefined) {
+          store.settings.theme.darkAccent = patch.theme.darkAccent.trim();
+        }
+
+        if (patch.theme.customCss !== undefined) {
+          store.settings.theme.customCss = patch.theme.customCss;
+        }
       }
 
       if (patch.github) {
@@ -185,7 +206,6 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
     return NextResponse.json({
       settings: getPublicSettings(updatedStore.settings),
-      themes: updatedStore.themes,
     });
   } catch (error: unknown) {
     return errorResponse(error);

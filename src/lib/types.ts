@@ -1,18 +1,5 @@
 export type ThemeMode = "light" | "dark";
 
-export type ThemeVariables = Record<string, string>;
-
-export interface ThemeDefinition {
-  id: string;
-  name: string;
-  mode: ThemeMode;
-  isBuiltin: boolean;
-  variables: ThemeVariables;
-  customCss: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface GitHubSettings {
   owner: string;
   repo: string;
@@ -37,6 +24,14 @@ export interface DomainSettings {
   letsEncryptEmail: string;
 }
 
+export interface ThemeCustomizationSettings {
+  useSharedAccent: boolean;
+  sharedAccent: string;
+  lightAccent: string;
+  darkAccent: string;
+  customCss: string;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
@@ -47,14 +42,13 @@ export interface AppSettings {
   docsCacheTtlMs: number;
   domain: DomainSettings;
   github: GitHubSettings;
-  activeThemeId: string;
+  theme: ThemeCustomizationSettings;
   updatedAt: string;
 }
 
 export interface DocsStore {
-  version: 1;
+  version: 2;
   settings: AppSettings;
-  themes: ThemeDefinition[];
 }
 
 export interface GitHubRuntimeConfig {
