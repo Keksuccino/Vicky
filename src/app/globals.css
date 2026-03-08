@@ -235,18 +235,16 @@ select {
 .app-footer-link {
   color: var(--accent);
   font-weight: 600;
-  text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--accent) 42%, transparent);
-  text-underline-offset: 0.12em;
+  text-decoration: none;
   transition:
     color 160ms ease,
-    text-decoration-color 160ms ease;
+    opacity 160ms ease;
 }
 
 .app-footer-link:hover,
 .app-footer-link:focus-visible {
   color: color-mix(in srgb, var(--accent) 84%, var(--text-primary));
-  text-decoration-color: currentColor;
+  opacity: 0.86;
 }
 
 .app-content > .docs-page + .app-footer {
