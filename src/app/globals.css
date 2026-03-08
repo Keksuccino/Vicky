@@ -2367,6 +2367,12 @@ html[data-color-mode="light"] .meta-item {
     border-radius: var(--radius-sm);
   }
 
+  .docs-sidebar::-webkit-scrollbar-button {
+    display: none;
+    height: 0;
+    width: 0;
+  }
+
   .field-inline {
     grid-template-columns: 1fr;
   }
