@@ -108,9 +108,7 @@ Footer text supports these placeholders:
 
 ## Theme Customization
 
-Vicky no longer uses a separate custom-theme system.
-
-The current theme setup is intentionally simple:
+Theme customization is intentionally simple:
 - built-in `Light` and `Dark` modes
 - one main accent color per mode
 - one surface/background accent color per mode
