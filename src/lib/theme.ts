@@ -28,7 +28,7 @@ export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
   "--danger": "#ca3f54",
   "--header-bg": "rgba(248, 251, 255, 0.88)",
   "--page-gradient":
-    "radial-gradient(circle at 12% 0%, #e3f1ff 0%, transparent 35%), radial-gradient(circle at 88% 8%, #d8eaff 0%, transparent 25%), linear-gradient(180deg, #eff6ff 0%, #f6faff 45%, #edf4ff 100%)",
+    "radial-gradient(circle at 12% 0%, rgba(125, 184, 240, 0.1) 0%, transparent 35%), radial-gradient(circle at 88% 8%, rgba(0, 110, 207, 0.06) 0%, transparent 25%), linear-gradient(180deg, #f7faff 0%, #f9fbff 45%, #f5f8fd 100%)",
 };
 
 export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
@@ -49,7 +49,7 @@ export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
   "--danger": "#ff6a7f",
   "--header-bg": "rgba(19, 27, 38, 0.8)",
   "--page-gradient":
-    "radial-gradient(circle at 10% 2%, #273448 0%, transparent 32%), radial-gradient(circle at 88% 6%, #1f3445 0%, transparent 30%), linear-gradient(180deg, #0d141f 0%, #111a28 50%, #0c141f 100%)",
+    "radial-gradient(circle at 10% 2%, rgba(71, 114, 156, 0.14) 0%, transparent 32%), radial-gradient(circle at 88% 6%, rgba(92, 174, 223, 0.08) 0%, transparent 30%), linear-gradient(180deg, #101721 0%, #121a27 50%, #0f1620 100%)",
 };
 
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(value)));
@@ -178,16 +178,16 @@ const buildAccentContrast = (accent: string): string => (relativeLuminance(accen
 const buildPageGradient = (mode: ThemeMode, primaryAccent: string, surfaceAccent: string): string => {
   if (mode === "dark") {
     return [
-      `radial-gradient(circle at 10% 2%, ${hexToRgba(surfaceAccent, 0.34)} 0%, transparent 32%)`,
-      `radial-gradient(circle at 88% 6%, ${hexToRgba(primaryAccent, 0.24)} 0%, transparent 30%)`,
-      `linear-gradient(180deg, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.18)} 0%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.1)} 50%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.12)} 100%)`,
+      `radial-gradient(circle at 10% 2%, ${hexToRgba(surfaceAccent, 0.14)} 0%, transparent 32%)`,
+      `radial-gradient(circle at 88% 6%, ${hexToRgba(primaryAccent, 0.08)} 0%, transparent 30%)`,
+      `linear-gradient(180deg, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.08)} 0%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.03)} 50%, ${mixHexColors(DARK_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.05)} 100%)`,
     ].join(", ");
   }
 
   return [
-    `radial-gradient(circle at 12% 0%, ${hexToRgba(surfaceAccent, 0.28)} 0%, transparent 35%)`,
-    `radial-gradient(circle at 88% 8%, ${hexToRgba(primaryAccent, 0.18)} 0%, transparent 25%)`,
-    `linear-gradient(180deg, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.08)} 0%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.04)} 45%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.06)} 100%)`,
+    `radial-gradient(circle at 12% 0%, ${hexToRgba(surfaceAccent, 0.1)} 0%, transparent 35%)`,
+    `radial-gradient(circle at 88% 8%, ${hexToRgba(primaryAccent, 0.06)} 0%, transparent 25%)`,
+    `linear-gradient(180deg, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.03)} 0%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], primaryAccent, 0.015)} 45%, ${mixHexColors(LIGHT_THEME_BASE_VARIABLES["--surface"], surfaceAccent, 0.025)} 100%)`,
   ].join(", ");
 };
 

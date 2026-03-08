@@ -18,9 +18,9 @@
   --success: #0f8a58;
   --danger: #ca3f54;
   --header-bg: rgba(248, 251, 255, 0.88);
-  --page-gradient: radial-gradient(circle at 12% 0%, #e3f1ff 0%, transparent 35%),
-    radial-gradient(circle at 88% 8%, #d8eaff 0%, transparent 25%),
-    linear-gradient(180deg, #eff6ff 0%, #f6faff 45%, #edf4ff 100%);
+  --page-gradient: radial-gradient(circle at 12% 0%, rgba(125, 184, 240, 0.1) 0%, transparent 35%),
+    radial-gradient(circle at 88% 8%, rgba(0, 110, 207, 0.06) 0%, transparent 25%),
+    linear-gradient(180deg, #f7faff 0%, #f9fbff 45%, #f5f8fd 100%);
   --shadow-soft: 0 16px 40px rgba(25, 53, 98, 0.12);
   --shadow-strong: 0 24px 60px rgba(16, 36, 67, 0.18);
   --sidebar-scrollbar-track: color-mix(in srgb, var(--surface-muted) 74%, transparent);
@@ -73,9 +73,9 @@ html[data-color-mode="custom"] {
   --success: #2bd08a;
   --danger: #ff6a7f;
   --header-bg: rgba(19, 27, 38, 0.8);
-  --page-gradient: radial-gradient(circle at 10% 2%, #273448 0%, transparent 32%),
-    radial-gradient(circle at 88% 6%, #1f3445 0%, transparent 30%),
-    linear-gradient(180deg, #0d141f 0%, #111a28 50%, #0c141f 100%);
+  --page-gradient: radial-gradient(circle at 10% 2%, rgba(71, 114, 156, 0.14) 0%, transparent 32%),
+    radial-gradient(circle at 88% 6%, rgba(92, 174, 223, 0.08) 0%, transparent 30%),
+    linear-gradient(180deg, #101721 0%, #121a27 50%, #0f1620 100%);
   --shadow-soft: 0 16px 44px rgba(2, 8, 18, 0.46);
   --shadow-strong: 0 30px 65px rgba(2, 8, 18, 0.65);
   --sidebar-scrollbar-track: color-mix(in srgb, var(--surface-muted) 82%, #0e1622);
