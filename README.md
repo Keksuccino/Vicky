@@ -1,24 +1,38 @@
-# Vicky Docs
+# Vicky
 
-Vicky Docs is a browser-based wiki/documentation system built with Next.js.
+Vicky is a self-hosted docs/wiki frontend for markdown content stored in a GitHub repository.
 
-It provides:
-- GitHub-backed markdown storage (read + write through GitHub API)
-- Admin-configurable repository settings
-- Admin-configurable domain settings (custom domain + automatic Let's Encrypt HTTPS)
-- Rich markdown rendering (GFM + GitHub-style alerts)
-- Integrated docs editor with live preview
-- Theme system with default light/dark themes + custom themes (CSS variables + custom CSS)
-- Responsive docs browsing with tree navigation, search, and table of contents
+It gives you:
+- a public documentation site
+- an admin panel for repository, branding, domain, and theme settings
+- an in-browser markdown editor that saves directly back to GitHub
 
-## Tech Stack
+## Highlights
 
-- Next.js App Router (TypeScript)
-- React 19
-- Octokit (GitHub API)
-- React Markdown + remark/rehype plugins
-- CodeMirror editor
-- JSON file store for app settings/themes (`data/wiki-store.json`)
+- GitHub-backed docs storage: pages are read from a configured repository and path, not from this repo
+- Public docs UI with tree navigation, search, table of contents, heading anchors, mobile layout, and syntax-highlighted code blocks
+- Markdown rendering with GFM support and GitHub-style alert boxes
+- Built-in Light and Dark modes with simple accent-color customization
+- Optional custom CSS overrides on top of the built-in themes
+- Custom domain support with automatic Let's Encrypt HTTPS when using the included production server
+- Admin-only editor with live preview and immediate GitHub commits on save
+
+## How Vicky Stores Data
+
+- Docs content lives in your configured GitHub repository.
+- App settings live in `data/wiki-store.json` by default.
+- SSL certificates and runtime SSL status live in `data/ssl/` by default.
+- Optional login rate-limit persistence uses `data/login-rate-limit.json`.
+
+This repo contains the app itself, not your docs content.
+
+## Requirements
+
+- Node.js `20.9.0` or newer
+- A GitHub repository that contains your markdown docs
+- A fine-grained GitHub personal access token with:
+  - `Contents: Read and write`
+  - `Metadata: Read-only`
 
 ## Quick Start
 
@@ -28,157 +42,200 @@ It provides:
 npm install
 ```
 
-2. Create env file:
+2. Create a local env file:
 
 ```bash
 cp .env.example .env.local
 ```
 
-3. Set required values in `.env.local` (required for local development and production):
+3. Set the required values in `.env.local`:
+
 - `AUTH_JWT_SECRET`
 - `ADMIN_PASSWORD`
 - `ENCRYPTION_SECRET`
 
-4. Start development server:
+4. Start the dev server:
 
 ```bash
 npm run dev
 ```
 
 5. Open:
-- Docs: `http://localhost:3000/docs`
+
 - Admin login: `http://localhost:3000/admin/login`
+- Docs site: `http://localhost:3000/`
 - Editor: `http://localhost:3000/editor`
 
-## Admin Setup Flow
+If you run the repo from `/mnt/<drive>/...` inside WSL, `npm run dev` automatically switches Next.js to a polling-based watcher so hot reload stays reliable.
 
-1. Sign in at `/admin/login` with `ADMIN_PASSWORD`.
+## First-Time Setup
+
+1. Sign in at `/admin/login` with the password from `ADMIN_PASSWORD`.
 2. Open `/admin/settings`.
-3. Configure:
-- GitHub owner
-- GitHub repository
-- Branch
-- Docs path (for example `docs`)
-- GitHub token (fine-grained PAT)
-- Optional domain settings:
-  - Custom domain (for example `fancymenu.net`)
-  - Let's Encrypt email
-4. Click **Test connection**.
-5. Save settings.
+3. In `Repository Settings`, configure:
+   - GitHub owner
+   - GitHub repository
+   - branch
+   - docs path
+   - GitHub token
+4. Click `Test connection`.
+5. Save the settings.
+6. Optionally configure:
+   - site title, description, footer, and icons
+   - Light/Dark theme accent colors
+   - custom domain and Let's Encrypt email
 
-### Fine-Grained GitHub Token Setup (Recommended)
+After setup:
+- `/` redirects to your configured start page
+- docs pages are served at `/docs/<path>`
+- the editor is available at `/editor`
 
-When creating the token, configure it like this:
+## Admin Panel
 
-1. Token type: **Fine-grained personal access token**
-2. Repository access: **Only select repositories**
-3. Select exactly the docs source repository used by Vicky
-4. Repository permissions:
-   - **Contents**: **Read and write**
-   - **Metadata**: **Read-only**
-5. Leave all other permissions as **No access**
+The settings UI is split into four areas:
 
-## Markdown Support
+- `Repository Settings`: GitHub owner/repo/branch/docs path, token handling, docs cache TTL, and connection testing
+- `Theme Management`: built-in Light/Dark accent colors plus custom CSS
+- `Domain Settings`: custom domain, Let's Encrypt email, and live SSL runtime status
+- `Site Settings`: title, description, footer template, start page, title gradient, and docs icon URLs
 
-Renderer supports:
-- GFM: tables, task lists, autolinks, strikethrough, footnotes
-- Syntax highlighting for fenced code blocks
-- Heading anchors + table of contents
-- GitHub-style alert blocks:
-  - `> [!NOTE]`
-  - `> [!TIP]`
-  - `> [!IMPORTANT]`
-  - `> [!WARNING]`
-  - `> [!CAUTION]`
-- Additional aliases:
-  - `INFO`, `SUCCESS`, `ERROR`
+Footer text supports these placeholders:
+- `{{year}}`
+- `{{owner}}`
+- `{{vicky}}`
 
-## Theme System
+`{{vicky}}` is rendered as a clickable link to the Vicky repository.
 
-- Default built-in themes: `Classic Light`, `Classic Dark`
-- Runtime switching: light/dark/custom
-- Theme API:
-  - `GET /api/themes`
-  - `POST /api/themes`
-  - `PATCH /api/themes/:id`
-  - `DELETE /api/themes/:id`
-  - `POST /api/themes/activate`
-- Custom themes can define CSS variables and custom CSS blocks.
+## Theme Customization
 
-## Quality Checks
+Vicky no longer uses a separate custom-theme system.
 
-Run locally:
+The current theme setup is intentionally simple:
+- built-in `Light` and `Dark` modes
+- one main accent color per mode
+- one surface/background accent color per mode
+- optional site title gradient colors
+- optional custom CSS overrides
 
-```bash
-npm run lint
-npm run typecheck
-npm run test
-npm run build
-```
+Theme changes are managed from `Theme Management` in the admin panel.
 
-## Production Run
+## Editor
 
-Build and start with npm:
+The editor is admin-only and writes directly to your configured GitHub docs repository.
+
+It supports:
+- loading existing pages from the docs tree
+- creating new pages
+- editing title, description, path, markdown content, and commit message
+- auto-generating the path from the title until you override it
+- Markdown and Preview modes
+- `Ctrl+S` / `Cmd+S` saving
+
+## Markdown Features
+
+Vicky supports:
+- GitHub Flavored Markdown
+- fenced code blocks with syntax highlighting
+- copy buttons on fenced code blocks
+- heading anchors
+- generated table of contents data
+- GitHub-style alerts such as `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`
+- additional alert aliases: `INFO`, `SUCCESS`, `ERROR`
+- automatic normalization of root-relative docs links to `/docs/...`
+
+## Available Scripts
+
+- `npm run dev` starts the Next.js dev server
+- `npm run build` builds the app for production
+- `npm run start` runs the included production server (`server.mjs`)
+- `npm run start:next` runs plain `next start`
+- `npm run lint` runs ESLint
+- `npm run typecheck` runs TypeScript checks
+- `npm run test` runs the test suite once
+- `npm run test:watch` runs tests in watch mode
+
+Use `npm run start` if you want Vicky's built-in custom-domain and automatic HTTPS handling. Use `npm run start:next` only if you explicitly want a plain Next.js server.
+
+## Environment Variables
+
+Required:
+
+| Variable | Purpose |
+| --- | --- |
+| `AUTH_JWT_SECRET` | Signs admin session tokens |
+| `ADMIN_PASSWORD` | Password for `/admin/login` |
+| `ENCRYPTION_SECRET` | Encrypts the stored GitHub token |
+
+Common optional settings:
+
+| Variable | Purpose | Default |
+| --- | --- | --- |
+| `WIKI_STORE_FILE_PATH` | Location of the app settings store | `./data/wiki-store.json` |
+| `WIKI_SSL_STORAGE_DIR` | Certificate storage directory | `./data/ssl` |
+| `HOST` | Listen host | `0.0.0.0` |
+| `HTTP_PORT` | HTTP listen port | `3000` |
+| `HTTPS_PORT` | HTTPS listen port | `443` |
+| `LETS_ENCRYPT_STAGING` | Use Let's Encrypt staging CA for test runs | `false` |
+| `AUTH_TRUST_PROXY_HEADERS` | Trust forwarded client IP headers | `false` |
+
+`HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
+
+For the full list of optional runtime settings, check [.env.example](.env.example).
+
+## Production Notes
+
+Standard production flow:
 
 ```bash
 npm run build
 npm run start
 ```
 
-`npm run start` runs `server.mjs`, which:
-- serves HTTP on `HTTP_PORT` (or `PORT` fallback)
-- serves HTTPS on `HTTPS_PORT` when domain + email are configured
-- automatically requests/renews certificates from Let's Encrypt
-- performs renewal checks on startup and periodically during runtime
-- watches `wiki-store.json` and applies domain/SSL setting changes quickly (debounced)
-- uses retry backoff after issuance failures to reduce Let's Encrypt rate-limit risk
-- persists runtime SSL status and exposes it via a small runtime endpoint
+`npm run start` uses the included `server.mjs` server, which:
+- starts the Next.js app
+- serves HTTP
+- enables HTTPS automatically when a custom domain and Let's Encrypt email are configured
+- exposes a runtime SSL status endpoint
+- watches the settings store so domain/SSL changes apply quickly
+- persists runtime SSL status to disk
 
-For direct Let's Encrypt HTTP-01 validation, set:
+`HTTP_PORT` and `HTTPS_PORT` must be different values.
+
+If you run Vicky behind a reverse proxy:
+- forward `/.well-known/acme-challenge/*` to Vicky unchanged
+- preserve the original `Host` header
+- keep DNS pointed at the proxy/public ingress
+
+For direct HTTP-01 validation without a reverse proxy, you usually want:
 - `HTTP_PORT=80`
 - `HTTPS_PORT=443`
 
-Binding ports `<1024` (for example `80`/`443`) usually requires elevated privileges.
-Use one of:
-- Linux capability (`CAP_NET_BIND_SERVICE`) for the Node binary/service user
-- a reverse proxy (recommended) that listens on `80/443` and forwards to Vicky
+Persist these paths across deployments:
+- `data/wiki-store.json`
+- `data/ssl/`
 
-If you run behind a reverse proxy:
-- forward `/.well-known/acme-challenge/*` unchanged to Vicky's HTTP port
-- preserve the original `Host` header
-- keep DNS for the custom domain pointing at the proxy/public ingress
+## API Overview
 
-## Production Notes
+Public endpoints:
+- `GET /api/public/settings`
+- `GET /api/public/icon/16`
+- `GET /api/public/icon/32`
+- `GET /api/public/icon/180`
+- `GET /api/docs/tree`
+- `GET /api/docs/page`
+- `GET /api/docs/search`
 
-- `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` must be set in every non-test environment.
-- Keep GitHub token scoped minimally (repo access only as needed).
-- Back up `data/wiki-store.json` regularly.
-- Persist `data/ssl` (or your configured `WIKI_SSL_STORAGE_DIR`) across deployments.
-- SSL storage directories are locked down at runtime (`0700` where supported by the OS).
-- Automatic SSL only runs when both Domain Settings fields are configured.
-- DNS for the configured custom domain must point to this server.
-- Runtime SSL status:
-  - endpoint path: `SSL_STATUS_ENDPOINT_PATH` (default `/.well-known/vicky/ssl-status`)
-  - optional auth: `SSL_STATUS_BEARER_TOKEN` (Bearer token)
-  - persisted file: `SSL_STATUS_FILE_PATH` (default `./data/ssl/runtime-ssl-status.json`)
-- SSL retry/backoff tuning:
-  - `SSL_ISSUE_RETRY_BASE_MS` (default `900000`)
-  - `SSL_ISSUE_RETRY_MAX_MS` (default `86400000`)
-- Store watcher debounce:
-  - `SSL_STORE_WATCH_DEBOUNCE_MS` (default `1500`)
-- Admin login brute-force protection can be tuned with:
-  - `AUTH_LOGIN_MAX_FAILURES` (default `8`)
-  - `AUTH_LOGIN_WINDOW_SECONDS` (default `600`)
-  - `AUTH_LOGIN_BLOCK_SECONDS` (default `10800`)
-  - `AUTH_TRUST_PROXY_HEADERS` (default `false`; only enable behind trusted proxies)
-  - `AUTH_LOGIN_STORE_FILE_PATH` (default `./data/login-rate-limit.json`)
+Auth endpoints:
+- `POST /api/auth/login`
+- `POST /api/auth/logout`
+- `GET /api/auth/me`
 
-## SSL Runbook / Troubleshooting
+Admin endpoints:
+- `GET|PATCH /api/admin/settings`
+- `POST /api/admin/test-connection`
+- `GET|POST /api/admin/docs`
+- `GET /api/admin/domain-status`
 
-1. Check runtime SSL state:
-   - `curl -s http://127.0.0.1:${HTTP_PORT:-3000}/.well-known/vicky/ssl-status`
-   - if token is configured: `curl -H "Authorization: Bearer <token>" ...`
-2. If `phase` is `backoff`, inspect `retry.nextAttemptAt` and `certificate.lastIssueErrorMessage` before retrying.
-3. For dry runs, set `LETS_ENCRYPT_STAGING=true` to avoid production CA rate limits.
-4. If certificates are lost after redeploy/restart, verify persistent volume mapping for `WIKI_SSL_STORAGE_DIR`.
-5. If domain changes do not apply quickly, verify writes reach `WIKI_STORE_FILE_PATH` on disk and inspect server logs for watcher events/errors.
+## License
+
+MIT. See [LICENSE.md](LICENSE.md).
