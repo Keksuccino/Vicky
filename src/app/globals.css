@@ -2087,12 +2087,12 @@ html[data-color-mode="light"] .meta-item {
 
 .panel-card-site {
   grid-column: 1;
-  grid-row: 2;
+  grid-row: 3;
 }
 
 .panel-card-domain {
   grid-column: 1;
-  grid-row: 3;
+  grid-row: 2;
 }
 
 .panel-card-theme {
