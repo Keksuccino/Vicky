@@ -3,6 +3,8 @@ import type { AiChatSettings } from "@/lib/types";
 export const DEFAULT_AI_CHAT_ASSISTANT_NAME = "Alice";
 export const AI_CHAT_ASSISTANT_NAME_PLACEHOLDER = "{{assistant_name}}";
 export const AI_CHAT_DOCS_PLACEHOLDER = "{{docs_txt}}";
+export const DEFAULT_AI_CHAT_HEADER_SUBTITLE = "Friendly docs assistant";
+export const DEFAULT_AI_CHAT_WELCOME_MESSAGE = `Hi, I'm ${AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}. Ask me anything about these docs and I'll answer as helpfully as I can from the documentation context.`;
 export const DEFAULT_AI_CHAT_OPENROUTER_MODEL = "openai/gpt-5.1-codex-mini";
 export const DEFAULT_OPENROUTER_MODEL = DEFAULT_AI_CHAT_OPENROUTER_MODEL;
 export const MAX_AI_CHAT_HISTORY_MESSAGES = 24;
@@ -21,6 +23,34 @@ export const normalizeAiAssistantName = (
   const trimmed = value.trim();
   return trimmed || fallback;
 };
+
+const normalizeAiChatTemplateString = (value: unknown, fallback: string): string => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || fallback;
+};
+
+export const normalizeAiChatHeaderSubtitle = (
+  value: unknown,
+  fallback = DEFAULT_AI_CHAT_HEADER_SUBTITLE,
+): string => normalizeAiChatTemplateString(value, fallback);
+
+export const normalizeAiChatWelcomeMessage = (
+  value: unknown,
+  fallback = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): string => normalizeAiChatTemplateString(value, fallback);
+
+export const renderAiChatAssistantTemplate = (
+  template: unknown,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  fallback = "",
+): string =>
+  normalizeAiChatTemplateString(template, fallback)
+    .split(AI_CHAT_ASSISTANT_NAME_PLACEHOLDER)
+    .join(normalizeAiAssistantName(assistantName));
 
 export interface AiChatRequestImage {
   name: string;
@@ -82,6 +112,8 @@ export const normalizeAiChatSystemPromptTemplate = (
 export const DEFAULT_AI_CHAT_SETTINGS = (): AiChatSettings => ({
   enabled: false,
   assistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  headerSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE,
+  welcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   systemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   openRouterApiKeyEncrypted: null,

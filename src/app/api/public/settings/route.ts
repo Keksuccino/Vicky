@@ -31,6 +31,8 @@ export const GET = async (): Promise<NextResponse> => {
         aiChat: {
           enabled: store.settings.aiChat.enabled,
           assistantName: store.settings.aiChat.assistantName,
+          headerSubtitle: store.settings.aiChat.headerSubtitle,
+          welcomeMessage: store.settings.aiChat.welcomeMessage,
         },
         theme: {
           lightAccent: store.settings.theme.lightAccent,

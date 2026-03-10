@@ -26,12 +26,19 @@ import {
   createUserMessage,
   deriveConversationTitle,
   deserializeAiChatState,
-  restoreAiChatConversations,
+  restoreAiChatConversationsWithSettings,
   serializeAiChatState,
   splitCookieValue,
   syncAiChatConversationAssistantName,
 } from "@/lib/ai-chat-client";
-import { DEFAULT_AI_CHAT_ASSISTANT_NAME, MAX_AI_CHAT_IMAGE_BYTES, MAX_AI_CHAT_IMAGES_PER_MESSAGE } from "@/lib/ai-chat";
+import {
+  DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  DEFAULT_AI_CHAT_HEADER_SUBTITLE,
+  DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+  MAX_AI_CHAT_IMAGE_BYTES,
+  MAX_AI_CHAT_IMAGES_PER_MESSAGE,
+  renderAiChatAssistantTemplate,
+} from "@/lib/ai-chat";
 
 const CHAT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const CHAT_COOKIE_MAX_CHUNKS = 8;
@@ -45,11 +52,14 @@ const MAX_WINDOW_WIDTH = 760;
 const MIN_WINDOW_HEIGHT = 460;
 const MAX_WINDOW_HEIGHT = 860;
 
-const createInitialConversationState = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): {
+const createInitialConversationState = (
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): {
   conversations: AiChatConversation[];
   activeConversationId: string | null;
 } => {
-  const conversation = createEmptyConversation(assistantName);
+  const conversation = createEmptyConversation(assistantName, welcomeMessage);
 
   return {
     conversations: [conversation],
@@ -233,6 +243,8 @@ export function DocsAiChat() {
     initialStateRef.current = createInitialConversationState();
   }
   const [assistantName, setAssistantName] = useState(DEFAULT_AI_CHAT_ASSISTANT_NAME);
+  const [headerSubtitle, setHeaderSubtitle] = useState(DEFAULT_AI_CHAT_HEADER_SUBTITLE);
+  const [welcomeMessage, setWelcomeMessage] = useState(DEFAULT_AI_CHAT_WELCOME_MESSAGE);
   const [featureReady, setFeatureReady] = useState(false);
   const [featureEnabled, setFeatureEnabled] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -256,6 +268,11 @@ export function DocsAiChat() {
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations.at(-1) ?? null;
+  const resolvedHeaderSubtitle = renderAiChatAssistantTemplate(
+    headerSubtitle,
+    assistantName,
+    DEFAULT_AI_CHAT_HEADER_SUBTITLE,
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -269,6 +286,8 @@ export function DocsAiChat() {
 
         setFeatureEnabled(settings.aiChatEnabled);
         setAssistantName(settings.aiChatAssistantName);
+        setHeaderSubtitle(settings.aiChatHeaderSubtitle);
+        setWelcomeMessage(settings.aiChatWelcomeMessage);
       } catch {
         if (!mounted) {
           return;
@@ -290,7 +309,7 @@ export function DocsAiChat() {
   }, []);
 
   useEffect(() => {
-    const restored = restoreAiChatConversations(loadStoredChatState());
+    const restored = restoreAiChatConversationsWithSettings(loadStoredChatState(), assistantName, welcomeMessage);
     const storedSize = loadStoredWindowSize();
 
     setConversations(restored.conversations);
@@ -304,8 +323,8 @@ export function DocsAiChat() {
   }, []);
 
   useEffect(() => {
-    setConversations((current) => syncAiChatConversationAssistantName(current, assistantName));
-  }, [assistantName]);
+    setConversations((current) => syncAiChatConversationAssistantName(current, assistantName, welcomeMessage));
+  }, [assistantName, welcomeMessage]);
 
   useEffect(() => {
     if (!cookiesHydrated) {
@@ -374,13 +393,13 @@ export function DocsAiChat() {
       return;
     }
 
-    const nextConversation = createEmptyConversation(assistantName);
+    const nextConversation = createEmptyConversation(assistantName, welcomeMessage);
     setConversations([nextConversation]);
     setActiveConversationId(nextConversation.id);
-  }, [activeConversation, assistantName]);
+  }, [activeConversation, assistantName, welcomeMessage]);
 
   const handleNewChat = () => {
-    const conversation = createEmptyConversation(assistantName);
+    const conversation = createEmptyConversation(assistantName, welcomeMessage);
 
     setConversations((current) => [...current, conversation]);
     setActiveConversationId(conversation.id);
@@ -599,7 +618,7 @@ export function DocsAiChat() {
                 </span>
                 <div>
                   <strong>{assistantName}</strong>
-                  <p>Friendly docs assistant</p>
+                  <p>{resolvedHeaderSubtitle}</p>
                 </div>
               </div>
 

@@ -19,8 +19,10 @@ import {
   AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
   DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  DEFAULT_AI_CHAT_HEADER_SUBTITLE,
   DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
+  DEFAULT_AI_CHAT_WELCOME_MESSAGE,
 } from "@/lib/ai-chat";
 import type { AdminSettings, DomainSslRuntimeStatus, ThemeCustomization } from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -52,6 +54,8 @@ const INITIAL_SETTINGS: AdminSettings = {
   tokenConfigured: false,
   aiChatEnabled: false,
   aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  aiChatHeaderSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE,
+  aiChatWelcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   openRouterApiKey: "",
@@ -952,6 +956,37 @@ export function AdminSettingsPanel() {
                 <span className="field-hint">
                   Shown in the chat header, welcome message, and reply labels. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code>{" "}
                   in the system prompt to reference this value dynamically.
+                </span>
+              </label>
+
+              <label className="field-row" htmlFor="ai-chat-header-subtitle">
+                <span className="field-label">Header subtitle</span>
+                <input
+                  id="ai-chat-header-subtitle"
+                  className="input"
+                  value={settings.aiChatHeaderSubtitle}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatHeaderSubtitle: event.target.value }))}
+                  placeholder={DEFAULT_AI_CHAT_HEADER_SUBTITLE}
+                />
+                <span className="field-hint">
+                  Shown below the assistant name in the chat header. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code> if you
+                  want the configured assistant name inserted automatically.
+                </span>
+              </label>
+
+              <label className="field-row" htmlFor="ai-chat-welcome-message">
+                <span className="field-label">Welcome message</span>
+                <textarea
+                  id="ai-chat-welcome-message"
+                  className="input textarea"
+                  rows={4}
+                  value={settings.aiChatWelcomeMessage}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatWelcomeMessage: event.target.value }))}
+                  placeholder={DEFAULT_AI_CHAT_WELCOME_MESSAGE}
+                />
+                <span className="field-hint">
+                  Shown as the first assistant message in new chats. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code> if you
+                  want the configured assistant name inserted automatically.
                 </span>
               </label>
 

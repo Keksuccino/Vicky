@@ -70,6 +70,8 @@ export type AdminSettings = {
   tokenConfigured: boolean;
   aiChatEnabled: boolean;
   aiChatAssistantName: string;
+  aiChatHeaderSubtitle: string;
+  aiChatWelcomeMessage: string;
   aiChatSystemPrompt: string;
   openRouterModel: string;
   openRouterApiKey: string;

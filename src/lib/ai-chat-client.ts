@@ -1,4 +1,10 @@
-import { DEFAULT_AI_CHAT_ASSISTANT_NAME, normalizeAiAssistantName } from "@/lib/ai-chat";
+import {
+  DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+  normalizeAiAssistantName,
+  normalizeAiChatWelcomeMessage,
+  renderAiChatAssistantTemplate,
+} from "@/lib/ai-chat";
 
 export type AiChatAttachment = {
   id: string;
@@ -55,18 +61,26 @@ const MAX_SERIALIZED_COOKIE_CHARS = 18_000;
 
 const createId = (): string => crypto.randomUUID();
 
-export const getAiChatWelcomeText = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): string => {
-  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
-  return `Hi, I'm ${resolvedAssistantName}. Ask me anything about these docs and I'll answer as helpfully as I can from the documentation context.`;
-};
+export const getAiChatWelcomeText = (
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): string =>
+  renderAiChatAssistantTemplate(
+    normalizeAiChatWelcomeMessage(welcomeMessage),
+    assistantName,
+    DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+  );
 
-export const createWelcomeMessage = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): AiChatMessage => {
+export const createWelcomeMessage = (
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): AiChatMessage => {
   const resolvedAssistantName = normalizeAiAssistantName(assistantName);
 
   return {
     id: createId(),
     role: "assistant",
-    text: getAiChatWelcomeText(resolvedAssistantName),
+    text: getAiChatWelcomeText(resolvedAssistantName, welcomeMessage),
     createdAt: new Date().toISOString(),
     attachments: [],
     attachmentNames: [],
@@ -75,7 +89,10 @@ export const createWelcomeMessage = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_N
   };
 };
 
-export const createEmptyConversation = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): AiChatConversation => {
+export const createEmptyConversation = (
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): AiChatConversation => {
   const createdAt = new Date().toISOString();
 
   return {
@@ -83,7 +100,7 @@ export const createEmptyConversation = (assistantName = DEFAULT_AI_CHAT_ASSISTAN
     title: "New chat",
     createdAt,
     updatedAt: createdAt,
-    messages: [createWelcomeMessage(assistantName)],
+    messages: [createWelcomeMessage(assistantName, welcomeMessage)],
   };
 };
 
@@ -321,12 +338,16 @@ export const deserializeAiChatState = (encoded: string): PersistedAiChatState | 
   }
 };
 
-const applyAssistantNameToMessage = (message: AiChatMessage, assistantName: string): AiChatMessage => {
+const applyAssistantSettingsToMessage = (
+  message: AiChatMessage,
+  assistantName: string,
+  welcomeMessage: string,
+): AiChatMessage => {
   if (message.role !== "assistant") {
     return message;
   }
 
-  const nextText = message.seed ? getAiChatWelcomeText(assistantName) : message.text;
+  const nextText = message.seed ? getAiChatWelcomeText(assistantName, welcomeMessage) : message.text;
   if (message.name === assistantName && message.text === nextText) {
     return message;
   }
@@ -341,15 +362,17 @@ const applyAssistantNameToMessage = (message: AiChatMessage, assistantName: stri
 export const syncAiChatConversationAssistantName = (
   conversations: AiChatConversation[],
   assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
 ): AiChatConversation[] => {
   const resolvedAssistantName = normalizeAiAssistantName(assistantName);
+  const resolvedWelcomeMessage = normalizeAiChatWelcomeMessage(welcomeMessage);
   let changed = false;
 
   const nextConversations = conversations.map((conversation) => {
     let conversationChanged = false;
 
     const messages = conversation.messages.map((message) => {
-      const updatedMessage = applyAssistantNameToMessage(message, resolvedAssistantName);
+      const updatedMessage = applyAssistantSettingsToMessage(message, resolvedAssistantName, resolvedWelcomeMessage);
       if (updatedMessage !== message) {
         conversationChanged = true;
       }
@@ -374,11 +397,21 @@ export const syncAiChatConversationAssistantName = (
 export const restoreAiChatConversations = (state: PersistedAiChatState | null): {
   conversations: AiChatConversation[];
   activeConversationId: string | null;
+} => restoreAiChatConversationsWithSettings(state);
+
+export const restoreAiChatConversationsWithSettings = (
+  state: PersistedAiChatState | null,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): {
+  conversations: AiChatConversation[];
+  activeConversationId: string | null;
 } => {
-  const resolvedAssistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME;
+  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
+  const resolvedWelcomeMessage = normalizeAiChatWelcomeMessage(welcomeMessage);
 
   if (!state || state.conversations.length === 0) {
-    const freshConversation = createEmptyConversation(resolvedAssistantName);
+    const freshConversation = createEmptyConversation(resolvedAssistantName, resolvedWelcomeMessage);
     return {
       conversations: [freshConversation],
       activeConversationId: freshConversation.id,
@@ -398,14 +431,16 @@ export const restoreAiChatConversations = (state: PersistedAiChatState | null): 
             ...(message.name ? { name: message.name } : {}),
             ...(message.seed ? { seed: true } : {}),
           }))
-        : [createWelcomeMessage(resolvedAssistantName)];
+        : [createWelcomeMessage(resolvedAssistantName, resolvedWelcomeMessage)];
 
     return {
       id: conversation.id,
       title: conversation.title || deriveConversationTitle(messages),
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt || messages.at(-1)?.createdAt || conversation.createdAt,
-      messages: messages.map((message) => applyAssistantNameToMessage(message, resolvedAssistantName)),
+      messages: messages.map((message) =>
+        applyAssistantSettingsToMessage(message, resolvedAssistantName, resolvedWelcomeMessage),
+      ),
     };
   });
 

@@ -1,7 +1,13 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { AI_CHAT_DOCS_PLACEHOLDER, normalizeAiAssistantName, normalizeAiChatSystemPromptTemplate } from "@/lib/ai-chat";
+import {
+  AI_CHAT_DOCS_PLACEHOLDER,
+  normalizeAiAssistantName,
+  normalizeAiChatHeaderSubtitle,
+  normalizeAiChatSystemPromptTemplate,
+  normalizeAiChatWelcomeMessage,
+} from "@/lib/ai-chat";
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -62,6 +68,8 @@ const settingsPatchSchema = z
       .object({
         enabled: z.boolean().optional(),
         assistantName: z.string().optional(),
+        headerSubtitle: z.string().optional(),
+        welcomeMessage: z.string().optional(),
         openRouterModel: z.string().optional(),
         openRouterApiKey: z.string().optional(),
         systemPrompt: z.string().optional(),
@@ -217,6 +225,14 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
         if (patch.aiChat.assistantName !== undefined) {
           store.settings.aiChat.assistantName = normalizeAiAssistantName(patch.aiChat.assistantName);
+        }
+
+        if (patch.aiChat.headerSubtitle !== undefined) {
+          store.settings.aiChat.headerSubtitle = normalizeAiChatHeaderSubtitle(patch.aiChat.headerSubtitle);
+        }
+
+        if (patch.aiChat.welcomeMessage !== undefined) {
+          store.settings.aiChat.welcomeMessage = normalizeAiChatWelcomeMessage(patch.aiChat.welcomeMessage);
         }
 
         if (patch.aiChat.openRouterModel !== undefined) {

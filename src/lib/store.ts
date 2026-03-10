@@ -1,7 +1,13 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { DEFAULT_AI_CHAT_SETTINGS, normalizeAiAssistantName, normalizeAiChatSystemPromptTemplate } from "@/lib/ai-chat";
+import {
+  DEFAULT_AI_CHAT_SETTINGS,
+  normalizeAiAssistantName,
+  normalizeAiChatHeaderSubtitle,
+  normalizeAiChatSystemPromptTemplate,
+  normalizeAiChatWelcomeMessage,
+} from "@/lib/ai-chat";
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -140,6 +146,8 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
   const fallbackTheme = sourceTheme ? defaults.theme : deriveThemeCustomizationFromLegacyStore(source, legacyThemes);
   const defaultAiChat = DEFAULT_AI_CHAT_SETTINGS();
   const assistantName = normalizeAiAssistantName(sourceAiChat.assistantName, defaultAiChat.assistantName);
+  const headerSubtitle = normalizeAiChatHeaderSubtitle(sourceAiChat.headerSubtitle, defaultAiChat.headerSubtitle);
+  const welcomeMessage = normalizeAiChatWelcomeMessage(sourceAiChat.welcomeMessage, defaultAiChat.welcomeMessage);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
@@ -170,6 +178,8 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
     aiChat: {
       enabled: typeof sourceAiChat.enabled === "boolean" ? sourceAiChat.enabled : defaultAiChat.enabled,
       assistantName,
+      headerSubtitle,
+      welcomeMessage,
       openRouterModel: normalizeString(sourceAiChat.openRouterModel, defaultAiChat.openRouterModel),
       openRouterApiKeyEncrypted: normalizeOptionalString(sourceAiChat.openRouterApiKeyEncrypted),
       systemPrompt: normalizeAiChatSystemPromptTemplate(sourceAiChat.systemPrompt, assistantName),
@@ -277,6 +287,8 @@ export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "git
   aiChat: {
     enabled: settings.aiChat.enabled,
     assistantName: settings.aiChat.assistantName,
+    headerSubtitle: settings.aiChat.headerSubtitle,
+    welcomeMessage: settings.aiChat.welcomeMessage,
     openRouterModel: settings.aiChat.openRouterModel,
     systemPrompt: settings.aiChat.systemPrompt,
     openRouterApiKeyConfigured: Boolean(settings.aiChat.openRouterApiKeyEncrypted),
