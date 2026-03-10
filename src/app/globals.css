@@ -3087,6 +3087,14 @@ html[data-color-mode="light"] .page-copy-menu {
   transform: translateY(-1px);
 }
 
+.docs-ai-chat-icon-button-new-chat .material-icon {
+  font-size: 1.12rem;
+}
+
+.docs-ai-chat-history-back-icon {
+  font-size: 1.2rem;
+}
+
 .docs-ai-chat-history,
 .docs-ai-chat-messages {
   overflow: auto;

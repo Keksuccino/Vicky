@@ -604,11 +604,14 @@ export function DocsAiChat() {
                   onClick={() => setHistoryOpen((current) => !current)}
                   aria-label={historyOpen ? "Hide chat history" : "Show chat history"}
                 >
-                  <MaterialIcon name={historyOpen ? "forum" : "history"} />
+                  <MaterialIcon
+                    name={historyOpen ? "forum" : "history"}
+                    className={cn(historyOpen && "docs-ai-chat-history-back-icon")}
+                  />
                 </button>
                 <button
                   type="button"
-                  className="docs-ai-chat-icon-button"
+                  className="docs-ai-chat-icon-button docs-ai-chat-icon-button-new-chat"
                   onClick={handleNewChat}
                   aria-label="Start a new chat"
                 >
