@@ -2923,6 +2923,14 @@ html[data-color-mode="light"] .page-copy-menu {
   z-index: 97;
   min-width: 0;
   min-height: 0;
+  overflow: visible;
+  animation: fade-up 220ms ease;
+}
+
+.docs-ai-chat-panel-surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   border-radius: 24px;
   background:
@@ -2938,10 +2946,9 @@ html[data-color-mode="light"] .page-copy-menu {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
   overflow: hidden;
-  animation: fade-up 220ms ease;
 }
 
-.docs-ai-chat-panel::before {
+.docs-ai-chat-panel-surface::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -2957,45 +2964,58 @@ html[data-color-mode="light"] .page-copy-menu {
   bottom: 0.7rem;
   width: auto !important;
   height: min(74vh, 680px) !important;
-  resize: none;
 }
 
 .docs-ai-chat-resize-handle {
   position: absolute;
-  top: 0.72rem;
-  left: 0.72rem;
-  z-index: 2;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.8rem;
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 20%, var(--border));
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--text-muted) 66%, transparent) 0 2px,
-      transparent 2px 5px
-    ),
-    color-mix(in srgb, var(--surface-elevated) 84%, var(--accent-surface-soft));
-  box-shadow: 0 8px 18px rgba(14, 26, 49, 0.12);
+  top: -0.8rem;
+  left: -0.8rem;
+  z-index: 3;
+  width: 1.7rem;
+  height: 1.7rem;
   cursor: nwse-resize;
   touch-action: none;
+}
+
+.docs-ai-chat-resize-handle::before,
+.docs-ai-chat-resize-handle::after {
+  content: "";
+  position: absolute;
+  right: 0.15rem;
+  bottom: 0.15rem;
+  height: 2px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 74%, var(--text-muted));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface-elevated) 82%, transparent);
+  transform-origin: right center;
+  transform: rotate(-45deg);
   transition:
     background 160ms ease,
-    border-color 160ms ease,
-    transform 120ms ease;
+    transform 120ms ease,
+    opacity 120ms ease;
+}
+
+.docs-ai-chat-resize-handle::before {
+  width: 1rem;
+}
+
+.docs-ai-chat-resize-handle::after {
+  width: 0.62rem;
+  right: 0.4rem;
+  bottom: 0.5rem;
+  opacity: 0.8;
 }
 
 .docs-ai-chat-resize-handle:hover,
 .docs-ai-chat-resize-handle:active {
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  background:
-    repeating-linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--accent) 54%, transparent) 0 2px,
-      transparent 2px 5px
-    ),
-    color-mix(in srgb, var(--surface-elevated) 88%, var(--accent-soft));
   transform: translate(-1px, -1px);
+}
+
+.docs-ai-chat-resize-handle:hover::before,
+.docs-ai-chat-resize-handle:hover::after,
+.docs-ai-chat-resize-handle:active::before,
+.docs-ai-chat-resize-handle:active::after {
+  background: color-mix(in srgb, var(--accent) 88%, white);
 }
 
 .docs-ai-chat-header,
@@ -3007,16 +3027,12 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .docs-ai-chat-header {
-  padding: 0.9rem 0.95rem 0.8rem 3.2rem;
+  padding: 0.9rem 0.95rem 0.8rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.85rem;
   border-bottom: 1px solid color-mix(in srgb, var(--accent-surface) 18%, var(--border));
-}
-
-.docs-ai-chat-panel-compact .docs-ai-chat-header {
-  padding-left: 0.95rem;
 }
 
 .docs-ai-chat-title-group {

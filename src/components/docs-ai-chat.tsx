@@ -358,34 +358,6 @@ export function DocsAiChat() {
   }, [activeConversation?.messages, historyOpen, isOpen]);
 
   useEffect(() => {
-    if (!isOpen || isCompactViewport || !panelRef.current || typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) {
-        return;
-      }
-
-      const nextSize = clampWindowSize({
-        width: entry.contentRect.width,
-        height: entry.contentRect.height,
-      });
-
-      setWindowSize((current) =>
-        current.width === nextSize.width && current.height === nextSize.height ? current : nextSize,
-      );
-    });
-
-    observer.observe(panelRef.current);
-
-    return () => {
-      observer.disconnect();
-    };
-  }, [isCompactViewport, isOpen]);
-
-  useEffect(() => {
     return () => {
       resizeCleanupRef.current?.();
     };
@@ -611,182 +583,189 @@ export function DocsAiChat() {
             />
           ) : null}
 
-          <header className="docs-ai-chat-header">
-            <div className="docs-ai-chat-title-group">
-              <span className="docs-ai-chat-title-badge">
-                <MaterialIcon name="auto_awesome" />
-              </span>
-              <div>
-                <strong>{AI_CHAT_ASSISTANT_NAME}</strong>
-                <p>Friendly docs assistant</p>
+          <div className="docs-ai-chat-panel-surface">
+            <header className="docs-ai-chat-header">
+              <div className="docs-ai-chat-title-group">
+                <span className="docs-ai-chat-title-badge">
+                  <MaterialIcon name="auto_awesome" />
+                </span>
+                <div>
+                  <strong>{AI_CHAT_ASSISTANT_NAME}</strong>
+                  <p>Friendly docs assistant</p>
+                </div>
               </div>
-            </div>
 
-            <div className="docs-ai-chat-header-actions">
-              <button
-                type="button"
-                className="docs-ai-chat-icon-button"
-                onClick={() => setHistoryOpen((current) => !current)}
-                aria-label={historyOpen ? "Hide chat history" : "Show chat history"}
-              >
-                <MaterialIcon name={historyOpen ? "forum" : "history"} />
-              </button>
-              <button
-                type="button"
-                className="docs-ai-chat-icon-button"
-                onClick={handleNewChat}
-                aria-label="Start a new chat"
-              >
-                <MaterialIcon name="add_comment" />
-              </button>
-              <button
-                type="button"
-                className="docs-ai-chat-icon-button"
-                onClick={() => setIsOpen(false)}
-                aria-label="Close chat"
-              >
-                <MaterialIcon name="close" />
-              </button>
-            </div>
-          </header>
-
-          {historyOpen ? (
-            <div className="docs-ai-chat-history" aria-label="Saved conversations">
-              {conversations
-                .slice()
-                .reverse()
-                .map((conversation) => (
-                  <button
-                    key={conversation.id}
-                    type="button"
-                    className={cn(
-                      "docs-ai-chat-history-item",
-                      conversation.id === activeConversation.id && "docs-ai-chat-history-item-active",
-                    )}
-                    onClick={() => {
-                      setActiveConversationId(conversation.id);
-                      setHistoryOpen(false);
-                    }}
-                  >
-                    <strong>{conversation.title}</strong>
-                    <span>{formatUpdatedAt(conversation.updatedAt)}</span>
-                  </button>
-                ))}
-            </div>
-          ) : (
-            <div ref={messageListRef} className="docs-ai-chat-messages" aria-live="polite">
-              {activeConversation.messages.map((message) => (
-                <article
-                  key={message.id}
-                  className={cn(
-                    "docs-ai-chat-message",
-                    message.role === "assistant" ? "docs-ai-chat-message-assistant" : "docs-ai-chat-message-user",
-                  )}
+              <div className="docs-ai-chat-header-actions">
+                <button
+                  type="button"
+                  className="docs-ai-chat-icon-button"
+                  onClick={() => setHistoryOpen((current) => !current)}
+                  aria-label={historyOpen ? "Hide chat history" : "Show chat history"}
                 >
-                  <div className="docs-ai-chat-message-meta">
-                    <span>{message.role === "assistant" ? message.name ?? AI_CHAT_ASSISTANT_NAME : "You"}</span>
+                  <MaterialIcon name={historyOpen ? "forum" : "history"} />
+                </button>
+                <button
+                  type="button"
+                  className="docs-ai-chat-icon-button"
+                  onClick={handleNewChat}
+                  aria-label="Start a new chat"
+                >
+                  <MaterialIcon name="add_comment" />
+                </button>
+                <button
+                  type="button"
+                  className="docs-ai-chat-icon-button"
+                  onClick={() => setIsOpen(false)}
+                  aria-label="Close chat"
+                >
+                  <MaterialIcon name="close" />
+                </button>
+              </div>
+            </header>
+
+            {historyOpen ? (
+              <div className="docs-ai-chat-history" aria-label="Saved conversations">
+                {conversations
+                  .slice()
+                  .reverse()
+                  .map((conversation) => (
+                    <button
+                      key={conversation.id}
+                      type="button"
+                      className={cn(
+                        "docs-ai-chat-history-item",
+                        conversation.id === activeConversation.id && "docs-ai-chat-history-item-active",
+                      )}
+                      onClick={() => {
+                        setActiveConversationId(conversation.id);
+                        setHistoryOpen(false);
+                      }}
+                    >
+                      <strong>{conversation.title}</strong>
+                      <span>{formatUpdatedAt(conversation.updatedAt)}</span>
+                    </button>
+                  ))}
+              </div>
+            ) : (
+              <div ref={messageListRef} className="docs-ai-chat-messages" aria-live="polite">
+                {activeConversation.messages.map((message) => (
+                  <article
+                    key={message.id}
+                    className={cn(
+                      "docs-ai-chat-message",
+                      message.role === "assistant" ? "docs-ai-chat-message-assistant" : "docs-ai-chat-message-user",
+                    )}
+                  >
+                    <div className="docs-ai-chat-message-meta">
+                      <span>{message.role === "assistant" ? message.name ?? AI_CHAT_ASSISTANT_NAME : "You"}</span>
+                    </div>
+                    <div className="docs-ai-chat-bubble">
+                      {message.text ? (
+                        <div className="docs-ai-chat-markdown">
+                          <MarkdownRenderer content={message.text} />
+                        </div>
+                      ) : null}
+
+                      {message.attachments.length > 0 ? (
+                        <div className="docs-ai-chat-image-grid">
+                          {message.attachments.map((attachment) => (
+                            <figure key={attachment.id} className="docs-ai-chat-image-card">
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={attachment.dataUrl} alt={attachment.name} />
+                              <figcaption>{attachment.name}</figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {message.attachments.length === 0 && message.attachmentNames.length > 0 ? (
+                        <div className="docs-ai-chat-attachment-note">
+                          {message.attachmentNames.map((name) => (
+                            <span key={`${message.id}-${name}`}>{name}</span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
+                ))}
+
+                {isSending ? (
+                  <div className="docs-ai-chat-typing" role="status" aria-live="polite">
+                    <span />
+                    <span />
+                    <span />
                   </div>
-                  <div className="docs-ai-chat-bubble">
-                    {message.text ? (
-                      <div className="docs-ai-chat-markdown">
-                        <MarkdownRenderer content={message.text} />
-                      </div>
-                    ) : null}
+                ) : null}
+              </div>
+            )}
 
-                    {message.attachments.length > 0 ? (
-                      <div className="docs-ai-chat-image-grid">
-                        {message.attachments.map((attachment) => (
-                          <figure key={attachment.id} className="docs-ai-chat-image-card">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={attachment.dataUrl} alt={attachment.name} />
-                            <figcaption>{attachment.name}</figcaption>
-                          </figure>
-                        ))}
-                      </div>
-                    ) : null}
+            <div className="docs-ai-chat-composer">
+              {error ? <p className="error-text docs-ai-chat-error">{error}</p> : null}
 
-                    {message.attachments.length === 0 && message.attachmentNames.length > 0 ? (
-                      <div className="docs-ai-chat-attachment-note">
-                        {message.attachmentNames.map((name) => (
-                          <span key={`${message.id}-${name}`}>{name}</span>
-                        ))}
+              {pendingAttachments.length > 0 ? (
+                <div className="docs-ai-chat-pending-attachments">
+                  {pendingAttachments.map((attachment) => (
+                    <div key={attachment.id} className="docs-ai-chat-pending-card">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={attachment.dataUrl} alt={attachment.name} />
+                      <div>
+                        <strong>{attachment.name}</strong>
                       </div>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-
-              {isSending ? (
-                <div className="docs-ai-chat-typing" role="status" aria-live="polite">
-                  <span />
-                  <span />
-                  <span />
+                      <button
+                        type="button"
+                        className="docs-ai-chat-remove-attachment"
+                        onClick={() =>
+                          setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id))
+                        }
+                        aria-label={`Remove ${attachment.name}`}
+                      >
+                        <MaterialIcon name="close" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               ) : null}
-            </div>
-          )}
 
-          <div className="docs-ai-chat-composer">
-            {error ? <p className="error-text docs-ai-chat-error">{error}</p> : null}
+              <label className="docs-ai-chat-composer-shell" htmlFor="docs-ai-chat-input">
+                <textarea
+                  id="docs-ai-chat-input"
+                  className="docs-ai-chat-input"
+                  rows={3}
+                  value={draft}
+                  onChange={(event) => setDraft(event.target.value)}
+                  onKeyDown={handleComposerKeyDown}
+                  placeholder={`Ask ${AI_CHAT_ASSISTANT_NAME} about these docs...`}
+                />
+              </label>
 
-            {pendingAttachments.length > 0 ? (
-              <div className="docs-ai-chat-pending-attachments">
-                {pendingAttachments.map((attachment) => (
-                  <div key={attachment.id} className="docs-ai-chat-pending-card">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={attachment.dataUrl} alt={attachment.name} />
-                    <div>
-                      <strong>{attachment.name}</strong>
-                    </div>
-                    <button
-                      type="button"
-                      className="docs-ai-chat-remove-attachment"
-                      onClick={() =>
-                        setPendingAttachments((current) => current.filter((item) => item.id !== attachment.id))
-                      }
-                      aria-label={`Remove ${attachment.name}`}
-                    >
-                      <MaterialIcon name="close" />
-                    </button>
-                  </div>
-                ))}
+              <div className="docs-ai-chat-composer-actions">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp,image/gif"
+                  multiple
+                  className="docs-ai-chat-file-input"
+                  onChange={handleFileSelection}
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isSending || pendingAttachments.length >= MAX_AI_CHAT_IMAGES_PER_MESSAGE}
+                >
+                  <MaterialIcon name="image" />
+                  <span>Add Image</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={() => void handleSubmit()}
+                  disabled={isSending}
+                >
+                  <MaterialIcon name={isSending ? "hourglass_top" : "send"} />
+                  <span>{isSending ? "Sending..." : "Send"}</span>
+                </button>
               </div>
-            ) : null}
-
-            <label className="docs-ai-chat-composer-shell" htmlFor="docs-ai-chat-input">
-              <textarea
-                id="docs-ai-chat-input"
-                className="docs-ai-chat-input"
-                rows={3}
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={handleComposerKeyDown}
-                placeholder={`Ask ${AI_CHAT_ASSISTANT_NAME} about these docs...`}
-              />
-            </label>
-
-            <div className="docs-ai-chat-composer-actions">
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/gif"
-                multiple
-                className="docs-ai-chat-file-input"
-                onChange={handleFileSelection}
-              />
-              <button
-                type="button"
-                className="btn btn-ghost"
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isSending || pendingAttachments.length >= MAX_AI_CHAT_IMAGES_PER_MESSAGE}
-              >
-                <MaterialIcon name="image" />
-                <span>Add Image</span>
-              </button>
-              <button type="button" className="btn btn-primary" onClick={() => void handleSubmit()} disabled={isSending}>
-                <MaterialIcon name={isSending ? "hourglass_top" : "send"} />
-                <span>{isSending ? "Sending..." : "Send"}</span>
-              </button>
             </div>
           </div>
         </section>
