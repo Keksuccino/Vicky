@@ -904,6 +904,21 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   pointer-events: none;
 }
 
+.docs-raw-main {
+  padding: clamp(1rem, 2.2vw, 1.35rem);
+}
+
+.docs-raw-pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  color: var(--text-primary);
+  font-family: var(--font-mono), "SFMono-Regular", Consolas, monospace;
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
 .page-header-skeleton {
   border-color: var(--placeholder-border);
   background: var(--placeholder-surface);
