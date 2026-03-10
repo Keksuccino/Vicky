@@ -2448,15 +2448,15 @@ html[data-color-mode="light"] .meta-item {
 }
 
 .editor-switch {
-  width: 3.15rem;
-  height: 1.8rem;
+  width: 2.63rem;
+  height: 1.5rem;
   flex: 0 0 auto;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
   display: inline-flex;
   align-items: center;
-  padding: 0.16rem;
+  padding: 0.13rem;
   cursor: pointer;
   transition:
     background 180ms ease,
@@ -2474,8 +2474,8 @@ html[data-color-mode="light"] .meta-item {
 }
 
 .editor-switch-thumb {
-  width: 1.4rem;
-  height: 1.4rem;
+  width: 1.16rem;
+  height: 1.16rem;
   border-radius: 50%;
   background: var(--surface-elevated);
   box-shadow:
@@ -2494,7 +2494,7 @@ html[data-color-mode="light"] .meta-item {
 }
 
 .editor-switch-active .editor-switch-thumb {
-  transform: translateX(1.34rem);
+  transform: translateX(1.08rem);
   background: var(--accent-contrast);
 }
 
