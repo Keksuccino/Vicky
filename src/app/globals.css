@@ -3044,7 +3044,6 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .docs-ai-chat-title-badge-image {
-  background: #fff;
   isolation: isolate;
 }
 
@@ -3059,7 +3058,6 @@ html[data-color-mode="light"] .page-copy-menu {
   display: block;
   object-fit: cover;
   border-radius: inherit;
-  background: #fff;
   opacity: 1;
   mix-blend-mode: normal;
   filter: none;
