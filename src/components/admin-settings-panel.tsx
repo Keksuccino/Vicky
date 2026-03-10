@@ -16,7 +16,9 @@ import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
 import {
+  AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
+  DEFAULT_AI_CHAT_ASSISTANT_NAME,
   DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
 } from "@/lib/ai-chat";
@@ -49,6 +51,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   githubToken: "",
   tokenConfigured: false,
   aiChatEnabled: false,
+  aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
   aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   openRouterApiKey: "",
@@ -907,7 +910,7 @@ export function AdminSettingsPanel() {
             </div>
 
             <p className="panel-description">
-              Configure Alice, the floating docs assistant powered by OpenRouter and the live <code>/docs.txt</code> export.
+              Configure the AI chat assistant shown in docs pages.
             </p>
 
             <form
@@ -936,6 +939,21 @@ export function AdminSettingsPanel() {
                   Shows the floating Ask Docs button on docs pages and enables the public chat API route.
                 </span>
               </div>
+
+              <label className="field-row" htmlFor="ai-chat-assistant-name">
+                <span className="field-label">Assistant name</span>
+                <input
+                  id="ai-chat-assistant-name"
+                  className="input"
+                  value={settings.aiChatAssistantName}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatAssistantName: event.target.value }))}
+                  placeholder={DEFAULT_AI_CHAT_ASSISTANT_NAME}
+                />
+                <span className="field-hint">
+                  Shown in the chat header, welcome message, and reply labels. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code>{" "}
+                  in the system prompt to reference this value dynamically.
+                </span>
+              </label>
 
               <label className="field-row" htmlFor="openrouter-model">
                 <span className="field-label">OpenRouter model</span>
@@ -1015,8 +1033,8 @@ export function AdminSettingsPanel() {
                   placeholder={DEFAULT_AI_CHAT_SYSTEM_PROMPT}
                 />
                 <span className="field-hint">
-                  Keep <code>{AI_CHAT_DOCS_PLACEHOLDER}</code> exactly where the live <code>/docs.txt</code> export should be
-                  injected.
+                  Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code> for the configured assistant name and keep{" "}
+                  <code>{AI_CHAT_DOCS_PLACEHOLDER}</code> exactly where the live <code>/docs.txt</code> export should be injected.
                 </span>
                 {aiChatFieldErrors.systemPrompt ? <span className="error-text">{aiChatFieldErrors.systemPrompt}</span> : null}
               </label>

@@ -26,6 +26,7 @@ export interface DomainSettings {
 
 export interface AiChatSettings {
   enabled: boolean;
+  assistantName: string;
   openRouterModel: string;
   openRouterApiKeyEncrypted: string | null;
   systemPrompt: string;

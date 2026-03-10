@@ -2,7 +2,7 @@ import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  AI_ASSISTANT_NAME,
+  normalizeAiAssistantName,
   extractAiAssistantText,
   injectDocsIntoSystemPrompt,
   MAX_AI_CHAT_HISTORY_MESSAGES,
@@ -204,7 +204,8 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     const origin = resolveRequestOrigin(request);
     const docsConfig = resolveRuntimeConfig(store.settings.github);
     const docsText = await getPlaintextDocsExport(docsConfig, origin);
-    const systemPrompt = injectDocsIntoSystemPrompt(store.settings.aiChat.systemPrompt, docsText);
+    const assistantName = normalizeAiAssistantName(store.settings.aiChat.assistantName);
+    const systemPrompt = injectDocsIntoSystemPrompt(store.settings.aiChat.systemPrompt, docsText, assistantName);
     const messages = payload.messages.map((message) => toOpenRouterMessage(message));
 
     const response = await fetch(OPENROUTER_API_URL, {
@@ -252,7 +253,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       reply: {
         role: "assistant",
         text: assistantText,
-        name: AI_ASSISTANT_NAME,
+        name: assistantName,
       },
     });
   } catch (error: unknown) {

@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-import { AI_CHAT_DOCS_PLACEHOLDER, DEFAULT_AI_CHAT_SETTINGS } from "@/lib/ai-chat";
+import { DEFAULT_AI_CHAT_SETTINGS, normalizeAiAssistantName, normalizeAiChatSystemPromptTemplate } from "@/lib/ai-chat";
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -139,6 +139,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
       : ({} as Record<string, unknown>);
   const fallbackTheme = sourceTheme ? defaults.theme : deriveThemeCustomizationFromLegacyStore(source, legacyThemes);
   const defaultAiChat = DEFAULT_AI_CHAT_SETTINGS();
+  const assistantName = normalizeAiAssistantName(sourceAiChat.assistantName, defaultAiChat.assistantName);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
@@ -168,11 +169,10 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
     },
     aiChat: {
       enabled: typeof sourceAiChat.enabled === "boolean" ? sourceAiChat.enabled : defaultAiChat.enabled,
+      assistantName,
       openRouterModel: normalizeString(sourceAiChat.openRouterModel, defaultAiChat.openRouterModel),
       openRouterApiKeyEncrypted: normalizeOptionalString(sourceAiChat.openRouterApiKeyEncrypted),
-      systemPrompt: normalizeTrimmedString(sourceAiChat.systemPrompt, defaultAiChat.systemPrompt).includes(AI_CHAT_DOCS_PLACEHOLDER)
-        ? normalizeTrimmedString(sourceAiChat.systemPrompt, defaultAiChat.systemPrompt)
-        : defaultAiChat.systemPrompt,
+      systemPrompt: normalizeAiChatSystemPromptTemplate(sourceAiChat.systemPrompt, assistantName),
     },
     theme: normalizeThemeCustomization(sourceTheme, fallbackTheme),
     updatedAt: normalizeString(source.updatedAt, defaults.updatedAt),
@@ -276,6 +276,7 @@ export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "git
   },
   aiChat: {
     enabled: settings.aiChat.enabled,
+    assistantName: settings.aiChat.assistantName,
     openRouterModel: settings.aiChat.openRouterModel,
     systemPrompt: settings.aiChat.systemPrompt,
     openRouterApiKeyConfigured: Boolean(settings.aiChat.openRouterApiKeyEncrypted),

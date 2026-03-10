@@ -10,7 +10,7 @@ import {
   type EditableDoc,
   type MarkdownHeading,
 } from "@/components/types";
-import { DEFAULT_AI_CHAT_SYSTEM_PROMPT, DEFAULT_OPENROUTER_MODEL } from "@/lib/ai-chat";
+import { DEFAULT_AI_CHAT_ASSISTANT_NAME, DEFAULT_AI_CHAT_SYSTEM_PROMPT, DEFAULT_OPENROUTER_MODEL } from "@/lib/ai-chat";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 
 type JsonRecord = Record<string, unknown>;
@@ -33,6 +33,7 @@ export type PublicSiteSettings = {
   docsIconPng180Url: string;
   customDomain: string;
   aiChatEnabled: boolean;
+  aiChatAssistantName: string;
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;
@@ -72,6 +73,7 @@ const DEFAULT_SETTINGS: AdminSettings = {
   githubToken: "",
   tokenConfigured: false,
   aiChatEnabled: false,
+  aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
   aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
   openRouterApiKey: "",
@@ -435,6 +437,7 @@ function normalizeSettings(source: unknown): AdminSettings {
     githubToken: "",
     tokenConfigured: asBoolean(github.tokenConfigured, false),
     aiChatEnabled: asBoolean(aiChat.enabled, DEFAULT_SETTINGS.aiChatEnabled),
+    aiChatAssistantName: asString(aiChat.assistantName, DEFAULT_SETTINGS.aiChatAssistantName),
     aiChatSystemPrompt: asString(aiChat.systemPrompt, DEFAULT_SETTINGS.aiChatSystemPrompt),
     openRouterModel: asString(aiChat.openRouterModel, DEFAULT_SETTINGS.openRouterModel),
     openRouterApiKey: "",
@@ -467,6 +470,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
     aiChatEnabled: asBoolean(aiChat.enabled, DEFAULT_SETTINGS.aiChatEnabled),
+    aiChatAssistantName: asString(aiChat.assistantName, DEFAULT_SETTINGS.aiChatAssistantName),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -613,6 +617,7 @@ export async function saveAdminSettings(
     },
     aiChat: {
       enabled: settings.aiChatEnabled,
+      assistantName: settings.aiChatAssistantName,
       systemPrompt: settings.aiChatSystemPrompt,
       openRouterModel: settings.openRouterModel,
     },

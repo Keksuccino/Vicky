@@ -1,4 +1,4 @@
-import { AI_ASSISTANT_NAME } from "@/lib/ai-chat";
+import { DEFAULT_AI_CHAT_ASSISTANT_NAME, normalizeAiAssistantName } from "@/lib/ai-chat";
 
 export type AiChatAttachment = {
   id: string;
@@ -55,20 +55,27 @@ const MAX_SERIALIZED_COOKIE_CHARS = 18_000;
 
 const createId = (): string => crypto.randomUUID();
 
-export const AI_CHAT_WELCOME_TEXT = `Hi, I'm ${AI_ASSISTANT_NAME}. Ask me anything about these docs and I'll answer as helpfully as I can from the documentation context.`;
+export const getAiChatWelcomeText = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): string => {
+  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
+  return `Hi, I'm ${resolvedAssistantName}. Ask me anything about these docs and I'll answer as helpfully as I can from the documentation context.`;
+};
 
-export const createWelcomeMessage = (): AiChatMessage => ({
-  id: createId(),
-  role: "assistant",
-  text: AI_CHAT_WELCOME_TEXT,
-  createdAt: new Date().toISOString(),
-  attachments: [],
-  attachmentNames: [],
-  name: AI_ASSISTANT_NAME,
-  seed: true,
-});
+export const createWelcomeMessage = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): AiChatMessage => {
+  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
 
-export const createEmptyConversation = (): AiChatConversation => {
+  return {
+    id: createId(),
+    role: "assistant",
+    text: getAiChatWelcomeText(resolvedAssistantName),
+    createdAt: new Date().toISOString(),
+    attachments: [],
+    attachmentNames: [],
+    name: resolvedAssistantName,
+    seed: true,
+  };
+};
+
+export const createEmptyConversation = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): AiChatConversation => {
   const createdAt = new Date().toISOString();
 
   return {
@@ -76,7 +83,7 @@ export const createEmptyConversation = (): AiChatConversation => {
     title: "New chat",
     createdAt,
     updatedAt: createdAt,
-    messages: [createWelcomeMessage()],
+    messages: [createWelcomeMessage(assistantName)],
   };
 };
 
@@ -89,14 +96,17 @@ export const createUserMessage = (text: string, attachments: AiChatAttachment[])
   attachmentNames: attachments.map((attachment) => attachment.name),
 });
 
-export const createAssistantMessage = (text: string): AiChatMessage => ({
+export const createAssistantMessage = (
+  text: string,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+): AiChatMessage => ({
   id: createId(),
   role: "assistant",
   text,
   createdAt: new Date().toISOString(),
   attachments: [],
   attachmentNames: [],
-  name: AI_ASSISTANT_NAME,
+  name: normalizeAiAssistantName(assistantName),
 });
 
 export const deriveConversationTitle = (messages: AiChatMessage[]): string => {
@@ -311,12 +321,64 @@ export const deserializeAiChatState = (encoded: string): PersistedAiChatState | 
   }
 };
 
+const applyAssistantNameToMessage = (message: AiChatMessage, assistantName: string): AiChatMessage => {
+  if (message.role !== "assistant") {
+    return message;
+  }
+
+  const nextText = message.seed ? getAiChatWelcomeText(assistantName) : message.text;
+  if (message.name === assistantName && message.text === nextText) {
+    return message;
+  }
+
+  return {
+    ...message,
+    text: nextText,
+    name: assistantName,
+  };
+};
+
+export const syncAiChatConversationAssistantName = (
+  conversations: AiChatConversation[],
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+): AiChatConversation[] => {
+  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
+  let changed = false;
+
+  const nextConversations = conversations.map((conversation) => {
+    let conversationChanged = false;
+
+    const messages = conversation.messages.map((message) => {
+      const updatedMessage = applyAssistantNameToMessage(message, resolvedAssistantName);
+      if (updatedMessage !== message) {
+        conversationChanged = true;
+      }
+
+      return updatedMessage;
+    });
+
+    if (!conversationChanged) {
+      return conversation;
+    }
+
+    changed = true;
+    return {
+      ...conversation,
+      messages,
+    };
+  });
+
+  return changed ? nextConversations : conversations;
+};
+
 export const restoreAiChatConversations = (state: PersistedAiChatState | null): {
   conversations: AiChatConversation[];
   activeConversationId: string | null;
 } => {
+  const resolvedAssistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME;
+
   if (!state || state.conversations.length === 0) {
-    const freshConversation = createEmptyConversation();
+    const freshConversation = createEmptyConversation(resolvedAssistantName);
     return {
       conversations: [freshConversation],
       activeConversationId: freshConversation.id,
@@ -336,14 +398,14 @@ export const restoreAiChatConversations = (state: PersistedAiChatState | null): 
             ...(message.name ? { name: message.name } : {}),
             ...(message.seed ? { seed: true } : {}),
           }))
-        : [createWelcomeMessage()];
+        : [createWelcomeMessage(resolvedAssistantName)];
 
     return {
       id: conversation.id,
       title: conversation.title || deriveConversationTitle(messages),
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt || messages.at(-1)?.createdAt || conversation.createdAt,
-      messages,
+      messages: messages.map((message) => applyAssistantNameToMessage(message, resolvedAssistantName)),
     };
   });
 

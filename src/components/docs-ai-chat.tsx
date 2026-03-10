@@ -17,7 +17,6 @@ import { MaterialIcon } from "@/components/material-icon";
 import {
   AI_CHAT_SIZE_COOKIE_NAME,
   AI_CHAT_STATE_COOKIE_BASE_NAME,
-  AI_CHAT_WELCOME_TEXT,
   type AiChatAttachment,
   type AiChatConversation,
   type AiChatMessage,
@@ -30,8 +29,9 @@ import {
   restoreAiChatConversations,
   serializeAiChatState,
   splitCookieValue,
+  syncAiChatConversationAssistantName,
 } from "@/lib/ai-chat-client";
-import { AI_CHAT_ASSISTANT_NAME, MAX_AI_CHAT_IMAGE_BYTES, MAX_AI_CHAT_IMAGES_PER_MESSAGE } from "@/lib/ai-chat";
+import { DEFAULT_AI_CHAT_ASSISTANT_NAME, MAX_AI_CHAT_IMAGE_BYTES, MAX_AI_CHAT_IMAGES_PER_MESSAGE } from "@/lib/ai-chat";
 
 const CHAT_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30;
 const CHAT_COOKIE_MAX_CHUNKS = 8;
@@ -45,11 +45,11 @@ const MAX_WINDOW_WIDTH = 760;
 const MIN_WINDOW_HEIGHT = 460;
 const MAX_WINDOW_HEIGHT = 860;
 
-const createInitialConversationState = (): {
+const createInitialConversationState = (assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME): {
   conversations: AiChatConversation[];
   activeConversationId: string | null;
 } => {
-  const conversation = createEmptyConversation();
+  const conversation = createEmptyConversation(assistantName);
 
   return {
     conversations: [conversation],
@@ -198,7 +198,7 @@ const readImageAsDataUrl = (file: File): Promise<string> =>
 
 const toApiMessages = (messages: AiChatMessage[]) =>
   messages
-    .filter((message, index) => !(index === 0 && message.role === "assistant" && message.text === AI_CHAT_WELCOME_TEXT))
+    .filter((message, index) => !(index === 0 && message.role === "assistant" && message.seed === true))
     .map((message) => {
       if (message.role === "assistant") {
         return {
@@ -232,6 +232,7 @@ export function DocsAiChat() {
   if (!initialStateRef.current) {
     initialStateRef.current = createInitialConversationState();
   }
+  const [assistantName, setAssistantName] = useState(DEFAULT_AI_CHAT_ASSISTANT_NAME);
   const [featureReady, setFeatureReady] = useState(false);
   const [featureEnabled, setFeatureEnabled] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
@@ -267,6 +268,7 @@ export function DocsAiChat() {
         }
 
         setFeatureEnabled(settings.aiChatEnabled);
+        setAssistantName(settings.aiChatAssistantName);
       } catch {
         if (!mounted) {
           return;
@@ -300,6 +302,10 @@ export function DocsAiChat() {
 
     setCookiesHydrated(true);
   }, []);
+
+  useEffect(() => {
+    setConversations((current) => syncAiChatConversationAssistantName(current, assistantName));
+  }, [assistantName]);
 
   useEffect(() => {
     if (!cookiesHydrated) {
@@ -368,13 +374,13 @@ export function DocsAiChat() {
       return;
     }
 
-    const nextConversation = createEmptyConversation();
+    const nextConversation = createEmptyConversation(assistantName);
     setConversations([nextConversation]);
     setActiveConversationId(nextConversation.id);
-  }, [activeConversation]);
+  }, [activeConversation, assistantName]);
 
   const handleNewChat = () => {
-    const conversation = createEmptyConversation();
+    const conversation = createEmptyConversation(assistantName);
 
     setConversations((current) => [...current, conversation]);
     setActiveConversationId(conversation.id);
@@ -458,7 +464,7 @@ export function DocsAiChat() {
 
     try {
       const reply = await sendDocsAiChatMessage(toApiMessages(nextMessages));
-      const assistantMessage = createAssistantMessage(reply.text);
+      const assistantMessage = createAssistantMessage(reply.text, reply.name ?? assistantName);
 
       setConversations((current) =>
         current.map((conversation) =>
@@ -592,7 +598,7 @@ export function DocsAiChat() {
                   <MaterialIcon name="auto_awesome" />
                 </span>
                 <div>
-                  <strong>{AI_CHAT_ASSISTANT_NAME}</strong>
+                  <strong>{assistantName}</strong>
                   <p>Friendly docs assistant</p>
                 </div>
               </div>
@@ -662,7 +668,7 @@ export function DocsAiChat() {
                     )}
                   >
                     <div className="docs-ai-chat-message-meta">
-                      <span>{message.role === "assistant" ? message.name ?? AI_CHAT_ASSISTANT_NAME : "You"}</span>
+                      <span>{message.role === "assistant" ? message.name ?? assistantName : "You"}</span>
                     </div>
                     <div className="docs-ai-chat-bubble">
                       {message.text ? (
@@ -739,7 +745,7 @@ export function DocsAiChat() {
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
                   onKeyDown={handleComposerKeyDown}
-                  placeholder={`Ask ${AI_CHAT_ASSISTANT_NAME} about these docs...`}
+                  placeholder={`Ask ${assistantName} about these docs...`}
                 />
               </label>
 

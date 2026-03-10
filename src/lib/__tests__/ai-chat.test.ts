@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
+  buildDefaultAiChatSystemPrompt,
   renderAiChatSystemPrompt,
 } from "../ai-chat";
 import { compactPersistedAiChatState, deserializeAiChatState } from "../ai-chat-client";
@@ -10,16 +12,25 @@ import { compactPersistedAiChatState, deserializeAiChatState } from "../ai-chat-
 describe("ai chat system prompt", () => {
   it("injects docs text into the configured placeholder", () => {
     const docsText = "BEGIN PAGE: https://docs.example.com/docs/home\n# Home";
-    const rendered = renderAiChatSystemPrompt(DEFAULT_AI_CHAT_SYSTEM_PROMPT, docsText);
+    const rendered = renderAiChatSystemPrompt(DEFAULT_AI_CHAT_SYSTEM_PROMPT, docsText, "Vicky");
 
     expect(rendered).toContain(docsText);
+    expect(rendered).toContain("You are Vicky");
     expect(rendered).not.toContain(AI_CHAT_DOCS_PLACEHOLDER);
+    expect(rendered).not.toContain(AI_CHAT_ASSISTANT_NAME_PLACEHOLDER);
   });
 
   it("appends docs text when the placeholder is missing", () => {
-    const rendered = renderAiChatSystemPrompt("You are Alice.", "# Docs");
+    const rendered = renderAiChatSystemPrompt("You are {{assistant_name}}.", "# Docs", "Vicky");
 
-    expect(rendered).toBe("You are Alice.\n\n# Docs");
+    expect(rendered).toBe("You are Vicky.\n\n# Docs");
+  });
+
+  it("upgrades the legacy default prompt to the configured assistant name", () => {
+    const rendered = renderAiChatSystemPrompt(buildDefaultAiChatSystemPrompt("Alice"), "# Docs", "Vicky");
+
+    expect(rendered).toContain("You are Vicky");
+    expect(rendered).not.toContain("You are Alice");
   });
 });
 

@@ -1,7 +1,7 @@
 import type { AiChatSettings } from "@/lib/types";
 
-export const AI_CHAT_ASSISTANT_NAME = "Alice";
-export const AI_ASSISTANT_NAME = AI_CHAT_ASSISTANT_NAME;
+export const DEFAULT_AI_CHAT_ASSISTANT_NAME = "Alice";
+export const AI_CHAT_ASSISTANT_NAME_PLACEHOLDER = "{{assistant_name}}";
 export const AI_CHAT_DOCS_PLACEHOLDER = "{{docs_txt}}";
 export const DEFAULT_AI_CHAT_OPENROUTER_MODEL = "openai/gpt-5.1-codex-mini";
 export const DEFAULT_OPENROUTER_MODEL = DEFAULT_AI_CHAT_OPENROUTER_MODEL;
@@ -9,6 +9,18 @@ export const MAX_AI_CHAT_HISTORY_MESSAGES = 24;
 export const MAX_AI_CHAT_MESSAGE_LENGTH = 8_000;
 export const MAX_AI_CHAT_IMAGES_PER_MESSAGE = 3;
 export const MAX_AI_CHAT_IMAGE_BYTES = 4_000_000;
+
+export const normalizeAiAssistantName = (
+  value: unknown,
+  fallback = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+): string => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || fallback;
+};
 
 export interface AiChatRequestImage {
   name: string;
@@ -22,7 +34,9 @@ export interface AiChatRequestMessage {
   images?: AiChatRequestImage[];
 }
 
-export const DEFAULT_AI_CHAT_SYSTEM_PROMPT = `You are ${AI_CHAT_ASSISTANT_NAME}, a friendly and wholesome AI assistant for this documentation site.
+export const buildDefaultAiChatSystemPrompt = (
+  assistantName = AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
+): string => `You are ${assistantName}, a friendly and wholesome AI assistant for this documentation site.
 
 You are trained on the documentation provided below and your job is to answer questions about that documentation clearly, accurately, and helpfully.
 
@@ -33,15 +47,55 @@ When helpful, reference the relevant docs page URLs that appear in the documenta
 Documentation context:
 ${AI_CHAT_DOCS_PLACEHOLDER}`;
 
+const LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT = buildDefaultAiChatSystemPrompt(DEFAULT_AI_CHAT_ASSISTANT_NAME);
+
+const upgradeAiChatSystemPromptTemplate = (
+  template: unknown,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+): string => {
+  const trimmed = typeof template === "string" ? template.trim() : "";
+  if (!trimmed) {
+    return buildDefaultAiChatSystemPrompt();
+  }
+
+  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
+  if (
+    trimmed === LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT ||
+    trimmed === buildDefaultAiChatSystemPrompt(resolvedAssistantName)
+  ) {
+    return buildDefaultAiChatSystemPrompt();
+  }
+
+  return trimmed;
+};
+
+export const DEFAULT_AI_CHAT_SYSTEM_PROMPT = buildDefaultAiChatSystemPrompt();
+
+export const normalizeAiChatSystemPromptTemplate = (
+  template: unknown,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+): string => {
+  const upgradedTemplate = upgradeAiChatSystemPromptTemplate(template, assistantName);
+  return upgradedTemplate.includes(AI_CHAT_DOCS_PLACEHOLDER) ? upgradedTemplate : DEFAULT_AI_CHAT_SYSTEM_PROMPT;
+};
+
 export const DEFAULT_AI_CHAT_SETTINGS = (): AiChatSettings => ({
   enabled: false,
+  assistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
   systemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   openRouterApiKeyEncrypted: null,
 });
 
-export const renderAiChatSystemPrompt = (template: string, docsText: string): string => {
-  const resolvedTemplate = template.trim() || DEFAULT_AI_CHAT_SYSTEM_PROMPT;
+export const renderAiChatSystemPrompt = (
+  template: string,
+  docsText: string,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+): string => {
+  const resolvedAssistantName = normalizeAiAssistantName(assistantName);
+  const resolvedTemplate = upgradeAiChatSystemPromptTemplate(template, resolvedAssistantName).split(
+    AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
+  ).join(resolvedAssistantName);
   const docsBlock = docsText.trim();
 
   if (!resolvedTemplate.includes(AI_CHAT_DOCS_PLACEHOLDER)) {

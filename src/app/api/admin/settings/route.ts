@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { AI_CHAT_DOCS_PLACEHOLDER } from "@/lib/ai-chat";
+import { AI_CHAT_DOCS_PLACEHOLDER, normalizeAiAssistantName, normalizeAiChatSystemPromptTemplate } from "@/lib/ai-chat";
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -61,6 +61,7 @@ const settingsPatchSchema = z
     aiChat: z
       .object({
         enabled: z.boolean().optional(),
+        assistantName: z.string().optional(),
         openRouterModel: z.string().optional(),
         openRouterApiKey: z.string().optional(),
         systemPrompt: z.string().optional(),
@@ -214,6 +215,10 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
           store.settings.aiChat.enabled = patch.aiChat.enabled;
         }
 
+        if (patch.aiChat.assistantName !== undefined) {
+          store.settings.aiChat.assistantName = normalizeAiAssistantName(patch.aiChat.assistantName);
+        }
+
         if (patch.aiChat.openRouterModel !== undefined) {
           store.settings.aiChat.openRouterModel = patch.aiChat.openRouterModel.trim();
         }
@@ -224,7 +229,10 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
             throw badRequest(`AI Chat: system prompt must include the ${AI_CHAT_DOCS_PLACEHOLDER} placeholder.`);
           }
 
-          store.settings.aiChat.systemPrompt = normalizedSystemPrompt;
+          store.settings.aiChat.systemPrompt = normalizeAiChatSystemPromptTemplate(
+            normalizedSystemPrompt,
+            store.settings.aiChat.assistantName,
+          );
         }
 
         if (patch.aiChat.openRouterApiKey !== undefined) {

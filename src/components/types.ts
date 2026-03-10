@@ -69,6 +69,7 @@ export type AdminSettings = {
   githubToken: string;
   tokenConfigured: boolean;
   aiChatEnabled: boolean;
+  aiChatAssistantName: string;
   aiChatSystemPrompt: string;
   openRouterModel: string;
   openRouterApiKey: string;
