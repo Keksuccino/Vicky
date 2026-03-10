@@ -4,6 +4,7 @@ import { type CSSProperties, type ChangeEvent, type KeyboardEvent, useEffect, us
 
 import { fetchPublicSiteSettings, formatApiError, sendDocsAiChatMessage } from "@/components/api";
 import { cn } from "@/components/cn";
+import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
 import {
   AI_CHAT_SIZE_COOKIE_NAME,
@@ -615,7 +616,11 @@ export function DocsAiChat() {
                     <span>{message.role === "assistant" ? message.name ?? AI_CHAT_ASSISTANT_NAME : "You"}</span>
                   </div>
                   <div className="docs-ai-chat-bubble">
-                    {message.text ? <p>{message.text}</p> : null}
+                    {message.text ? (
+                      <div className="docs-ai-chat-markdown">
+                        <MarkdownRenderer content={message.text} />
+                      </div>
+                    ) : null}
 
                     {message.attachments.length > 0 ? (
                       <div className="docs-ai-chat-image-grid">

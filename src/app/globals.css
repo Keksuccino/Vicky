@@ -3134,10 +3134,26 @@ html[data-color-mode="light"] .page-copy-menu {
   color: var(--accent-contrast);
 }
 
-.docs-ai-chat-bubble p {
-  margin: 0;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+.docs-ai-chat-markdown {
+  min-width: 0;
+}
+
+.docs-ai-chat-markdown .markdown-body {
+  color: inherit;
+}
+
+.docs-ai-chat-message-user .docs-ai-chat-markdown {
+  --text-primary: var(--accent-contrast);
+  --text-secondary: color-mix(in srgb, var(--accent-contrast) 86%, transparent);
+  --text-muted: color-mix(in srgb, var(--accent-contrast) 68%, transparent);
+  --border: color-mix(in srgb, var(--accent-contrast) 18%, transparent);
+  --surface-muted: color-mix(in srgb, var(--surface-elevated) 86%, white 14%);
+  --surface-elevated: color-mix(in srgb, var(--surface-elevated) 95%, white 5%);
+  --accent: var(--accent-contrast);
+  --accent-soft: color-mix(in srgb, var(--accent-contrast) 16%, transparent);
+  --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent-contrast) 34%, transparent);
+  --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent-contrast) 46%, transparent);
+  --sidebar-scrollbar-shadow: color-mix(in srgb, black 24%, transparent);
 }
 
 .docs-ai-chat-image-grid {
