@@ -41,6 +41,14 @@ const normalizeAiChatTemplateString = (value: unknown, fallback: string): string
   return trimmed || fallback;
 };
 
+const normalizeAiChatMultilineTemplateString = (value: unknown, fallback: string): string => {
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  return value.trim() ? value : fallback;
+};
+
 export const normalizeAiChatHeaderSubtitle = (
   value: unknown,
   fallback = DEFAULT_AI_CHAT_HEADER_SUBTITLE,
@@ -49,14 +57,14 @@ export const normalizeAiChatHeaderSubtitle = (
 export const normalizeAiChatWelcomeMessage = (
   value: unknown,
   fallback = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
-): string => normalizeAiChatTemplateString(value, fallback);
+): string => normalizeAiChatMultilineTemplateString(value, fallback);
 
 export const renderAiChatAssistantTemplate = (
   template: unknown,
   assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
   fallback = "",
 ): string =>
-  normalizeAiChatTemplateString(template, fallback)
+  normalizeAiChatMultilineTemplateString(template, fallback)
     .split(AI_CHAT_ASSISTANT_NAME_PLACEHOLDER)
     .join(normalizeAiAssistantName(assistantName));
 
@@ -91,20 +99,20 @@ const upgradeAiChatSystemPromptTemplate = (
   template: unknown,
   assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
 ): string => {
-  const trimmed = typeof template === "string" ? template.trim() : "";
-  if (!trimmed) {
+  const rawTemplate = typeof template === "string" ? template : "";
+  if (!rawTemplate.trim()) {
     return buildDefaultAiChatSystemPrompt();
   }
 
   const resolvedAssistantName = normalizeAiAssistantName(assistantName);
   if (
-    trimmed === LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT ||
-    trimmed === buildDefaultAiChatSystemPrompt(resolvedAssistantName)
+    rawTemplate === LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT ||
+    rawTemplate === buildDefaultAiChatSystemPrompt(resolvedAssistantName)
   ) {
     return buildDefaultAiChatSystemPrompt();
   }
 
-  return trimmed;
+  return rawTemplate;
 };
 
 export const DEFAULT_AI_CHAT_SYSTEM_PROMPT = buildDefaultAiChatSystemPrompt();

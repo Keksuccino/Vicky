@@ -3,9 +3,11 @@ import { describe, expect, it } from "vitest";
 import {
   AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
-  DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
+  DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   buildDefaultAiChatSystemPrompt,
+  normalizeAiChatSystemPromptTemplate,
+  normalizeAiChatWelcomeMessage,
   renderAiChatAssistantTemplate,
   renderAiChatSystemPrompt,
 } from "../ai-chat";
@@ -21,6 +23,13 @@ describe("ai chat system prompt", () => {
     const rendered = renderAiChatAssistantTemplate("Meet {{assistant_name}}.", "Vicky");
 
     expect(rendered).toBe("Meet Vicky.");
+  });
+
+  it("preserves trailing blank lines in welcome templates", () => {
+    const template = "Meet {{assistant_name}}.\n\n";
+
+    expect(normalizeAiChatWelcomeMessage(template)).toBe(template);
+    expect(renderAiChatAssistantTemplate(template, "Vicky")).toBe("Meet Vicky.\n\n");
   });
 
   it("injects docs text into the configured placeholder", () => {
@@ -44,6 +53,12 @@ describe("ai chat system prompt", () => {
 
     expect(rendered).toContain("You are Vicky");
     expect(rendered).not.toContain("You are Alice");
+  });
+
+  it("preserves trailing blank lines in custom system prompts", () => {
+    const template = `${DEFAULT_AI_CHAT_SYSTEM_PROMPT}\n\n`;
+
+    expect(normalizeAiChatSystemPromptTemplate(template, "Vicky")).toBe(template);
   });
 });
 
