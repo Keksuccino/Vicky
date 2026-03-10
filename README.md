@@ -5,6 +5,7 @@ Vicky is a modern self-hosted docs/wiki frontend for Markdown content stored in 
 It gives you:
 - a public documentation site
 - an admin panel for repository, branding, domain, and theme settings
+- an optional AI chat assistant for docs pages
 - an in-browser markdown editor that saves directly back to GitHub
 
 ![Screenshot_6_7](https://github.com/user-attachments/assets/241f4ffe-edb6-49a7-a006-a4b7a75ea261)
@@ -16,6 +17,7 @@ It gives you:
 - Markdown rendering with GFM support and GitHub-style alert boxes
 - Built-in Light and Dark modes with simple accent-color customization
 - Optional custom CSS overrides on top of the built-in themes
+- Optional OpenRouter-powered AI chat assistant with configurable name, avatar, UI copy, and system prompt template
 - Custom domain support with automatic Let's Encrypt HTTPS when using the included production server
 - Admin-only editor with live preview and immediate GitHub commits on save
 
@@ -97,6 +99,7 @@ If you run the repo from `/mnt/<drive>/...` inside WSL, `npm run dev` automatica
    - site title, description, footer, and icons
    - Light/Dark theme accent colors
    - custom domain and Let's Encrypt email
+   - AI chat assistant settings, OpenRouter model, and OpenRouter API key
 
 After setup:
 - `/` redirects to your configured start page
@@ -105,12 +108,13 @@ After setup:
 
 ## Admin Panel
 
-The settings UI is split into four areas:
+The settings UI is split into five areas:
 
 - `Repository Settings`: GitHub owner/repo/branch/docs path, token handling, docs cache TTL, and connection testing
-- `Theme Management`: built-in Light/Dark accent colors plus custom CSS
-- `Domain Settings`: custom domain, Let's Encrypt email, and live SSL runtime status
 - `Site Settings`: title, description, footer template, start page, title gradient, and docs icon URLs
+- `Domain Settings`: custom domain, Let's Encrypt email, and live SSL runtime status
+- `Theme Management`: built-in Light/Dark accent colors plus custom CSS
+- `AI Chat`: assistant enable/disable toggle, assistant name/avatar, chat header copy, welcome message, OpenRouter model/API key, and system prompt template
 
 Footer text supports these placeholders:
 - `{{year}}`
@@ -118,6 +122,24 @@ Footer text supports these placeholders:
 - `{{vicky}}`
 
 `{{vicky}}` is rendered as a clickable link to the Vicky repository.
+
+## AI Chat Assistant
+
+The AI chat assistant is optional and appears as the floating `Ask Docs` button on docs pages when enabled.
+
+It supports:
+- a configurable assistant name, profile image URL, header subtitle, and welcome message
+- a configurable OpenRouter model and encrypted OpenRouter API key
+- a system prompt template with `{{assistant_name}}` and `{{docs_txt}}` placeholders
+- grounding responses in the live `/docs.txt` export of your documentation
+- optional image uploads when you choose a vision-capable model
+
+AI chat is configured from `AI Chat` in the admin panel.
+
+Notes:
+- keep `{{docs_txt}}` in the system prompt template so Vicky can inject the live docs export
+- use `{{assistant_name}}` in the system prompt, header subtitle, or welcome message if you want those values to update automatically with the configured assistant name
+- leave the profile image URL blank to use the default assistant badge icon
 
 ## Theme Customization
 
@@ -232,6 +254,7 @@ Public endpoints:
 - `GET /api/public/icon/16`
 - `GET /api/public/icon/32`
 - `GET /api/public/icon/180`
+- `POST /api/ai/chat`
 - `GET /api/docs/tree`
 - `GET /api/docs/page`
 - `GET /api/docs/search`
