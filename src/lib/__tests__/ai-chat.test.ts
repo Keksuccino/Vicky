@@ -13,6 +13,7 @@ import {
 } from "../ai-chat";
 import {
   compactPersistedAiChatState,
+  deleteAiChatConversation,
   deserializeAiChatState,
   getAiChatWelcomeText,
   restoreAiChatConversationsWithSettings,
@@ -171,5 +172,88 @@ describe("ai chat persisted state", () => {
 
     expect(restored.conversations[0]?.messages[0]?.text).toBe("Welcome to the docs, Vicky.");
     expect(restored.conversations[0]?.messages[0]?.name).toBe("Vicky");
+  });
+
+  it("keeps the current active conversation when deleting a different chat", () => {
+    const deleted = deleteAiChatConversation(
+      [
+        {
+          id: "conversation-1",
+          title: "First",
+          createdAt: "2026-03-10T00:00:00.000Z",
+          updatedAt: "2026-03-10T00:00:00.000Z",
+          messages: [],
+        },
+        {
+          id: "conversation-2",
+          title: "Second",
+          createdAt: "2026-03-11T00:00:00.000Z",
+          updatedAt: "2026-03-11T00:00:00.000Z",
+          messages: [],
+        },
+      ],
+      "conversation-2",
+      "conversation-1",
+    );
+
+    expect(deleted.conversations).toHaveLength(1);
+    expect(deleted.conversations[0]?.id).toBe("conversation-2");
+    expect(deleted.activeConversationId).toBe("conversation-2");
+  });
+
+  it("selects the next available chat when deleting the active conversation", () => {
+    const deleted = deleteAiChatConversation(
+      [
+        {
+          id: "conversation-1",
+          title: "First",
+          createdAt: "2026-03-10T00:00:00.000Z",
+          updatedAt: "2026-03-10T00:00:00.000Z",
+          messages: [],
+        },
+        {
+          id: "conversation-2",
+          title: "Second",
+          createdAt: "2026-03-11T00:00:00.000Z",
+          updatedAt: "2026-03-11T00:00:00.000Z",
+          messages: [],
+        },
+        {
+          id: "conversation-3",
+          title: "Third",
+          createdAt: "2026-03-12T00:00:00.000Z",
+          updatedAt: "2026-03-12T00:00:00.000Z",
+          messages: [],
+        },
+      ],
+      "conversation-2",
+      "conversation-2",
+    );
+
+    expect(deleted.conversations.map((conversation) => conversation.id)).toEqual(["conversation-1", "conversation-3"]);
+    expect(deleted.activeConversationId).toBe("conversation-3");
+  });
+
+  it("creates a fresh chat when deleting the final remaining conversation", () => {
+    const deleted = deleteAiChatConversation(
+      [
+        {
+          id: "conversation-1",
+          title: "First",
+          createdAt: "2026-03-10T00:00:00.000Z",
+          updatedAt: "2026-03-10T00:00:00.000Z",
+          messages: [],
+        },
+      ],
+      "conversation-1",
+      "conversation-1",
+      "Vicky",
+      "Welcome back, {{assistant_name}}.",
+    );
+
+    expect(deleted.conversations).toHaveLength(1);
+    expect(deleted.conversations[0]?.id).toBe(deleted.activeConversationId);
+    expect(deleted.conversations[0]?.title).toBe("New chat");
+    expect(deleted.conversations[0]?.messages[0]?.text).toBe("Welcome back, Vicky.");
   });
 });

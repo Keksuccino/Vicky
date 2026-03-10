@@ -22,6 +22,7 @@ import {
   type AiChatMessage,
   type AiChatWindowSize,
   createAssistantMessage,
+  deleteAiChatConversation,
   createEmptyConversation,
   createUserMessage,
   deriveConversationTitle,
@@ -420,6 +421,26 @@ export function DocsAiChat() {
     setIsOpen(true);
   };
 
+  const handleDeleteConversation = (conversationId: string) => {
+    const deletedConversationIsActive = conversationId === activeConversationId;
+    const nextState = deleteAiChatConversation(
+      conversations,
+      activeConversationId,
+      conversationId,
+      assistantName,
+      welcomeMessage,
+    );
+
+    setConversations(nextState.conversations);
+    setActiveConversationId(nextState.activeConversationId);
+
+    if (deletedConversationIsActive) {
+      setDraft("");
+      setPendingAttachments([]);
+      setError(null);
+    }
+  };
+
   const handleFileSelection = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
@@ -680,21 +701,35 @@ export function DocsAiChat() {
                   .slice()
                   .reverse()
                   .map((conversation) => (
-                    <button
+                    <div
                       key={conversation.id}
-                      type="button"
                       className={cn(
                         "docs-ai-chat-history-item",
                         conversation.id === activeConversation.id && "docs-ai-chat-history-item-active",
                       )}
-                      onClick={() => {
-                        setActiveConversationId(conversation.id);
-                        setHistoryOpen(false);
-                      }}
                     >
-                      <strong>{conversation.title}</strong>
-                      <span>{formatUpdatedAt(conversation.updatedAt)}</span>
-                    </button>
+                      <button
+                        type="button"
+                        className="docs-ai-chat-history-select"
+                        onClick={() => {
+                          setActiveConversationId(conversation.id);
+                          setHistoryOpen(false);
+                        }}
+                      >
+                        <strong>{conversation.title}</strong>
+                        <span>{formatUpdatedAt(conversation.updatedAt)}</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="docs-ai-chat-history-delete"
+                        onClick={() => handleDeleteConversation(conversation.id)}
+                        aria-label={`Delete conversation ${conversation.title}`}
+                        title="Delete conversation"
+                        disabled={isSending && conversation.id === activeConversation.id}
+                      >
+                        <MaterialIcon name="close" />
+                      </button>
+                    </div>
                   ))}
               </div>
             ) : (

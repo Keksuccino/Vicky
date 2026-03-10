@@ -3221,13 +3221,11 @@ html[data-color-mode="light"] .page-copy-menu {
   border: 1px solid color-mix(in srgb, var(--accent-surface) 16%, var(--border));
   border-radius: 16px;
   background: color-mix(in srgb, var(--surface-elevated) 86%, var(--accent-surface-soft));
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  padding: 0.72rem 0.8rem;
   display: grid;
-  gap: 0.2rem;
-  cursor: pointer;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.24rem;
   transition:
     border-color 160ms ease,
     background 160ms ease,
@@ -3235,16 +3233,38 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .docs-ai-chat-history-item:hover,
-.docs-ai-chat-history-item:focus-visible {
+.docs-ai-chat-history-item:focus-within {
   transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
 }
 
-.docs-ai-chat-history-item strong {
-  color: var(--text-primary);
+.docs-ai-chat-history-select {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  min-width: 0;
+  padding: 0.48rem 0.56rem;
+  border-radius: 12px;
+  display: grid;
+  gap: 0.2rem;
+  cursor: pointer;
 }
 
-.docs-ai-chat-history-item span {
+.docs-ai-chat-history-select:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+}
+
+.docs-ai-chat-history-select strong {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.docs-ai-chat-history-select span {
   color: var(--text-secondary);
   font-size: 0.82rem;
 }
@@ -3252,6 +3272,47 @@ html[data-color-mode="light"] .page-copy-menu {
 .docs-ai-chat-history-item-active {
   border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
   background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-elevated));
+}
+
+.docs-ai-chat-history-delete {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--danger);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    transform 120ms ease;
+}
+
+.docs-ai-chat-history-delete:hover,
+.docs-ai-chat-history-delete:focus-visible {
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: color-mix(in srgb, var(--danger) 88%, var(--text-primary));
+  transform: scale(1.04);
+}
+
+.docs-ai-chat-history-delete:focus-visible {
+  outline: none;
+}
+
+.docs-ai-chat-history-delete:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.docs-ai-chat-history-delete:disabled:hover,
+.docs-ai-chat-history-delete:disabled:focus-visible {
+  background: transparent;
+  color: var(--danger);
+  transform: none;
 }
 
 .docs-ai-chat-messages {

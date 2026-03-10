@@ -399,6 +399,54 @@ export const restoreAiChatConversations = (state: PersistedAiChatState | null): 
   activeConversationId: string | null;
 } => restoreAiChatConversationsWithSettings(state);
 
+export const deleteAiChatConversation = (
+  conversations: AiChatConversation[],
+  activeConversationId: string | null,
+  deletedConversationId: string,
+  assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
+): {
+  conversations: AiChatConversation[];
+  activeConversationId: string | null;
+} => {
+  const deletedIndex = conversations.findIndex((conversation) => conversation.id === deletedConversationId);
+  if (deletedIndex === -1) {
+    return {
+      conversations,
+      activeConversationId,
+    };
+  }
+
+  const remainingConversations = conversations.filter((conversation) => conversation.id !== deletedConversationId);
+  if (remainingConversations.length === 0) {
+    const freshConversation = createEmptyConversation(assistantName, welcomeMessage);
+
+    return {
+      conversations: [freshConversation],
+      activeConversationId: freshConversation.id,
+    };
+  }
+
+  if (activeConversationId === deletedConversationId) {
+    return {
+      conversations: remainingConversations,
+      activeConversationId:
+        remainingConversations[deletedIndex]?.id ??
+        remainingConversations[deletedIndex - 1]?.id ??
+        remainingConversations.at(-1)?.id ??
+        null,
+    };
+  }
+
+  return {
+    conversations: remainingConversations,
+    activeConversationId:
+      activeConversationId && remainingConversations.some((conversation) => conversation.id === activeConversationId)
+        ? activeConversationId
+        : remainingConversations.at(-1)?.id ?? null,
+  };
+};
+
 export const restoreAiChatConversationsWithSettings = (
   state: PersistedAiChatState | null,
   assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
