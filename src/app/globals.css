@@ -1863,7 +1863,8 @@ html[data-color-mode="light"] .meta-item {
 
 .field-label code,
 .field-hint code,
-.checkbox-row code {
+.checkbox-row code,
+.editor-switch-row code {
   display: inline-block;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   border-radius: 0.45rem;
@@ -2434,6 +2435,67 @@ html[data-color-mode="light"] .meta-item {
   border-radius: 14px;
   background: color-mix(in srgb, var(--surface-muted) 78%, var(--surface-elevated));
   padding: 0.78rem 0.9rem;
+}
+
+.editor-switch-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: fit-content;
+  max-width: 100%;
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+.editor-switch {
+  width: 3.15rem;
+  height: 1.8rem;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
+  display: inline-flex;
+  align-items: center;
+  padding: 0.16rem;
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.editor-switch:hover {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+}
+
+.editor-switch:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 52%, transparent);
+  outline-offset: 2px;
+}
+
+.editor-switch-thumb {
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  background: var(--surface-elevated);
+  box-shadow:
+    0 2px 6px rgba(22, 38, 66, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+  transform: translateX(0);
+  transition:
+    transform 180ms ease,
+    background 180ms ease;
+}
+
+.editor-switch-active {
+  background: color-mix(in srgb, var(--accent) 76%, var(--accent-surface));
+  border-color: color-mix(in srgb, var(--accent) 68%, var(--accent-surface));
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.editor-switch-active .editor-switch-thumb {
+  transform: translateX(1.34rem);
+  background: var(--accent-contrast);
 }
 
 .editor-view-toggle {

@@ -476,23 +476,29 @@ export function EditorWorkbench() {
 
             <div className="field-row editor-toggle-field">
               <span className="field-label">AI plaintext export</span>
-              <label className="checkbox-row" htmlFor="doc-include-in-plaintext-export">
-                <input
+              <div className="editor-switch-row">
+                <button
                   id="doc-include-in-plaintext-export"
-                  type="checkbox"
-                  checked={draft.includeInPlaintextExport}
-                  onChange={(event) =>
+                  type="button"
+                  role="switch"
+                  aria-checked={draft.includeInPlaintextExport}
+                  aria-labelledby="doc-include-in-plaintext-export-label"
+                  aria-describedby="doc-include-in-plaintext-export-hint"
+                  className={cn("editor-switch", draft.includeInPlaintextExport && "editor-switch-active")}
+                  onClick={() =>
                     setDraft((prev) => ({
                       ...prev,
-                      includeInPlaintextExport: event.target.checked,
+                      includeInPlaintextExport: !prev.includeInPlaintextExport,
                     }))
                   }
-                />
-                <span>
+                >
+                  <span className="editor-switch-thumb" aria-hidden="true" />
+                </button>
+                <span id="doc-include-in-plaintext-export-label">
                   Include this page in <code>/docs.txt</code>
                 </span>
-              </label>
-              <span className="field-hint">
+              </div>
+              <span className="field-hint" id="doc-include-in-plaintext-export-hint">
                 Turn this off to exclude the current page from the AI-focused plaintext docs export.
               </span>
             </div>
