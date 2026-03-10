@@ -3044,7 +3044,8 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .docs-ai-chat-title-badge-image {
-  background: transparent;
+  background: #fff;
+  isolation: isolate;
 }
 
 .docs-ai-chat-title-badge .material-icon {
