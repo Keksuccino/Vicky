@@ -24,6 +24,13 @@ export interface DomainSettings {
   letsEncryptEmail: string;
 }
 
+export interface AiChatSettings {
+  enabled: boolean;
+  openRouterModel: string;
+  openRouterApiKeyEncrypted: string | null;
+  systemPrompt: string;
+}
+
 export interface ThemeCustomizationSettings {
   lightAccent: string;
   lightSurfaceAccent: string;
@@ -42,12 +49,13 @@ export interface AppSettings {
   docsCacheTtlMs: number;
   domain: DomainSettings;
   github: GitHubSettings;
+  aiChat: AiChatSettings;
   theme: ThemeCustomizationSettings;
   updatedAt: string;
 }
 
 export interface DocsStore {
-  version: 2;
+  version: 3;
   settings: AppSettings;
 }
 

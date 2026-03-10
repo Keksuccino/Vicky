@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { AI_CHAT_DOCS_PLACEHOLDER } from "@/lib/ai-chat";
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -55,6 +56,14 @@ const settingsPatchSchema = z
         branch: z.string().optional(),
         docsPath: z.string().optional(),
         token: z.string().optional(),
+      })
+      .optional(),
+    aiChat: z
+      .object({
+        enabled: z.boolean().optional(),
+        openRouterModel: z.string().optional(),
+        openRouterApiKey: z.string().optional(),
+        systemPrompt: z.string().optional(),
       })
       .optional(),
   })
@@ -197,6 +206,45 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
           store.settings.github.tokenEncrypted = patch.github.token.trim()
             ? encryptSecret(patch.github.token.trim())
             : null;
+        }
+      }
+
+      if (patch.aiChat) {
+        if (patch.aiChat.enabled !== undefined) {
+          store.settings.aiChat.enabled = patch.aiChat.enabled;
+        }
+
+        if (patch.aiChat.openRouterModel !== undefined) {
+          store.settings.aiChat.openRouterModel = patch.aiChat.openRouterModel.trim();
+        }
+
+        if (patch.aiChat.systemPrompt !== undefined) {
+          const normalizedSystemPrompt = patch.aiChat.systemPrompt.trim();
+          if (!normalizedSystemPrompt.includes(AI_CHAT_DOCS_PLACEHOLDER)) {
+            throw badRequest(`AI Chat: system prompt must include the ${AI_CHAT_DOCS_PLACEHOLDER} placeholder.`);
+          }
+
+          store.settings.aiChat.systemPrompt = normalizedSystemPrompt;
+        }
+
+        if (patch.aiChat.openRouterApiKey !== undefined) {
+          store.settings.aiChat.openRouterApiKeyEncrypted = patch.aiChat.openRouterApiKey.trim()
+            ? encryptSecret(patch.aiChat.openRouterApiKey.trim())
+            : null;
+        }
+      }
+
+      if (store.settings.aiChat.enabled) {
+        if (!store.settings.aiChat.systemPrompt.includes(AI_CHAT_DOCS_PLACEHOLDER)) {
+          throw badRequest(`AI Chat: system prompt must include the ${AI_CHAT_DOCS_PLACEHOLDER} placeholder.`);
+        }
+
+        if (!store.settings.aiChat.openRouterModel.trim()) {
+          throw badRequest("AI Chat: OpenRouter model is required when AI chat is enabled.");
+        }
+
+        if (!store.settings.aiChat.openRouterApiKeyEncrypted) {
+          throw badRequest("AI Chat: OpenRouter API key is required when AI chat is enabled.");
         }
       }
     });

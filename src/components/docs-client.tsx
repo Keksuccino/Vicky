@@ -13,6 +13,7 @@ import {
 } from "@/components/api";
 import { cn } from "@/components/cn";
 import { copyTextToClipboard } from "@/components/copy-text";
+import { DocsAiChat } from "@/components/docs-ai-chat";
 import { DocsTree } from "@/components/docs-tree";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
@@ -741,6 +742,8 @@ export function DocsClient({ initialPath }: DocsClientProps) {
           ) : null}
         </main>
       </div>
+
+      <DocsAiChat />
     </section>
   );
 }

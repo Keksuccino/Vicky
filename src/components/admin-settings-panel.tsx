@@ -15,6 +15,11 @@ import {
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
+import {
+  AI_CHAT_DOCS_PLACEHOLDER,
+  DEFAULT_AI_CHAT_OPENROUTER_MODEL,
+  DEFAULT_AI_CHAT_SYSTEM_PROMPT,
+} from "@/lib/ai-chat";
 import type { AdminSettings, DomainSslRuntimeStatus, ThemeCustomization } from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
@@ -43,6 +48,11 @@ const INITIAL_SETTINGS: AdminSettings = {
   githubDocsPath: "docs",
   githubToken: "",
   tokenConfigured: false,
+  aiChatEnabled: false,
+  aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
+  openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
+  openRouterApiKey: "",
+  openRouterApiKeyConfigured: false,
   themeLightAccent: THEME_DEFAULTS.lightAccent,
   themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
   themeDarkAccent: THEME_DEFAULTS.darkAccent,
@@ -58,6 +68,16 @@ type DomainFieldErrors = {
 const EMPTY_DOMAIN_FIELD_ERRORS: DomainFieldErrors = {
   customDomain: null,
   letsEncryptEmail: null,
+};
+
+type AiChatFieldErrors = {
+  systemPrompt: string | null;
+  openRouterModel: string | null;
+};
+
+const EMPTY_AI_CHAT_FIELD_ERRORS: AiChatFieldErrors = {
+  systemPrompt: null,
+  openRouterModel: null,
 };
 
 const validateCustomDomainInput = (value: string): string | null => {
@@ -86,6 +106,21 @@ const validateDomainFields = (domain: string, email: string): DomainFieldErrors 
 });
 
 const hasDomainFieldErrors = (errors: DomainFieldErrors): boolean => Boolean(errors.customDomain || errors.letsEncryptEmail);
+
+const validateAiChatFields = (settings: AdminSettings): AiChatFieldErrors => {
+  if (!settings.aiChatEnabled) {
+    return EMPTY_AI_CHAT_FIELD_ERRORS;
+  }
+
+  return {
+    systemPrompt: settings.aiChatSystemPrompt.includes(AI_CHAT_DOCS_PLACEHOLDER)
+      ? null
+      : `Include ${AI_CHAT_DOCS_PLACEHOLDER} in the system prompt so the /docs.txt export can be injected.`,
+    openRouterModel: settings.openRouterModel.trim() ? null : "Enter an OpenRouter model identifier.",
+  };
+};
+
+const hasAiChatFieldErrors = (errors: AiChatFieldErrors): boolean => Boolean(errors.systemPrompt || errors.openRouterModel);
 
 const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings => ({
   ...settings,
@@ -238,7 +273,9 @@ export function AdminSettingsPanel() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
   const [clearTokenOnSave, setClearTokenOnSave] = useState(false);
+  const [clearOpenRouterApiKeyOnSave, setClearOpenRouterApiKeyOnSave] = useState(false);
   const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_DOMAIN_FIELD_ERRORS);
+  const [aiChatFieldErrors, setAiChatFieldErrors] = useState<AiChatFieldErrors>(EMPTY_AI_CHAT_FIELD_ERRORS);
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
@@ -277,11 +314,13 @@ export function AdminSettingsPanel() {
   }, []);
 
   const saveSettingsChanges = useCallback(
-    async (clearToken: boolean) => {
+    async (clearToken: boolean, clearOpenRouterApiKey: boolean) => {
       const domainErrors = validateDomainFields(settings.customDomain, settings.letsEncryptEmail);
+      const aiErrors = validateAiChatFields(settings);
       setDomainFieldErrors(domainErrors);
+      setAiChatFieldErrors(aiErrors);
 
-      if (hasDomainFieldErrors(domainErrors)) {
+      if (hasDomainFieldErrors(domainErrors) || hasAiChatFieldErrors(aiErrors)) {
         setSettingsMessage(null);
         setConnectionMessage(null);
         return;
@@ -292,14 +331,20 @@ export function AdminSettingsPanel() {
       setLoadingError(null);
 
       try {
-        const saved = await saveAdminSettings(normalizeDomainFieldsForSave(settings), { clearToken });
+        const saved = await saveAdminSettings(normalizeDomainFieldsForSave(settings), {
+          clearToken,
+          clearOpenRouterApiKey,
+        });
         setSettings({
           ...saved,
           githubToken: "",
+          openRouterApiKey: "",
         });
         setThemeSettings(themeCustomizationFromSettings(saved));
         setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
+        setAiChatFieldErrors(validateAiChatFields(saved));
         setClearTokenOnSave(false);
+        setClearOpenRouterApiKeyOnSave(false);
         setSettingsMessage("Settings saved.");
         await refreshSslStatus();
       } catch (error) {
@@ -313,11 +358,13 @@ export function AdminSettingsPanel() {
 
   const saveThemeChanges = useCallback(async () => {
     const domainErrors = validateDomainFields(settings.customDomain, settings.letsEncryptEmail);
+    const aiErrors = validateAiChatFields(settings);
     setDomainFieldErrors(domainErrors);
+    setAiChatFieldErrors(aiErrors);
 
-    if (hasDomainFieldErrors(domainErrors)) {
+    if (hasDomainFieldErrors(domainErrors) || hasAiChatFieldErrors(aiErrors)) {
       setThemeMessage(null);
-      setThemeError("Fix the domain settings errors first, then save the theme customization.");
+      setThemeError("Fix the settings validation errors first, then save the theme customization.");
       return;
     }
 
@@ -330,8 +377,10 @@ export function AdminSettingsPanel() {
       setSettings({
         ...saved,
         githubToken: "",
+        openRouterApiKey: "",
       });
       setThemeSettings(themeCustomizationFromSettings(saved));
+      setAiChatFieldErrors(validateAiChatFields(saved));
       setThemeMessage("Theme customization saved.");
     } catch (error) {
       setThemeError(formatApiError(error));
@@ -362,7 +411,9 @@ export function AdminSettingsPanel() {
         setSettings(loadedSettings);
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
+        setAiChatFieldErrors(validateAiChatFields(loadedSettings));
         setClearTokenOnSave(false);
+        setClearOpenRouterApiKeyOnSave(false);
         await refreshSslStatus();
       } catch (error) {
         if (isActive) {
@@ -425,7 +476,7 @@ export function AdminSettingsPanel() {
             className="form-grid"
             onSubmit={async (event) => {
               event.preventDefault();
-              await saveSettingsChanges(clearTokenOnSave);
+              await saveSettingsChanges(clearTokenOnSave, clearOpenRouterApiKeyOnSave);
             }}
           >
             <label className="field-row" htmlFor="docs-cache-ttl-seconds">
@@ -586,7 +637,7 @@ export function AdminSettingsPanel() {
               className="form-grid"
               onSubmit={async (event) => {
                 event.preventDefault();
-                await saveSettingsChanges(false);
+                await saveSettingsChanges(false, false);
               }}
             >
               <div className="field-inline">
@@ -850,6 +901,135 @@ export function AdminSettingsPanel() {
             {themeError ? <p className="error-text">{themeError}</p> : null}
           </section>
 
+          <section className="panel-card panel-card-ai-chat">
+            <div className="panel-header">
+              <h2>AI Chat</h2>
+            </div>
+
+            <p className="panel-description">
+              Configure Alice, the floating docs assistant powered by OpenRouter and the live <code>/docs.txt</code> export.
+            </p>
+
+            <form
+              className="form-grid"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                await saveSettingsChanges(false, clearOpenRouterApiKeyOnSave);
+              }}
+            >
+              <div className="field-row">
+                <span className="field-label">Enable AI chat</span>
+                <label className="toggle-row" htmlFor="ai-chat-enabled">
+                  <input
+                    id="ai-chat-enabled"
+                    className="toggle-input"
+                    type="checkbox"
+                    checked={settings.aiChatEnabled}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, aiChatEnabled: event.target.checked }))}
+                  />
+                  <span className="toggle-control" aria-hidden="true">
+                    <span className="toggle-thumb" />
+                  </span>
+                  <span>{settings.aiChatEnabled ? "Enabled" : "Disabled"}</span>
+                </label>
+                <span className="field-hint">
+                  Shows the floating Ask Docs button on docs pages and enables the public chat API route.
+                </span>
+              </div>
+
+              <label className="field-row" htmlFor="openrouter-model">
+                <span className="field-label">OpenRouter model</span>
+                <input
+                  id="openrouter-model"
+                  className="input"
+                  value={settings.openRouterModel}
+                  aria-invalid={Boolean(aiChatFieldErrors.openRouterModel)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSettings((prev) => ({ ...prev, openRouterModel: value }));
+                    setAiChatFieldErrors((prev) => ({
+                      ...prev,
+                      openRouterModel: value.trim() || !settings.aiChatEnabled ? null : "Enter an OpenRouter model identifier.",
+                    }));
+                  }}
+                  placeholder="openai/gpt-5.1-codex-mini"
+                />
+                <span className="field-hint">
+                  Example: <code>openai/gpt-5.1-codex-mini</code>. Use a vision-capable model if you want image uploads.
+                </span>
+                {aiChatFieldErrors.openRouterModel ? <span className="error-text">{aiChatFieldErrors.openRouterModel}</span> : null}
+              </label>
+
+              <label className="field-row" htmlFor="openrouter-api-key">
+                <span className="field-label">OpenRouter API key</span>
+                <input
+                  id="openrouter-api-key"
+                  className="input"
+                  type="password"
+                  autoComplete="off"
+                  value={settings.openRouterApiKey}
+                  onChange={(event) => {
+                    setSettings((prev) => ({ ...prev, openRouterApiKey: event.target.value }));
+                    setClearOpenRouterApiKeyOnSave(false);
+                  }}
+                  placeholder={
+                    settings.openRouterApiKeyConfigured
+                      ? "Saved OpenRouter key configured (leave blank to keep)"
+                      : "sk-or-v1-..."
+                  }
+                />
+                <span className="field-hint">
+                  Stored encrypted in the local app settings file. Leave blank to keep the existing saved key.
+                </span>
+                {settings.openRouterApiKeyConfigured ? (
+                  <label className="checkbox-row">
+                    <input
+                      type="checkbox"
+                      checked={clearOpenRouterApiKeyOnSave}
+                      onChange={(event) => setClearOpenRouterApiKeyOnSave(event.target.checked)}
+                    />
+                    <span>Clear currently saved OpenRouter API key on next save</span>
+                  </label>
+                ) : null}
+              </label>
+
+              <label className="field-row" htmlFor="ai-chat-system-prompt">
+                <span className="field-label">System prompt template</span>
+                <textarea
+                  id="ai-chat-system-prompt"
+                  className="input textarea"
+                  rows={10}
+                  value={settings.aiChatSystemPrompt}
+                  aria-invalid={Boolean(aiChatFieldErrors.systemPrompt)}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setSettings((prev) => ({ ...prev, aiChatSystemPrompt: value }));
+                    setAiChatFieldErrors((prev) => ({
+                      ...prev,
+                      systemPrompt:
+                        !settings.aiChatEnabled || value.includes(AI_CHAT_DOCS_PLACEHOLDER)
+                          ? null
+                          : `Include ${AI_CHAT_DOCS_PLACEHOLDER} in the system prompt so the /docs.txt export can be injected.`,
+                    }));
+                  }}
+                  placeholder={DEFAULT_AI_CHAT_SYSTEM_PROMPT}
+                />
+                <span className="field-hint">
+                  Keep <code>{AI_CHAT_DOCS_PLACEHOLDER}</code> exactly where the live <code>/docs.txt</code> export should be
+                  injected.
+                </span>
+                {aiChatFieldErrors.systemPrompt ? <span className="error-text">{aiChatFieldErrors.systemPrompt}</span> : null}
+              </label>
+
+              <div className="action-row">
+                <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
+                  <MaterialIcon name={settingsSaving ? "sync" : "save"} />
+                  <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
+                </button>
+              </div>
+            </form>
+          </section>
+
           <section className="panel-card panel-card-domain">
             <div className="panel-header">
               <h2>Domain Settings</h2>
@@ -863,7 +1043,7 @@ export function AdminSettingsPanel() {
               className="form-grid"
               onSubmit={async (event) => {
                 event.preventDefault();
-                await saveSettingsChanges(false);
+                await saveSettingsChanges(false, false);
               }}
             >
               <label className="field-row" htmlFor="domain-custom-domain">

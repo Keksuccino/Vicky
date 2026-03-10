@@ -28,6 +28,9 @@ export const GET = async (): Promise<NextResponse> => {
         domain: {
           customDomain: store.settings.domain.customDomain,
         },
+        aiChat: {
+          enabled: store.settings.aiChat.enabled,
+        },
         theme: {
           lightAccent: store.settings.theme.lightAccent,
           lightSurfaceAccent: store.settings.theme.lightSurfaceAccent,

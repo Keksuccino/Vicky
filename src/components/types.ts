@@ -68,6 +68,11 @@ export type AdminSettings = {
   githubDocsPath: string;
   githubToken: string;
   tokenConfigured: boolean;
+  aiChatEnabled: boolean;
+  aiChatSystemPrompt: string;
+  openRouterModel: string;
+  openRouterApiKey: string;
+  openRouterApiKeyConfigured: boolean;
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;
@@ -98,4 +103,10 @@ export type EditableDoc = {
   content: string;
   includeInPlaintextExport: boolean;
   commitMessage: string;
+};
+
+export type AiChatReply = {
+  role: "assistant";
+  text: string;
+  name?: string;
 };

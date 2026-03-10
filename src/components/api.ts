@@ -1,5 +1,6 @@
 import {
   type AdminSettings,
+  type AiChatReply,
   type AuthUser,
   type DocPage,
   type DocSearchResult,
@@ -9,6 +10,7 @@ import {
   type EditableDoc,
   type MarkdownHeading,
 } from "@/components/types";
+import { DEFAULT_AI_CHAT_SYSTEM_PROMPT, DEFAULT_OPENROUTER_MODEL } from "@/lib/ai-chat";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 
 type JsonRecord = Record<string, unknown>;
@@ -30,6 +32,7 @@ export type PublicSiteSettings = {
   docsIconPng32Url: string;
   docsIconPng180Url: string;
   customDomain: string;
+  aiChatEnabled: boolean;
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;
@@ -68,6 +71,11 @@ const DEFAULT_SETTINGS: AdminSettings = {
   githubDocsPath: "docs",
   githubToken: "",
   tokenConfigured: false,
+  aiChatEnabled: false,
+  aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
+  openRouterModel: DEFAULT_OPENROUTER_MODEL,
+  openRouterApiKey: "",
+  openRouterApiKeyConfigured: false,
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
   themeDarkAccent: "#5caedf",
@@ -403,6 +411,7 @@ function normalizeSettings(source: unknown): AdminSettings {
   const docsIcon = asRecord(payload.docsIcon);
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const domain = asRecord(payload.domain);
+  const aiChat = asRecord(payload.aiChat);
   const theme = asRecord(payload.theme);
   const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
 
@@ -425,6 +434,11 @@ function normalizeSettings(source: unknown): AdminSettings {
     githubDocsPath: asString(github.docsPath, DEFAULT_SETTINGS.githubDocsPath),
     githubToken: "",
     tokenConfigured: asBoolean(github.tokenConfigured, false),
+    aiChatEnabled: asBoolean(aiChat.enabled, DEFAULT_SETTINGS.aiChatEnabled),
+    aiChatSystemPrompt: asString(aiChat.systemPrompt, DEFAULT_SETTINGS.aiChatSystemPrompt),
+    openRouterModel: asString(aiChat.openRouterModel, DEFAULT_SETTINGS.openRouterModel),
+    openRouterApiKey: "",
+    openRouterApiKeyConfigured: asBoolean(aiChat.openRouterApiKeyConfigured, false),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -438,6 +452,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const docsIcon = asRecord(payload.docsIcon);
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const domain = asRecord(payload.domain);
+  const aiChat = asRecord(payload.aiChat);
   const theme = asRecord(payload.theme);
 
   return {
@@ -451,6 +466,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
+    aiChatEnabled: asBoolean(aiChat.enabled, DEFAULT_SETTINGS.aiChatEnabled),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -561,7 +577,7 @@ export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatu
 
 export async function saveAdminSettings(
   settings: AdminSettings,
-  options?: { clearToken?: boolean },
+  options?: { clearToken?: boolean; clearOpenRouterApiKey?: boolean },
 ): Promise<AdminSettings> {
   const payload: Record<string, unknown> = {
     siteTitle: settings.siteTitle,
@@ -595,6 +611,11 @@ export async function saveAdminSettings(
       branch: settings.githubBranch,
       docsPath: settings.githubDocsPath,
     },
+    aiChat: {
+      enabled: settings.aiChatEnabled,
+      systemPrompt: settings.aiChatSystemPrompt,
+      openRouterModel: settings.openRouterModel,
+    },
   };
 
   const github = payload.github as Record<string, unknown>;
@@ -602,6 +623,13 @@ export async function saveAdminSettings(
     github.token = settings.githubToken.trim();
   } else if (options?.clearToken) {
     github.token = "";
+  }
+
+  const aiChat = payload.aiChat as Record<string, unknown>;
+  if (settings.openRouterApiKey.trim()) {
+    aiChat.openRouterApiKey = settings.openRouterApiKey.trim();
+  } else if (options?.clearOpenRouterApiKey) {
+    aiChat.openRouterApiKey = "";
   }
 
   const response = await requestJson<unknown>("/api/admin/settings", {
@@ -615,6 +643,27 @@ export async function saveAdminSettings(
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {
   const response = await requestJson<unknown>("/api/public/settings");
   return normalizePublicSiteSettings(response);
+}
+
+export async function sendDocsAiChatMessage(messages: {
+  role: "user" | "assistant";
+  text?: string;
+  images?: Array<{ name?: string; dataUrl: string }>;
+}[]): Promise<AiChatReply> {
+  const response = await requestJson<unknown>("/api/ai/chat", {
+    method: "POST",
+    body: JSON.stringify({
+      messages,
+    }),
+  });
+
+  const payload = asRecord(asRecord(response).reply);
+
+  return {
+    role: "assistant",
+    text: asString(payload.text).trim(),
+    name: asString(payload.name).trim() || undefined,
+  };
 }
 
 export async function testAdminConnection(settings: AdminSettings): Promise<string> {
