@@ -2859,6 +2859,8 @@ html[data-color-mode="light"] .page-copy-menu {
   background: transparent;
   padding: 0;
   border-radius: 999px;
+  overflow: hidden;
+  isolation: isolate;
   cursor: pointer;
   box-shadow: 0 22px 46px rgba(18, 33, 61, 0.2);
   transition:
@@ -2880,15 +2882,27 @@ html[data-color-mode="light"] .page-copy-menu {
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  padding: 2px;
   background:
-    conic-gradient(
-      from 0deg,
-      color-mix(in srgb, var(--accent) 82%, #43d7df),
-      #8fe9ff,
-      color-mix(in srgb, var(--accent-surface) 72%, #37a0ff),
-      color-mix(in srgb, var(--accent) 82%, #43d7df)
-    );
-  animation: ai-chat-spin 3.6s linear infinite;
+    linear-gradient(
+        110deg,
+        transparent 18%,
+        color-mix(in srgb, var(--accent) 20%, transparent) 31%,
+        color-mix(in srgb, var(--accent) 64%, #43d7df) 41%,
+        #a7f2ff 50%,
+        color-mix(in srgb, var(--accent-surface) 72%, #37a0ff) 59%,
+        color-mix(in srgb, var(--accent) 20%, transparent) 69%,
+        transparent 82%
+      )
+      0 50% / 260% 100% no-repeat;
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  opacity: 0.92;
+  will-change: background-position;
+  animation: ai-chat-border-flow 4.4s linear infinite;
 }
 
 .docs-ai-chat-launch-surface {
@@ -2906,6 +2920,7 @@ html[data-color-mode="light"] .page-copy-menu {
       color-mix(in srgb, var(--surface-elevated) 96%, white),
       color-mix(in srgb, var(--accent-surface-soft) 18%, var(--surface-elevated))
     );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, var(--border));
   color: var(--text-primary);
   backdrop-filter: blur(20px);
   font-weight: 700;
@@ -3382,9 +3397,13 @@ html[data-color-mode="light"] .page-copy-menu {
   display: none;
 }
 
-@keyframes ai-chat-spin {
+@keyframes ai-chat-border-flow {
+  from {
+    background-position: 165% 50%;
+  }
+
   to {
-    transform: rotate(360deg);
+    background-position: -25% 50%;
   }
 }
 
