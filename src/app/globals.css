@@ -3037,8 +3037,7 @@ html[data-color-mode="light"] .page-copy-menu {
   align-items: center;
   justify-content: center;
   color: var(--accent-contrast);
-  background: linear-gradient(145deg, var(--accent), color-mix(in srgb, var(--accent-surface) 72%, #39b5ff));
-  box-shadow: 0 12px 28px color-mix(in srgb, var(--accent) 20%, transparent);
+  background: color-mix(in srgb, var(--accent) 88%, var(--surface-elevated));
 }
 
 .docs-ai-chat-title-badge .material-icon {
