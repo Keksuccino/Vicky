@@ -27,7 +27,7 @@ const EDITOR_NAVIGATION = {
 
 const PLAINTEXT_EXPORT_NAVIGATION = {
   href: "/docs.txt",
-  label: "Documentation as Plaintext",
+  label: "Version for AI Agents",
   icon: "text_snippet",
 };
 
