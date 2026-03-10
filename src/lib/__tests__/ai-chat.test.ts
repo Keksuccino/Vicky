@@ -49,7 +49,7 @@ describe("ai chat system prompt", () => {
 
 describe("ai chat persisted state", () => {
   it("renders the welcome template with the configured assistant name", () => {
-    expect(getAiChatWelcomeText("Vicky", DEFAULT_AI_CHAT_WELCOME_MESSAGE)).toContain("Hi, I'm Vicky.");
+    expect(getAiChatWelcomeText("Vicky", DEFAULT_AI_CHAT_WELCOME_MESSAGE)).toContain("Hi, I'm Vicky!");
   });
 
   it("keeps the active conversation available after compaction", () => {
