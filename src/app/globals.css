@@ -127,44 +127,34 @@ body {
     background 280ms ease;
 }
 
-/* Shared scrollbar treatment across docs, admin, editor, and chat surfaces. */
+/* Shared scrollbar treatment across app surfaces, excluding the browser page scrollbar. */
 @supports selector(::-webkit-scrollbar) {
-  html,
-  body,
-  * {
+  *:not(html):not(body) {
     scrollbar-width: auto;
     scrollbar-color: auto;
   }
 }
 
 @supports not selector(::-webkit-scrollbar) {
-  html,
-  body,
-  * {
+  *:not(html):not(body) {
     scrollbar-width: thin;
     scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
   }
 }
 
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-*::-webkit-scrollbar {
+*:not(html):not(body)::-webkit-scrollbar {
   width: 0.72rem;
   height: 0.72rem;
 }
 
-html::-webkit-scrollbar-track,
-body::-webkit-scrollbar-track,
-*::-webkit-scrollbar-track {
+*:not(html):not(body)::-webkit-scrollbar-track {
   background: transparent;
   border: 0;
   border-radius: 999px;
   margin: 0.25rem;
 }
 
-html::-webkit-scrollbar-thumb,
-body::-webkit-scrollbar-thumb,
-*::-webkit-scrollbar-thumb {
+*:not(html):not(body)::-webkit-scrollbar-thumb {
   background: var(--sidebar-scrollbar-thumb);
   border-radius: 999px;
   border: 2px solid transparent;
@@ -174,36 +164,20 @@ body::-webkit-scrollbar-thumb,
   box-shadow: 0 4px 12px var(--sidebar-scrollbar-shadow);
 }
 
-html::-webkit-scrollbar-thumb:hover,
-body::-webkit-scrollbar-thumb:hover,
-*::-webkit-scrollbar-thumb:hover {
+*:not(html):not(body)::-webkit-scrollbar-thumb:hover {
   background: var(--sidebar-scrollbar-thumb-hover);
 }
 
-html::-webkit-scrollbar-corner,
-body::-webkit-scrollbar-corner,
-*::-webkit-scrollbar-corner {
+*:not(html):not(body)::-webkit-scrollbar-corner {
   background: transparent;
 }
 
-html::-webkit-scrollbar-button,
-html::-webkit-scrollbar-button:single-button,
-html::-webkit-scrollbar-button:horizontal:start:decrement,
-html::-webkit-scrollbar-button:horizontal:end:increment,
-html::-webkit-scrollbar-button:vertical:start:decrement,
-html::-webkit-scrollbar-button:vertical:end:increment,
-body::-webkit-scrollbar-button,
-body::-webkit-scrollbar-button:single-button,
-body::-webkit-scrollbar-button:horizontal:start:decrement,
-body::-webkit-scrollbar-button:horizontal:end:increment,
-body::-webkit-scrollbar-button:vertical:start:decrement,
-body::-webkit-scrollbar-button:vertical:end:increment,
-*::-webkit-scrollbar-button,
-*::-webkit-scrollbar-button:single-button,
-*::-webkit-scrollbar-button:horizontal:start:decrement,
-*::-webkit-scrollbar-button:horizontal:end:increment,
-*::-webkit-scrollbar-button:vertical:start:decrement,
-*::-webkit-scrollbar-button:vertical:end:increment {
+*:not(html):not(body)::-webkit-scrollbar-button,
+*:not(html):not(body)::-webkit-scrollbar-button:single-button,
+*:not(html):not(body)::-webkit-scrollbar-button:horizontal:start:decrement,
+*:not(html):not(body)::-webkit-scrollbar-button:horizontal:end:increment,
+*:not(html):not(body)::-webkit-scrollbar-button:vertical:start:decrement,
+*:not(html):not(body)::-webkit-scrollbar-button:vertical:end:increment {
   -webkit-appearance: none;
   display: none;
   width: 0;
