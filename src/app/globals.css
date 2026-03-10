@@ -2046,6 +2046,22 @@ html[data-color-mode="light"] .page-copy-menu {
   gap: 0.35rem;
 }
 
+.field-control-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+
+.field-control-row > .input {
+  flex: 1 1 18rem;
+  min-width: min(100%, 18rem);
+}
+
+.field-control-action {
+  min-height: 2.75rem;
+}
+
 .checkbox-row {
   display: inline-flex;
   align-items: center;

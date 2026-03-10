@@ -244,6 +244,19 @@ function AccentColorField({
   );
 }
 
+type ResetToDefaultButtonProps = {
+  disabled: boolean;
+  onClick: () => void;
+};
+
+function ResetToDefaultButton({ disabled, onClick }: ResetToDefaultButtonProps) {
+  return (
+    <button type="button" className="btn btn-ghost field-control-action" disabled={disabled} onClick={onClick}>
+      Reset To Default
+    </button>
+  );
+}
+
 const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "warning-text" | "error-text" => {
   switch (status.certificateState) {
     case "valid":
@@ -1045,20 +1058,30 @@ export function AdminSettingsPanel() {
                 </span>
               </div>
 
-              <label className="field-row" htmlFor="ai-chat-assistant-name">
-                <span className="field-label">Assistant name</span>
-                <input
-                  id="ai-chat-assistant-name"
-                  className="input"
-                  value={settings.aiChatAssistantName}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatAssistantName: event.target.value }))}
-                  placeholder={DEFAULT_AI_CHAT_ASSISTANT_NAME}
-                />
+              <div className="field-row">
+                <label className="field-label" htmlFor="ai-chat-assistant-name">
+                  Assistant name
+                </label>
+                <div className="field-control-row">
+                  <input
+                    id="ai-chat-assistant-name"
+                    className="input"
+                    value={settings.aiChatAssistantName}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, aiChatAssistantName: event.target.value }))}
+                    placeholder={DEFAULT_AI_CHAT_ASSISTANT_NAME}
+                  />
+                  <ResetToDefaultButton
+                    disabled={settings.aiChatAssistantName === DEFAULT_AI_CHAT_ASSISTANT_NAME}
+                    onClick={() =>
+                      setSettings((prev) => ({ ...prev, aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME }))
+                    }
+                  />
+                </div>
                 <span className="field-hint">
                   Shown in the chat header, welcome message, and reply labels. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code>{" "}
                   in the system prompt to reference this value dynamically.
                 </span>
-              </label>
+              </div>
 
               <label className="field-row" htmlFor="ai-chat-avatar-url">
                 <span className="field-label">Assistant profile image URL</span>
@@ -1074,59 +1097,90 @@ export function AdminSettingsPanel() {
                 </span>
               </label>
 
-              <label className="field-row" htmlFor="ai-chat-header-subtitle">
-                <span className="field-label">Header subtitle</span>
-                <input
-                  id="ai-chat-header-subtitle"
-                  className="input"
-                  value={settings.aiChatHeaderSubtitle}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatHeaderSubtitle: event.target.value }))}
-                  placeholder={DEFAULT_AI_CHAT_HEADER_SUBTITLE}
-                />
+              <div className="field-row">
+                <label className="field-label" htmlFor="ai-chat-header-subtitle">
+                  Header subtitle
+                </label>
+                <div className="field-control-row">
+                  <input
+                    id="ai-chat-header-subtitle"
+                    className="input"
+                    value={settings.aiChatHeaderSubtitle}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, aiChatHeaderSubtitle: event.target.value }))}
+                    placeholder={DEFAULT_AI_CHAT_HEADER_SUBTITLE}
+                  />
+                  <ResetToDefaultButton
+                    disabled={settings.aiChatHeaderSubtitle === DEFAULT_AI_CHAT_HEADER_SUBTITLE}
+                    onClick={() =>
+                      setSettings((prev) => ({ ...prev, aiChatHeaderSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE }))
+                    }
+                  />
+                </div>
                 <span className="field-hint">
                   Shown below the assistant name in the chat header. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code> if you
                   want the configured assistant name inserted automatically.
                 </span>
-              </label>
+              </div>
 
-              <label className="field-row" htmlFor="ai-chat-welcome-message">
-                <span className="field-label">Welcome message</span>
-                <textarea
-                  id="ai-chat-welcome-message"
-                  className="input textarea"
-                  rows={4}
-                  value={settings.aiChatWelcomeMessage}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatWelcomeMessage: event.target.value }))}
-                  placeholder={DEFAULT_AI_CHAT_WELCOME_MESSAGE}
-                />
+              <div className="field-row">
+                <label className="field-label" htmlFor="ai-chat-welcome-message">
+                  Welcome message
+                </label>
+                <div className="field-control-row">
+                  <textarea
+                    id="ai-chat-welcome-message"
+                    className="input textarea"
+                    rows={4}
+                    value={settings.aiChatWelcomeMessage}
+                    onChange={(event) => setSettings((prev) => ({ ...prev, aiChatWelcomeMessage: event.target.value }))}
+                    placeholder={DEFAULT_AI_CHAT_WELCOME_MESSAGE}
+                  />
+                  <ResetToDefaultButton
+                    disabled={settings.aiChatWelcomeMessage === DEFAULT_AI_CHAT_WELCOME_MESSAGE}
+                    onClick={() =>
+                      setSettings((prev) => ({ ...prev, aiChatWelcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE }))
+                    }
+                  />
+                </div>
                 <span className="field-hint">
                   Shown as the first assistant message in new chats. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code> if you
                   want the configured assistant name inserted automatically.
                 </span>
-              </label>
+              </div>
 
-              <label className="field-row" htmlFor="openrouter-model">
-                <span className="field-label">OpenRouter model</span>
-                <input
-                  id="openrouter-model"
-                  className="input"
-                  value={settings.openRouterModel}
-                  aria-invalid={Boolean(aiChatFieldErrors.openRouterModel)}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSettings((prev) => ({ ...prev, openRouterModel: value }));
-                    setAiChatFieldErrors((prev) => ({
-                      ...prev,
-                      openRouterModel: value.trim() || !settings.aiChatEnabled ? null : "Enter an OpenRouter model identifier.",
-                    }));
-                  }}
-                  placeholder="openai/gpt-5.1-codex-mini"
-                />
+              <div className="field-row">
+                <label className="field-label" htmlFor="openrouter-model">
+                  OpenRouter model
+                </label>
+                <div className="field-control-row">
+                  <input
+                    id="openrouter-model"
+                    className="input"
+                    value={settings.openRouterModel}
+                    aria-invalid={Boolean(aiChatFieldErrors.openRouterModel)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSettings((prev) => ({ ...prev, openRouterModel: value }));
+                      setAiChatFieldErrors((prev) => ({
+                        ...prev,
+                        openRouterModel: value.trim() || !settings.aiChatEnabled ? null : "Enter an OpenRouter model identifier.",
+                      }));
+                    }}
+                    placeholder={DEFAULT_AI_CHAT_OPENROUTER_MODEL}
+                  />
+                  <ResetToDefaultButton
+                    disabled={settings.openRouterModel === DEFAULT_AI_CHAT_OPENROUTER_MODEL}
+                    onClick={() => {
+                      setSettings((prev) => ({ ...prev, openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL }));
+                      setAiChatFieldErrors((prev) => ({ ...prev, openRouterModel: null }));
+                    }}
+                  />
+                </div>
                 <span className="field-hint">
                   Example: <code>openai/gpt-5.1-codex-mini</code>. Use a vision-capable model if you want image uploads.
                 </span>
                 {aiChatFieldErrors.openRouterModel ? <span className="error-text">{aiChatFieldErrors.openRouterModel}</span> : null}
-              </label>
+              </div>
 
               <label className="field-row" htmlFor="openrouter-api-key">
                 <span className="field-label">OpenRouter API key</span>
@@ -1161,33 +1215,44 @@ export function AdminSettingsPanel() {
                 ) : null}
               </label>
 
-              <label className="field-row" htmlFor="ai-chat-system-prompt">
-                <span className="field-label">System prompt template</span>
-                <textarea
-                  id="ai-chat-system-prompt"
-                  className="input textarea"
-                  rows={10}
-                  value={settings.aiChatSystemPrompt}
-                  aria-invalid={Boolean(aiChatFieldErrors.systemPrompt)}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSettings((prev) => ({ ...prev, aiChatSystemPrompt: value }));
-                    setAiChatFieldErrors((prev) => ({
-                      ...prev,
-                      systemPrompt:
-                        !settings.aiChatEnabled || value.includes(AI_CHAT_DOCS_PLACEHOLDER)
-                          ? null
-                          : `Include ${AI_CHAT_DOCS_PLACEHOLDER} in the system prompt so the /docs.txt export can be injected.`,
-                    }));
-                  }}
-                  placeholder={DEFAULT_AI_CHAT_SYSTEM_PROMPT}
-                />
+              <div className="field-row">
+                <label className="field-label" htmlFor="ai-chat-system-prompt">
+                  System prompt template
+                </label>
+                <div className="field-control-row">
+                  <textarea
+                    id="ai-chat-system-prompt"
+                    className="input textarea"
+                    rows={10}
+                    value={settings.aiChatSystemPrompt}
+                    aria-invalid={Boolean(aiChatFieldErrors.systemPrompt)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSettings((prev) => ({ ...prev, aiChatSystemPrompt: value }));
+                      setAiChatFieldErrors((prev) => ({
+                        ...prev,
+                        systemPrompt:
+                          !settings.aiChatEnabled || value.includes(AI_CHAT_DOCS_PLACEHOLDER)
+                            ? null
+                            : `Include ${AI_CHAT_DOCS_PLACEHOLDER} in the system prompt so the /docs.txt export can be injected.`,
+                      }));
+                    }}
+                    placeholder={DEFAULT_AI_CHAT_SYSTEM_PROMPT}
+                  />
+                  <ResetToDefaultButton
+                    disabled={settings.aiChatSystemPrompt === DEFAULT_AI_CHAT_SYSTEM_PROMPT}
+                    onClick={() => {
+                      setSettings((prev) => ({ ...prev, aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT }));
+                      setAiChatFieldErrors((prev) => ({ ...prev, systemPrompt: null }));
+                    }}
+                  />
+                </div>
                 <span className="field-hint">
                   Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code> for the configured assistant name and keep{" "}
                   <code>{AI_CHAT_DOCS_PLACEHOLDER}</code> exactly where the live <code>/docs.txt</code> export should be injected.
                 </span>
                 {aiChatFieldErrors.systemPrompt ? <span className="error-text">{aiChatFieldErrors.systemPrompt}</span> : null}
-              </label>
+              </div>
 
               <div className="action-row">
                 <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
