@@ -531,8 +531,6 @@ export function DocsAiChat() {
     window.addEventListener("pointermove", handlePointerMove);
     window.addEventListener("pointerup", handlePointerUp);
     window.addEventListener("pointercancel", handlePointerUp);
-
-    handlePointerMove(event.nativeEvent);
   };
 
   if (!featureReady || !featureEnabled || !activeConversation) {
