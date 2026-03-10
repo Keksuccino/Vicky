@@ -497,8 +497,10 @@ export function DocsAiChat() {
     resizeCleanupRef.current?.();
 
     const panelRect = panelRef.current.getBoundingClientRect();
-    const startRight = panelRect.right;
-    const startBottom = panelRect.bottom;
+    const startWidth = panelRect.width;
+    const startHeight = panelRect.height;
+    const startPointerX = event.clientX;
+    const startPointerY = event.clientY;
 
     const cleanup = () => {
       window.removeEventListener("pointermove", handlePointerMove);
@@ -510,9 +512,11 @@ export function DocsAiChat() {
     };
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
+      const deltaX = moveEvent.clientX - startPointerX;
+      const deltaY = moveEvent.clientY - startPointerY;
       const nextSize = clampWindowSize({
-        width: startRight - moveEvent.clientX,
-        height: startBottom - moveEvent.clientY,
+        width: startWidth - deltaX,
+        height: startHeight - deltaY,
       });
 
       setWindowSize((current) =>
