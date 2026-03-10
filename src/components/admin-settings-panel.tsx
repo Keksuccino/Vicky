@@ -1126,7 +1126,7 @@ export function AdminSettingsPanel() {
                 <label className="field-label" htmlFor="ai-chat-welcome-message">
                   Welcome message
                 </label>
-                <div className="field-control-row">
+                <div className="field-control-stack">
                   <textarea
                     id="ai-chat-welcome-message"
                     className="input textarea"
@@ -1219,7 +1219,7 @@ export function AdminSettingsPanel() {
                 <label className="field-label" htmlFor="ai-chat-system-prompt">
                   System prompt template
                 </label>
-                <div className="field-control-row">
+                <div className="field-control-stack">
                   <textarea
                     id="ai-chat-system-prompt"
                     className="input textarea"

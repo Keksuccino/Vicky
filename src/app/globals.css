@@ -2058,6 +2058,19 @@ html[data-color-mode="light"] .page-copy-menu {
   min-width: min(100%, 18rem);
 }
 
+.field-control-stack {
+  display: grid;
+  gap: 0.7rem;
+}
+
+.field-control-stack > .input {
+  width: 100%;
+}
+
+.field-control-stack > .field-control-action {
+  justify-self: start;
+}
+
 .field-control-action {
   min-height: 2.75rem;
 }
