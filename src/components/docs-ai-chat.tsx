@@ -727,7 +727,7 @@ export function DocsAiChat() {
                         title="Delete conversation"
                         disabled={isSending && conversation.id === activeConversation.id}
                       >
-                        <MaterialIcon name="close" />
+                        <MaterialIcon name="delete" />
                       </button>
                     </div>
                   ))}
