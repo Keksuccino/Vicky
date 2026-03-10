@@ -353,6 +353,16 @@ export function AdminSettingsPanel() {
     [],
   );
 
+  const getLatestSaveSnapshot = useCallback(
+    (): string =>
+      createSaveSnapshot(
+        latestSettingsRef.current,
+        latestClearTokenRef.current,
+        latestClearOpenRouterApiKeyRef.current,
+      ),
+    [createSaveSnapshot],
+  );
+
   const persistLatestSettings = useCallback(async () => {
     if (!autoSaveReadyRef.current) {
       return;
@@ -399,22 +409,25 @@ export function AdminSettingsPanel() {
         githubToken: clearToken ? "" : draft.githubToken,
         openRouterApiKey: clearOpenRouterApiKey ? "" : draft.openRouterApiKey,
       };
+      const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
 
-      latestSettingsRef.current = nextSettings;
-      latestClearTokenRef.current = false;
-      latestClearOpenRouterApiKeyRef.current = false;
       lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings, false, false);
       lastSavedDomainRef.current = {
         customDomain: nextSettings.customDomain,
         letsEncryptEmail: nextSettings.letsEncryptEmail,
       };
 
-      setSettings(nextSettings);
-      setThemeSettings(themeCustomizationFromSettings(saved));
-      setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
-      setAiChatFieldErrors(validateAiChatFields(saved));
-      setClearTokenOnSave(false);
-      setClearOpenRouterApiKeyOnSave(false);
+      if (!hasNewerLocalChanges) {
+        latestSettingsRef.current = nextSettings;
+        latestClearTokenRef.current = false;
+        latestClearOpenRouterApiKeyRef.current = false;
+        setSettings(nextSettings);
+        setThemeSettings(themeCustomizationFromSettings(saved));
+        setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
+        setAiChatFieldErrors(validateAiChatFields(saved));
+        setClearTokenOnSave(false);
+        setClearOpenRouterApiKeyOnSave(false);
+      }
 
       if (shouldRefreshSslStatus) {
         await refreshSslStatus();
@@ -430,7 +443,7 @@ export function AdminSettingsPanel() {
         void persistLatestSettings();
       }
     }
-  }, [createSaveSnapshot, refreshSslStatus, setThemeSettings]);
+  }, [createSaveSnapshot, getLatestSaveSnapshot, refreshSslStatus, setThemeSettings]);
 
   useEffect(() => {
     latestSettingsRef.current = settings;
