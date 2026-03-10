@@ -3098,6 +3098,71 @@ html[data-color-mode="light"] .page-copy-menu {
 .docs-ai-chat-messages {
   overflow: auto;
   min-height: 0;
+  scrollbar-gutter: stable;
+}
+
+@supports selector(::-webkit-scrollbar) {
+  .docs-ai-chat-history,
+  .docs-ai-chat-messages {
+    scrollbar-width: auto;
+    scrollbar-color: auto;
+  }
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .docs-ai-chat-history,
+  .docs-ai-chat-messages {
+    scrollbar-width: thin;
+    scrollbar-color: var(--sidebar-scrollbar-thumb) transparent;
+  }
+}
+
+.docs-ai-chat-history::-webkit-scrollbar,
+.docs-ai-chat-messages::-webkit-scrollbar {
+  width: 0.72rem;
+}
+
+.docs-ai-chat-history::-webkit-scrollbar-track,
+.docs-ai-chat-messages::-webkit-scrollbar-track {
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  margin: 0.35rem 0.08rem 0.35rem 0.42rem;
+}
+
+.docs-ai-chat-history::-webkit-scrollbar-thumb,
+.docs-ai-chat-messages::-webkit-scrollbar-thumb {
+  background: var(--sidebar-scrollbar-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  min-height: 2.4rem;
+  box-shadow: 0 4px 12px var(--sidebar-scrollbar-shadow);
+}
+
+.docs-ai-chat-history::-webkit-scrollbar-thumb:hover,
+.docs-ai-chat-messages::-webkit-scrollbar-thumb:hover {
+  background: var(--sidebar-scrollbar-thumb-hover);
+}
+
+.docs-ai-chat-history::-webkit-scrollbar-corner,
+.docs-ai-chat-messages::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.docs-ai-chat-history::-webkit-scrollbar-button,
+.docs-ai-chat-history::-webkit-scrollbar-button:single-button,
+.docs-ai-chat-history::-webkit-scrollbar-button:vertical:start:decrement,
+.docs-ai-chat-history::-webkit-scrollbar-button:vertical:end:increment,
+.docs-ai-chat-messages::-webkit-scrollbar-button,
+.docs-ai-chat-messages::-webkit-scrollbar-button:single-button,
+.docs-ai-chat-messages::-webkit-scrollbar-button:vertical:start:decrement,
+.docs-ai-chat-messages::-webkit-scrollbar-button:vertical:end:increment {
+  -webkit-appearance: none;
+  display: none;
+  height: 0;
+  width: 0;
+  background: transparent;
 }
 
 .docs-ai-chat-history {
