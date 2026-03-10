@@ -18,6 +18,7 @@ const saveSchema = z
     description: z.string().optional(),
     content: z.string().optional(),
     markdown: z.string().optional(),
+    includeInPlaintextExport: z.boolean().optional(),
     commitMessage: z.string().optional(),
   })
   .strict();

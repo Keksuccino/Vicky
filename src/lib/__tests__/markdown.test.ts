@@ -29,12 +29,13 @@ describe("markdown helpers", () => {
   });
 
   it("parses frontmatter and content", () => {
-    const markdown = `---\ntitle: API\ndescription: Endpoint docs\n---\n# API`;
+    const markdown = `---\ntitle: API\ndescription: Endpoint docs\nexcludeFromAiPlaintext: true\n---\n# API`;
     const parsed = parseMarkdownDocument(markdown);
 
     expect(parsed.title).toBe("API");
     expect(parsed.description).toBe("Endpoint docs");
     expect(parsed.content.trim()).toBe("# API");
+    expect(parsed.includeInPlaintextExport).toBe(false);
     expect(parsed.headings[0]).toEqual({ depth: 1, text: "API", slug: "api" });
   });
 
@@ -43,11 +44,13 @@ describe("markdown helpers", () => {
       title: "Guide",
       description: "How to",
       content: "# Body",
+      includeInPlaintextExport: false,
     });
 
     expect(withFrontmatter.startsWith("---\n")).toBe(true);
     expect(withFrontmatter).toContain("title: Guide");
     expect(withFrontmatter).toContain("description: How to");
+    expect(withFrontmatter).toContain("excludeFromAiPlaintext: true");
 
     const withoutFrontmatter = serializeMarkdownDocument({
       content: "# Body",

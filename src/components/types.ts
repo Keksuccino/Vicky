@@ -30,6 +30,7 @@ export type DocPage = {
   slug: string;
   content: string;
   headings: MarkdownHeading[];
+  includeInPlaintextExport: boolean;
   updatedAt?: string;
   updatedBy?: string;
 };
@@ -94,5 +95,6 @@ export type EditableDoc = {
   path: string;
   slug: string;
   content: string;
+  includeInPlaintextExport: boolean;
   commitMessage: string;
 };

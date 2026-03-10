@@ -75,6 +75,7 @@ export interface ParsedMarkdownDocument {
   description: string;
   content: string;
   headings: MarkdownHeading[];
+  includeInPlaintextExport: boolean;
 }
 
 export interface GitHubDocTreeItem {
@@ -92,8 +93,17 @@ export interface GitHubDocPage {
   content: string;
   markdown: string;
   headings: MarkdownHeading[];
+  includeInPlaintextExport: boolean;
   updatedAt?: string;
   updatedBy?: string;
+}
+
+export interface GitHubPlaintextDocPage {
+  path: string;
+  slug: string;
+  title: string;
+  markdown: string;
+  includeInPlaintextExport: boolean;
 }
 
 export interface SaveGitHubDocInput {
@@ -103,6 +113,7 @@ export interface SaveGitHubDocInput {
   description?: string;
   content?: string;
   markdown?: string;
+  includeInPlaintextExport?: boolean;
   commitMessage?: string;
 }
 

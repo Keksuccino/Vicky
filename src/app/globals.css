@@ -2411,6 +2411,14 @@ html[data-color-mode="light"] .meta-item {
   gap: 0.65rem;
 }
 
+.editor-toggle-field {
+  grid-column: 1 / -1;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface-muted) 78%, var(--surface-elevated));
+  padding: 0.78rem 0.9rem;
+}
+
 .editor-view-toggle {
   display: inline-flex;
   align-items: center;

@@ -240,6 +240,7 @@ function normalizePage(source: unknown, fallbackPath = "/"): DocPage {
     slug: slug || toDocSlug(path),
     content: asString(payload.content),
     headings: normalizeHeadings(payload.headings),
+    includeInPlaintextExport: asBoolean(payload.includeInPlaintextExport, true),
     updatedAt: asString(payload.updatedAt || payload.lastUpdatedAt).trim() || undefined,
     updatedBy: asString(payload.updatedBy || payload.lastUpdatedBy).trim() || undefined,
   };
@@ -650,6 +651,7 @@ export async function saveAdminDoc(doc: EditableDoc): Promise<DocPage> {
     title: doc.title,
     description: doc.description,
     content: doc.content,
+    includeInPlaintextExport: doc.includeInPlaintextExport,
     commitMessage: doc.commitMessage,
   };
 

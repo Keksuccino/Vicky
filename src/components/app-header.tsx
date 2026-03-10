@@ -25,6 +25,12 @@ const EDITOR_NAVIGATION = {
   activePrefix: "/editor",
 };
 
+const PLAINTEXT_EXPORT_NAVIGATION = {
+  href: "/docs.txt",
+  label: "AI plaintext docs",
+  icon: "text_snippet",
+};
+
 const DEFAULT_BRAND_TITLE = "Vicky Docs";
 
 export function AppHeader() {
@@ -168,6 +174,18 @@ export function AppHeader() {
             title={ADMIN_NAVIGATION.label}
           >
             <MaterialIcon name={ADMIN_NAVIGATION.icon} />
+          </Link>
+
+          <Link
+            href={PLAINTEXT_EXPORT_NAVIGATION.href}
+            className="admin-icon-link"
+            aria-label={PLAINTEXT_EXPORT_NAVIGATION.label}
+            title={PLAINTEXT_EXPORT_NAVIGATION.label}
+            target="_blank"
+            rel="noreferrer"
+            prefetch={false}
+          >
+            <MaterialIcon name={PLAINTEXT_EXPORT_NAVIGATION.icon} />
           </Link>
           <ThemeSwitcher />
         </div>

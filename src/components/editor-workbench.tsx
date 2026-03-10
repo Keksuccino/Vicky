@@ -30,6 +30,7 @@ const INITIAL_DOC: EditableDoc = {
   path: "/new-page",
   slug: "new-page",
   content: "# Start writing\n\nDescribe this page.",
+  includeInPlaintextExport: true,
   commitMessage: "docs: update new page",
 };
 
@@ -193,6 +194,7 @@ export function EditorWorkbench() {
         path: page.path,
         slug: toSlug(page.path),
         content: page.content,
+        includeInPlaintextExport: page.includeInPlaintextExport,
         commitMessage: `docs: update ${page.slug}`,
       });
       setAutoPath(false);
@@ -267,6 +269,7 @@ export function EditorWorkbench() {
         path: saved.path,
         slug: saved.slug,
         content: saved.content,
+        includeInPlaintextExport: saved.includeInPlaintextExport,
         commitMessage,
       });
       setStatusMessage(`Saved ${saved.path}.`);
@@ -470,6 +473,27 @@ export function EditorWorkbench() {
                 onChange={(event) => setDraft((prev) => ({ ...prev, commitMessage: event.target.value }))}
               />
             </label>
+
+            <div className="field-row editor-toggle-field">
+              <span className="field-label">AI plaintext export</span>
+              <label className="checkbox-row" htmlFor="doc-include-in-plaintext-export">
+                <input
+                  id="doc-include-in-plaintext-export"
+                  type="checkbox"
+                  checked={draft.includeInPlaintextExport}
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      includeInPlaintextExport: event.target.checked,
+                    }))
+                  }
+                />
+                <span>Include this page in `/docs.txt`</span>
+              </label>
+              <span className="field-hint">
+                Turn this off to exclude the current page from the AI-focused plaintext docs export.
+              </span>
+            </div>
           </div>
 
           <div className="editor-view-toggle" role="tablist" aria-label="Editor view">

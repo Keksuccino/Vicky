@@ -2,12 +2,13 @@ import path from "node:path";
 
 import { Octokit } from "@octokit/rest";
 
-import { docsPageCache, docsSearchCorpusCache, docsTreeCache } from "@/lib/cache";
+import { aiPlaintextDocsCache, docsPageCache, docsSearchCorpusCache, docsTreeCache } from "@/lib/cache";
 import { decryptSecret } from "@/lib/encryption";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
 import type {
   GitHubDocPage,
+  GitHubPlaintextDocPage,
   GitHubDocTreeItem,
   GitHubRuntimeConfig,
   GitHubSettings,
@@ -84,6 +85,7 @@ const treeTitlesCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntime
 const pageCacheKey = (config: GitHubRuntimeConfig, fullPath: string): string =>
   `${toRuntimeConfigCacheKey(config)}|page|${fullPath}`;
 const TREE_TITLE_LOAD_CONCURRENCY = 6;
+const PLAINTEXT_EXPORT_LOAD_CONCURRENCY = 6;
 
 const createOctokit = (config: GitHubRuntimeConfig): Octokit =>
   new Octokit({
@@ -204,6 +206,7 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
     docsTreeCache.clear();
     docsPageCache.clear();
     docsSearchCorpusCache.clear();
+    aiPlaintextDocsCache.clear();
     return;
   }
 
@@ -211,6 +214,7 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   docsTreeCache.deleteWhere((key) => key.startsWith(prefix));
   docsPageCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
+  aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
 };
 
 export const testGitHubConnection = async (
@@ -299,7 +303,10 @@ const listDocsTreeFromGitHub = async (config: GitHubRuntimeConfig): Promise<GitH
   return treeItems;
 };
 
-export const listMarkdownDocsTree = async (config: GitHubRuntimeConfig): Promise<GitHubDocTreeItem[]> => {
+export const listMarkdownDocsTree = async (
+  config: GitHubRuntimeConfig,
+  options?: { bypassCache?: boolean },
+): Promise<GitHubDocTreeItem[]> => {
   const validation = validateGitHubRuntimeConfig(config);
 
   if (!validation.valid) {
@@ -307,7 +314,7 @@ export const listMarkdownDocsTree = async (config: GitHubRuntimeConfig): Promise
   }
 
   const cacheKey = treeCacheKey(config);
-  const cached = docsTreeCache.get(cacheKey);
+  const cached = options?.bypassCache ? undefined : docsTreeCache.get(cacheKey);
 
   if (cached) {
     return cached as GitHubDocTreeItem[];
@@ -439,6 +446,7 @@ const fetchLatestCommitMetadata = async (
 const resolveExistingPath = async (
   config: GitHubRuntimeConfig,
   locator: { slug?: string; path?: string },
+  options?: { bypassCache?: boolean },
 ): Promise<{ relativePath: string; fullPath: string; slug: string }> => {
   const docsRoot = normalizeDocsPath(config.docsPath);
 
@@ -456,7 +464,7 @@ const resolveExistingPath = async (
   }
 
   const normalizedSlug = resolveSlugInput(locator.slug);
-  const tree = await listMarkdownDocsTree(config);
+  const tree = await listMarkdownDocsTree(config, options);
   const match = tree.find((item) => item.slug === normalizedSlug || item.path === normalizedSlug);
 
   if (!match) {
@@ -473,6 +481,7 @@ const resolveExistingPath = async (
 export const loadGitHubDoc = async (
   config: GitHubRuntimeConfig,
   locator: { slug?: string; path?: string },
+  options?: { bypassCache?: boolean },
 ): Promise<GitHubDocPage> => {
   const validation = validateGitHubRuntimeConfig(config);
 
@@ -480,9 +489,9 @@ export const loadGitHubDoc = async (
     throw badRequest(validation.errors.join(" "));
   }
 
-  const resolved = await resolveExistingPath(config, locator);
+  const resolved = await resolveExistingPath(config, locator, options);
   const cacheKey = pageCacheKey(config, resolved.fullPath);
-  const cached = docsPageCache.get(cacheKey);
+  const cached = options?.bypassCache ? undefined : docsPageCache.get(cacheKey);
 
   if (cached) {
     return cached as GitHubDocPage;
@@ -501,12 +510,46 @@ export const loadGitHubDoc = async (
     content: parsed.content,
     markdown: file.markdown,
     headings: parsed.headings,
+    includeInPlaintextExport: parsed.includeInPlaintextExport,
     updatedAt: commitMeta.updatedAt,
     updatedBy: commitMeta.updatedBy,
   };
 
   docsPageCache.set(cacheKey, page);
   return page;
+};
+
+export const listGitHubDocsForPlaintextExport = async (
+  config: GitHubRuntimeConfig,
+  options?: { bypassCache?: boolean },
+): Promise<GitHubPlaintextDocPage[]> => {
+  const validation = validateGitHubRuntimeConfig(config);
+
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  const tree = await listMarkdownDocsTree(config, options);
+  if (tree.length === 0) {
+    return [];
+  }
+
+  const docsRoot = normalizeDocsPath(config.docsPath);
+  const octokit = createOctokit(config);
+
+  return mapWithConcurrency(tree, PLAINTEXT_EXPORT_LOAD_CONCURRENCY, async (item): Promise<GitHubPlaintextDocPage> => {
+    const fullPath = joinDocsPath(docsRoot, item.path);
+    const file = await fetchFileFromGitHub(config, fullPath, octokit);
+    const parsed = parseMarkdownDocument(file.markdown);
+
+    return {
+      path: item.path,
+      slug: item.slug,
+      title: parsed.title.trim() || item.name,
+      markdown: file.markdown,
+      includeInPlaintextExport: parsed.includeInPlaintextExport,
+    };
+  });
 };
 
 const resolveSavePath = async (
@@ -568,23 +611,27 @@ export const saveGitHubDoc = async (
   let baseTitle = "";
   let baseDescription = "";
   let baseContent = "";
+  let baseIncludeInPlaintextExport = true;
 
   if (input.markdown !== undefined) {
     const parsedIncoming = parseMarkdownDocument(input.markdown);
     baseTitle = parsedIncoming.title;
     baseDescription = parsedIncoming.description;
     baseContent = parsedIncoming.content;
+    baseIncludeInPlaintextExport = parsedIncoming.includeInPlaintextExport;
   } else if (existingMarkdown) {
     const parsedExisting = parseMarkdownDocument(existingMarkdown);
     baseTitle = parsedExisting.title;
     baseDescription = parsedExisting.description;
     baseContent = parsedExisting.content;
+    baseIncludeInPlaintextExport = parsedExisting.includeInPlaintextExport;
   }
 
   const markdown = serializeMarkdownDocument({
     title: input.title ?? baseTitle,
     description: input.description ?? baseDescription,
     content: input.content ?? baseContent,
+    includeInPlaintextExport: input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
   });
 
   const parsedOutput = parseMarkdownDocument(markdown);

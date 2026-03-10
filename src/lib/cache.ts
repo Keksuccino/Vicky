@@ -1,6 +1,7 @@
 const FALLBACK_DOCS_CACHE_TTL_MS = 30_000;
 export const MIN_DOCS_CACHE_TTL_MS = 1_000;
 export const MAX_DOCS_CACHE_TTL_MS = 86_400_000;
+export const AI_PLAINTEXT_EXPORT_CACHE_TTL_MS = 30_000;
 
 export function normalizeDocsCacheTtlMs(value: unknown, fallback = FALLBACK_DOCS_CACHE_TTL_MS): number {
   let numeric = Number.NaN;
@@ -80,6 +81,7 @@ export const DOCS_CACHE_TTL_MS = defaultTtlMs;
 export const docsTreeCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 export const docsPageCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 export const docsSearchCorpusCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
+export const aiPlaintextDocsCache = new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS);
 
 export const setDocsCacheTtlMs = (ttlMs: number): number => {
   const normalized = normalizeDocsCacheTtlMs(ttlMs, docsTreeCache.getTtlMs());
