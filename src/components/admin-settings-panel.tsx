@@ -866,8 +866,8 @@ export function AdminSettingsPanel() {
                   placeholder="docs.example.com"
                 />
                 <span className="field-hint">
-                  Hostname only (no protocol or path). Example: <code>fancymenu.net</code> or{" "}
-                  <code>docs.fancymenu.net</code>.
+                  Hostname only (no protocol or path). Example: <code>example.com</code> or{" "}
+                  <code>docs.example.com</code>.
                 </span>
                 {domainFieldErrors.customDomain ? <span className="error-text">{domainFieldErrors.customDomain}</span> : null}
               </label>

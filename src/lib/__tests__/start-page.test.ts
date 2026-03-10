@@ -9,11 +9,11 @@ describe("start page helpers", () => {
   });
 
   it("normalizes full URLs including scheme-less domains", () => {
-    expect(normalizeStartPage("https://fancymenu.net/docs/getting-started")).toBe("/getting-started");
-    expect(normalizeStartPage("fancymenu.net/docs/getting-started")).toBe("/getting-started");
+    expect(normalizeStartPage("https://example.com/docs/getting-started")).toBe("/getting-started");
+    expect(normalizeStartPage("example.com/docs/getting-started")).toBe("/getting-started");
   });
 
   it("creates docs href from normalized start page", () => {
-    expect(startPageToDocsHref("fancymenu.net/docs/home")).toBe("/docs/home");
+    expect(startPageToDocsHref("example.com/docs/home")).toBe("/docs/home");
   });
 });
