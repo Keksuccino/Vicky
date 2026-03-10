@@ -491,7 +491,9 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubOwner: event.target.value }))}
                   required
                 />
-                <span className="field-hint">GitHub user or org name only. Example: `Keksuccino`.</span>
+                <span className="field-hint">
+                  GitHub user or org name only. Example: <code>Keksuccino</code>.
+                </span>
               </label>
               <label className="field-row" htmlFor="repo-name">
                 <span className="field-label">Repository</span>
@@ -502,7 +504,9 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubRepo: event.target.value }))}
                   required
                 />
-                <span className="field-hint">Repository name only. Example: `Vicky` (no owner, no `.git`).</span>
+                <span className="field-hint">
+                  Repository name only. Example: <code>Vicky</code> (no owner, no <code>.git</code>).
+                </span>
               </label>
             </div>
 
@@ -516,7 +520,9 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubBranch: event.target.value }))}
                   required
                 />
-                <span className="field-hint">Existing branch name. Example: `main`.</span>
+                <span className="field-hint">
+                  Existing branch name. Example: <code>main</code>.
+                </span>
               </label>
               <label className="field-row" htmlFor="docs-path">
                 <span className="field-label">Docs path</span>
@@ -527,7 +533,9 @@ export function AdminSettingsPanel() {
                   onChange={(event) => setSettings((prev) => ({ ...prev, githubDocsPath: event.target.value }))}
                   required
                 />
-                <span className="field-hint">Folder inside the repo where markdown files live. Example: `docs`.</span>
+                <span className="field-hint">
+                  Folder inside the repo where markdown files live. Example: <code>docs</code>.
+                </span>
               </label>
             </div>
 
@@ -608,7 +616,10 @@ export function AdminSettingsPanel() {
               </div>
 
               <label className="field-row" htmlFor="site-footer-text">
-                <span className="field-label">Footer text (supports {`{{year}}`}, {`{{owner}}`}, and {`{{vicky}}`})</span>
+                <span className="field-label">
+                  Footer text (supports <code>{`{{year}}`}</code>, <code>{`{{owner}}`}</code>, and{" "}
+                  <code>{`{{vicky}}`}</code>)
+                </span>
                 <input
                   id="site-footer-text"
                   className="input"
@@ -656,7 +667,8 @@ export function AdminSettingsPanel() {
                   required
                 />
                 <span className="field-hint">
-                  Preferred format: `/home`. `/docs/home` and full docs URLs are normalized automatically.
+                  Preferred format: <code>/home</code>. <code>/docs/home</code> and full docs URLs are normalized
+                  automatically.
                 </span>
               </label>
 

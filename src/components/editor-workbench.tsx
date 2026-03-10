@@ -488,7 +488,9 @@ export function EditorWorkbench() {
                     }))
                   }
                 />
-                <span>Include this page in `/docs.txt`</span>
+                <span>
+                  Include this page in <code>/docs.txt</code>
+                </span>
               </label>
               <span className="field-hint">
                 Turn this off to exclude the current page from the AI-focused plaintext docs export.
