@@ -2984,10 +2984,10 @@ html[data-color-mode="light"] .page-copy-menu {
   background: color-mix(in srgb, var(--accent) 74%, var(--text-muted));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface-elevated) 82%, transparent);
   -webkit-mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 12L12 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M8 12L12 8' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 8L8 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M4 12L12 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
       center / contain no-repeat;
   mask:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 12L12 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M8 12L12 8' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 8L8 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M4 12L12 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
       center / contain no-repeat;
   transition:
     background 160ms ease,
