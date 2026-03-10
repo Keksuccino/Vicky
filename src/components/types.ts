@@ -29,6 +29,7 @@ export type DocPage = {
   path: string;
   slug: string;
   content: string;
+  markdown: string;
   headings: MarkdownHeading[];
   includeInPlaintextExport: boolean;
   updatedAt?: string;

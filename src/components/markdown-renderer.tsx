@@ -11,6 +11,7 @@ import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/components/cn";
+import { copyTextToClipboard } from "@/components/copy-text";
 import { remarkGitHubAlerts } from "@/lib/remark-github-alerts";
 
 type MarkdownRendererProps = {
@@ -63,29 +64,6 @@ const getNodeText = (node: ReactNode): string => {
   return "";
 };
 
-const fallbackCopyText = (text: string): boolean => {
-  if (typeof document === "undefined") {
-    return false;
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.setAttribute("readonly", "true");
-  textarea.style.position = "absolute";
-  textarea.style.opacity = "0";
-  textarea.style.pointerEvents = "none";
-  textarea.style.left = "-9999px";
-  document.body.appendChild(textarea);
-  textarea.select();
-  textarea.setSelectionRange(0, text.length);
-
-  try {
-    return document.execCommand("copy");
-  } finally {
-    textarea.remove();
-  }
-};
-
 function CodeBlock({ children, className, ...props }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const codeText = useMemo(() => getNodeText(children).replace(/\n$/, ""), [children]);
@@ -95,17 +73,9 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
       return;
     }
 
-    try {
-      if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(codeText);
-      } else if (!fallbackCopyText(codeText)) {
-        return;
-      }
+    const copiedText = await copyTextToClipboard(codeText);
+    if (copiedText) {
       setCopied(true);
-    } catch {
-      if (fallbackCopyText(codeText)) {
-        setCopied(true);
-      }
     }
   }, [codeText]);
 

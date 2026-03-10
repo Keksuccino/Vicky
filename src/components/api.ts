@@ -239,6 +239,7 @@ function normalizePage(source: unknown, fallbackPath = "/"): DocPage {
     path,
     slug: slug || toDocSlug(path),
     content: asString(payload.content),
+    markdown: asString(payload.markdown) || asString(payload.content),
     headings: normalizeHeadings(payload.headings),
     includeInPlaintextExport: asBoolean(payload.includeInPlaintextExport, true),
     updatedAt: asString(payload.updatedAt || payload.lastUpdatedAt).trim() || undefined,

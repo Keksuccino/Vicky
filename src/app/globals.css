@@ -1023,6 +1023,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 }
 
 .page-header-card {
+  --page-meta-control-height: 2.15rem;
   border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
   border-radius: var(--radius-md);
   background: color-mix(
@@ -1037,8 +1038,16 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .metadata-row {
   display: flex;
   flex-wrap: wrap;
+  align-items: flex-end;
   gap: 0.6rem;
   margin-bottom: 0;
+}
+
+.metadata-items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  min-width: 0;
 }
 
 .toc-panel {
@@ -1081,11 +1090,123 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
+  min-height: var(--page-meta-control-height);
   padding: 0.35rem 0.65rem;
   font-size: 0.87rem;
 }
 
 html[data-color-mode="light"] .meta-item {
+  background: var(--surface-elevated);
+}
+
+.page-copy-actions {
+  position: relative;
+  margin-left: auto;
+}
+
+.page-copy-button-group {
+  display: inline-flex;
+  align-items: stretch;
+  min-height: var(--page-meta-control-height);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--surface-elevated) 88%, var(--accent) 12%);
+}
+
+.page-copy-button,
+.page-copy-menu-button {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    color 160ms ease;
+}
+
+.page-copy-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.9rem 0.35rem 0.82rem;
+  font-size: 0.87rem;
+  font-weight: 700;
+}
+
+.page-copy-button .material-icon {
+  font-size: 1.05rem;
+}
+
+.page-copy-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.3rem;
+  border-left: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+}
+
+.page-copy-menu-button .material-icon {
+  font-size: 1.15rem;
+}
+
+.page-copy-button:hover,
+.page-copy-button:focus-visible,
+.page-copy-menu-button:hover,
+.page-copy-menu-button:focus-visible {
+  background: color-mix(in srgb, var(--accent) 17%, var(--surface-elevated));
+}
+
+.page-copy-button:focus-visible,
+.page-copy-menu-button:focus-visible {
+  outline: none;
+}
+
+.page-copy-button-success {
+  color: var(--accent);
+}
+
+.page-copy-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 20;
+  min-width: 13rem;
+  padding: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--surface-elevated) 96%, var(--accent) 4%);
+  box-shadow: 0 18px 42px rgba(22, 38, 66, 0.18);
+}
+
+.page-copy-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.68rem 0.78rem;
+  cursor: pointer;
+}
+
+.page-copy-menu-item:hover,
+.page-copy-menu-item:focus-visible {
+  outline: none;
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-elevated));
+}
+
+html[data-color-mode="light"] .page-copy-button-group {
+  background: var(--surface-elevated);
+}
+
+html[data-color-mode="light"] .page-copy-menu {
   background: var(--surface-elevated);
 }
 

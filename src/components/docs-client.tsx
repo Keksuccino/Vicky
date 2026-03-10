@@ -12,6 +12,7 @@ import {
   toAbsoluteDocPath,
 } from "@/components/api";
 import { cn } from "@/components/cn";
+import { copyTextToClipboard } from "@/components/copy-text";
 import { DocsTree } from "@/components/docs-tree";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
@@ -21,6 +22,8 @@ import type { DocPage, DocSearchResult, DocTreeNode } from "@/components/types";
 type DocsClientProps = {
   initialPath: string;
 };
+
+const COPIED_STATE_DURATION_MS = 1400;
 
 function normalizePath(path: string): string {
   return toAbsoluteDocPath(path || "/");
@@ -32,6 +35,12 @@ function toDocsHref(path: string): string {
     return "/docs";
   }
   return `/docs/${normalized.slice(1)}`;
+}
+
+function toRawDocsHref(path: string): string {
+  const href = toDocsHref(path);
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}raw=1`;
 }
 
 function formatDate(value?: string): string {
@@ -139,6 +148,9 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<DocSearchResult[]>([]);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [pageCopied, setPageCopied] = useState(false);
+  const copyMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     const mobileViewportQuery = window.matchMedia("(max-width: 900px)");
@@ -287,6 +299,11 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   useEffect(() => {
     lastInitialHashScrollKeyRef.current = null;
+  }, [currentPath]);
+
+  useEffect(() => {
+    setCopyMenuOpen(false);
+    setPageCopied(false);
   }, [currentPath]);
 
   useEffect(() => {
@@ -501,6 +518,63 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     };
   }, [searchQuery]);
 
+  useEffect(() => {
+    if (!copyMenuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: MouseEvent) => {
+      const eventTarget = event.target;
+      if (!(eventTarget instanceof Node) || copyMenuRef.current?.contains(eventTarget)) {
+        return;
+      }
+
+      setCopyMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setCopyMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [copyMenuOpen]);
+
+  useEffect(() => {
+    if (!pageCopied) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      setPageCopied(false);
+    }, COPIED_STATE_DURATION_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [pageCopied]);
+
+  const copyCurrentPageMarkdown = useCallback(async () => {
+    if (!page) {
+      return;
+    }
+
+    const copied = await copyTextToClipboard(page.markdown || page.content);
+    if (!copied) {
+      return;
+    }
+
+    setPageCopied(true);
+    setCopyMenuOpen(false);
+  }, [page]);
+
   const onSelectPath = (path: string, anchor?: string) => {
     const normalized = normalizePath(path);
     setCurrentPath(normalized);
@@ -513,6 +587,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   const pageReadyForDisplay = !pageLoading && !pageError && Boolean(page) && markdownAssetsResolved;
   const showPagePlaceholder = pageLoading || (!pageLoading && !pageError && Boolean(page) && !markdownAssetsResolved);
+  const rawPageHref = page ? toRawDocsHref(page.path) : null;
   const sidebarToggleButton = (
     <button
       type="button"
@@ -596,14 +671,68 @@ export function DocsClient({ initialPath }: DocsClientProps) {
                 </header>
 
                 <div className="metadata-row" aria-label="Page metadata">
-                  <span className="meta-item">
-                    <MaterialIcon name="schedule" />
-                    Updated: {formatDate(page.updatedAt)}
-                  </span>
-                  <span className="meta-item">
-                    <MaterialIcon name="person" />
-                    Author: {page.updatedBy || "Unknown"}
-                  </span>
+                  <div className="metadata-items">
+                    <span className="meta-item">
+                      <MaterialIcon name="schedule" />
+                      Updated: {formatDate(page.updatedAt)}
+                    </span>
+                    <span className="meta-item">
+                      <MaterialIcon name="person" />
+                      Author: {page.updatedBy || "Unknown"}
+                    </span>
+                  </div>
+
+                  <div className="page-copy-actions" ref={copyMenuRef}>
+                    <div className="page-copy-button-group">
+                      <button
+                        type="button"
+                        className={cn("page-copy-button", pageCopied && "page-copy-button-success")}
+                        onClick={() => {
+                          void copyCurrentPageMarkdown();
+                        }}
+                        aria-label={pageCopied ? "Page copied as markdown" : "Copy page as markdown"}
+                      >
+                        <MaterialIcon name={pageCopied ? "check_circle" : "content_copy"} filled={pageCopied} />
+                        <span>Copy Page</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        className="page-copy-menu-button"
+                        aria-haspopup="menu"
+                        aria-expanded={copyMenuOpen}
+                        aria-label="Open page copy menu"
+                        onClick={() => {
+                          setCopyMenuOpen((previous) => !previous);
+                        }}
+                      >
+                        <MaterialIcon name="arrow_drop_down" />
+                      </button>
+                    </div>
+
+                    {copyMenuOpen ? (
+                      <div className="page-copy-menu" role="menu" aria-label="Page copy options">
+                        <button
+                          type="button"
+                          className="page-copy-menu-item"
+                          role="menuitem"
+                          onClick={() => {
+                            void copyCurrentPageMarkdown();
+                          }}
+                        >
+                          <MaterialIcon name="content_copy" />
+                          <span>Copy as Markdown</span>
+                        </button>
+
+                        {rawPageHref ? (
+                          <a className="page-copy-menu-item" role="menuitem" href={rawPageHref} onClick={() => setCopyMenuOpen(false)}>
+                            <MaterialIcon name="description" />
+                            <span>Open Markdown</span>
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               </section>
 
