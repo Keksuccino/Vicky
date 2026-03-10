@@ -285,6 +285,9 @@ select {
   text-decoration: none;
   font-family: var(--font-display), "Segoe UI", sans-serif;
   font-weight: 650;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
 }
