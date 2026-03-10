@@ -400,6 +400,90 @@ select {
   height: var(--header-control-size);
 }
 
+.ui-tooltip {
+  position: relative;
+}
+
+.ui-tooltip::before,
+.ui-tooltip::after {
+  position: absolute;
+  inset-inline-start: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+  z-index: 120;
+}
+
+.ui-tooltip::before {
+  content: "";
+  inset-block-start: calc(100% + 0.42rem);
+  border-inline: 0.42rem solid transparent;
+  border-block-end: 0.42rem solid color-mix(in srgb, var(--accent-surface-soft) 38%, var(--surface-elevated));
+  filter: drop-shadow(0 6px 12px rgba(14, 24, 44, 0.12));
+  transform: translate(-50%, -0.18rem);
+}
+
+.ui-tooltip::after {
+  content: attr(data-ui-tooltip);
+  inset-block-start: calc(100% + 0.78rem);
+  min-width: max-content;
+  max-width: min(18rem, calc(100vw - 2rem));
+  padding: 0.48rem 0.82rem;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 30%, var(--border));
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-elevated) 94%, white),
+      color-mix(in srgb, var(--accent-surface-soft) 34%, var(--surface-elevated))
+    );
+  box-shadow:
+    0 18px 34px rgba(14, 24, 44, 0.16),
+    0 2px 8px rgba(14, 24, 44, 0.08);
+  color: var(--text-primary);
+  font-size: 0.77rem;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  white-space: nowrap;
+  backdrop-filter: blur(16px);
+  transform: translate(-50%, -0.22rem) scale(0.96);
+}
+
+.ui-tooltip:hover::before,
+.ui-tooltip:hover::after,
+.ui-tooltip:focus-visible::before,
+.ui-tooltip:focus-visible::after {
+  opacity: 1;
+}
+
+.ui-tooltip:hover::before,
+.ui-tooltip:focus-visible::before {
+  transform: translate(-50%, 0);
+}
+
+.ui-tooltip:hover::after,
+.ui-tooltip:focus-visible::after {
+  transform: translate(-50%, 0) scale(1);
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .ui-tooltip:hover::before,
+  .ui-tooltip:hover::after {
+    opacity: 0;
+  }
+
+  .ui-tooltip:hover::before {
+    transform: translate(-50%, -0.18rem);
+  }
+
+  .ui-tooltip:hover::after {
+    transform: translate(-50%, -0.22rem) scale(0.96);
+  }
+}
+
 .mode-toggle {
   display: inline-flex;
   border-radius: 999px;

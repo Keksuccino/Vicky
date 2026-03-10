@@ -158,9 +158,9 @@ export function AppHeader() {
         <div className="app-header-actions">
           <Link
             href={PLAINTEXT_EXPORT_NAVIGATION.href}
-            className="admin-icon-link"
+            className="admin-icon-link ui-tooltip"
             aria-label={PLAINTEXT_EXPORT_NAVIGATION.label}
-            title={PLAINTEXT_EXPORT_NAVIGATION.label}
+            data-ui-tooltip={PLAINTEXT_EXPORT_NAVIGATION.label}
             target="_blank"
             rel="noreferrer"
             prefetch={false}
@@ -171,9 +171,9 @@ export function AppHeader() {
           {isAdminAuthenticated ? (
             <Link
               href={EDITOR_NAVIGATION.href}
-              className={cn("admin-icon-link", editorIsActive && "admin-icon-link-active")}
+              className={cn("admin-icon-link ui-tooltip", editorIsActive && "admin-icon-link-active")}
               aria-label={EDITOR_NAVIGATION.label}
-              title={EDITOR_NAVIGATION.label}
+              data-ui-tooltip={EDITOR_NAVIGATION.label}
             >
               <MaterialIcon name={EDITOR_NAVIGATION.icon} />
             </Link>
@@ -181,9 +181,9 @@ export function AppHeader() {
 
           <Link
             href={adminHref}
-            className={cn("admin-icon-link", adminIsActive && "admin-icon-link-active")}
+            className={cn("admin-icon-link ui-tooltip", adminIsActive && "admin-icon-link-active")}
             aria-label={ADMIN_NAVIGATION.label}
-            title={ADMIN_NAVIGATION.label}
+            data-ui-tooltip={ADMIN_NAVIGATION.label}
           >
             <MaterialIcon name={ADMIN_NAVIGATION.icon} />
           </Link>

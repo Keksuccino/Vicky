@@ -48,10 +48,10 @@ export function ThemeSwitcher() {
 
       <button
         type="button"
-        className="mode-toggle-compact"
+        className="mode-toggle-compact ui-tooltip"
         onClick={() => setMode(compactTargetMode)}
         aria-label={compactLabel}
-        title={compactLabel}
+        data-ui-tooltip={compactLabel}
       >
         <MaterialIcon name={compactIcon} />
       </button>
