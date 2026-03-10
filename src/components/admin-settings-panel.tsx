@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -289,7 +289,8 @@ export function AdminSettingsPanel() {
 
   const [settings, setSettings] = useState<AdminSettings>(INITIAL_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const [loadingError, setLoadingError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
@@ -300,14 +301,23 @@ export function AdminSettingsPanel() {
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
+  const [connectionError, setConnectionError] = useState<string | null>(null);
 
   const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
   const [sslStatusError, setSslStatusError] = useState<string | null>(null);
 
-  const [themeSaving, setThemeSaving] = useState(false);
-  const [themeMessage, setThemeMessage] = useState<string | null>(null);
-  const [themeError, setThemeError] = useState<string | null>(null);
+  const autoSaveReadyRef = useRef(false);
+  const autoSaveInFlightRef = useRef(false);
+  const autoSaveQueuedRef = useRef(false);
+  const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
+  const latestClearTokenRef = useRef(false);
+  const latestClearOpenRouterApiKeyRef = useRef(false);
+  const lastSavedSnapshotRef = useRef<string | null>(null);
+  const lastSavedDomainRef = useRef({
+    customDomain: INITIAL_SETTINGS.customDomain,
+    letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
+  });
 
   const themeCustomization = useMemo(() => themeCustomizationFromSettings(settings), [settings]);
   const lightPreviewStyle = useMemo(
@@ -334,88 +344,124 @@ export function AdminSettingsPanel() {
     }
   }, []);
 
-  const saveSettingsChanges = useCallback(
-    async (clearToken: boolean, clearOpenRouterApiKey: boolean) => {
-      const domainErrors = validateDomainFields(settings.customDomain, settings.letsEncryptEmail);
-      const aiErrors = validateAiChatFields(settings);
-      setDomainFieldErrors(domainErrors);
-      setAiChatFieldErrors(aiErrors);
-
-      if (hasDomainFieldErrors(domainErrors) || hasAiChatFieldErrors(aiErrors)) {
-        setSettingsMessage(null);
-        setConnectionMessage(null);
-        return;
-      }
-
-      setSettingsSaving(true);
-      setSettingsMessage(null);
-      setLoadingError(null);
-
-      try {
-        const saved = await saveAdminSettings(normalizeDomainFieldsForSave(settings), {
-          clearToken,
-          clearOpenRouterApiKey,
-        });
-        setSettings({
-          ...saved,
-          githubToken: "",
-          openRouterApiKey: "",
-        });
-        setThemeSettings(themeCustomizationFromSettings(saved));
-        setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
-        setAiChatFieldErrors(validateAiChatFields(saved));
-        setClearTokenOnSave(false);
-        setClearOpenRouterApiKeyOnSave(false);
-        setSettingsMessage("Settings saved.");
-        await refreshSslStatus();
-      } catch (error) {
-        setLoadingError(formatApiError(error));
-      } finally {
-        setSettingsSaving(false);
-      }
-    },
-    [refreshSslStatus, setThemeSettings, settings],
+  const createSaveSnapshot = useCallback(
+    (draft: AdminSettings, clearToken: boolean, clearOpenRouterApiKey: boolean): string =>
+      JSON.stringify({
+        settings: draft,
+        clearToken: clearToken && !draft.githubToken.trim(),
+        clearOpenRouterApiKey: clearOpenRouterApiKey && !draft.openRouterApiKey.trim(),
+      }),
+    [],
   );
 
-  const saveThemeChanges = useCallback(async () => {
-    const domainErrors = validateDomainFields(settings.customDomain, settings.letsEncryptEmail);
-    const aiErrors = validateAiChatFields(settings);
+  const persistLatestSettings = useCallback(async () => {
+    if (!autoSaveReadyRef.current) {
+      return;
+    }
+
+    if (autoSaveInFlightRef.current) {
+      autoSaveQueuedRef.current = true;
+      return;
+    }
+
+    const draft = latestSettingsRef.current;
+    const clearToken = latestClearTokenRef.current;
+    const clearOpenRouterApiKey = latestClearOpenRouterApiKeyRef.current;
+    const snapshot = createSaveSnapshot(draft, clearToken, clearOpenRouterApiKey);
+
+    if (snapshot === lastSavedSnapshotRef.current) {
+      return;
+    }
+
+    const domainErrors = validateDomainFields(draft.customDomain, draft.letsEncryptEmail);
+    const aiErrors = validateAiChatFields(draft);
     setDomainFieldErrors(domainErrors);
     setAiChatFieldErrors(aiErrors);
 
     if (hasDomainFieldErrors(domainErrors) || hasAiChatFieldErrors(aiErrors)) {
-      setThemeMessage(null);
-      setThemeError("Fix the settings validation errors first, then save the theme customization.");
+      setSettingsMessage(null);
+      setSaveError(null);
       return;
     }
 
-    setThemeSaving(true);
-    setThemeMessage(null);
-    setThemeError(null);
+    autoSaveInFlightRef.current = true;
+    setSettingsSaving(true);
+    setSettingsMessage(null);
+    setSaveError(null);
 
     try {
-      const saved = await saveAdminSettings(normalizeDomainFieldsForSave(settings), { clearToken: false });
-      setSettings({
-        ...saved,
-        githubToken: "",
-        openRouterApiKey: "",
+      const shouldRefreshSslStatus =
+        draft.customDomain !== lastSavedDomainRef.current.customDomain ||
+        draft.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
+      const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft), {
+        clearToken,
+        clearOpenRouterApiKey,
       });
+      const nextSettings: AdminSettings = {
+        ...saved,
+        githubToken: clearToken ? "" : draft.githubToken,
+        openRouterApiKey: clearOpenRouterApiKey ? "" : draft.openRouterApiKey,
+      };
+
+      latestSettingsRef.current = nextSettings;
+      latestClearTokenRef.current = false;
+      latestClearOpenRouterApiKeyRef.current = false;
+      lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings, false, false);
+      lastSavedDomainRef.current = {
+        customDomain: nextSettings.customDomain,
+        letsEncryptEmail: nextSettings.letsEncryptEmail,
+      };
+
+      setSettings(nextSettings);
       setThemeSettings(themeCustomizationFromSettings(saved));
+      setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
       setAiChatFieldErrors(validateAiChatFields(saved));
-      setThemeMessage("Theme customization saved.");
+      setClearTokenOnSave(false);
+      setClearOpenRouterApiKeyOnSave(false);
+      setSettingsMessage("Changes saved automatically.");
+
+      if (shouldRefreshSslStatus) {
+        await refreshSslStatus();
+      }
     } catch (error) {
-      setThemeError(formatApiError(error));
+      setSaveError(formatApiError(error));
     } finally {
-      setThemeSaving(false);
+      autoSaveInFlightRef.current = false;
+      setSettingsSaving(false);
+
+      if (autoSaveQueuedRef.current) {
+        autoSaveQueuedRef.current = false;
+        void persistLatestSettings();
+      }
     }
-  }, [setThemeSettings, settings]);
+  }, [createSaveSnapshot, refreshSslStatus, setThemeSettings]);
+
+  useEffect(() => {
+    latestSettingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
+    latestClearTokenRef.current = clearTokenOnSave;
+  }, [clearTokenOnSave]);
+
+  useEffect(() => {
+    latestClearOpenRouterApiKeyRef.current = clearOpenRouterApiKeyOnSave;
+  }, [clearOpenRouterApiKeyOnSave]);
+
+  useEffect(() => {
+    if (!autoSaveReadyRef.current) {
+      return;
+    }
+
+    void persistLatestSettings();
+  }, [clearOpenRouterApiKeyOnSave, clearTokenOnSave, persistLatestSettings, settings]);
 
   useEffect(() => {
     let isActive = true;
 
     const run = async () => {
       setLoading(true);
-      setLoadingError(null);
+      setLoadError(null);
 
       try {
         const currentUser = await getCurrentUser();
@@ -429,16 +475,26 @@ export function AdminSettingsPanel() {
           return;
         }
 
+        latestSettingsRef.current = loadedSettings;
+        latestClearTokenRef.current = false;
+        latestClearOpenRouterApiKeyRef.current = false;
+        lastSavedSnapshotRef.current = createSaveSnapshot(loadedSettings, false, false);
+        lastSavedDomainRef.current = {
+          customDomain: loadedSettings.customDomain,
+          letsEncryptEmail: loadedSettings.letsEncryptEmail,
+        };
+
         setSettings(loadedSettings);
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(loadedSettings));
         setClearTokenOnSave(false);
         setClearOpenRouterApiKeyOnSave(false);
+        autoSaveReadyRef.current = true;
         await refreshSslStatus();
       } catch (error) {
         if (isActive) {
-          setLoadingError(formatApiError(error));
+          setLoadError(formatApiError(error));
         }
       } finally {
         if (isActive) {
@@ -451,18 +507,19 @@ export function AdminSettingsPanel() {
 
     return () => {
       isActive = false;
+      autoSaveReadyRef.current = false;
     };
-  }, [refreshSslStatus, router, setThemeSettings]);
+  }, [createSaveSnapshot, refreshSslStatus, router, setThemeSettings]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;
   }
 
-  if (loadingError) {
+  if (loadError) {
     return (
       <ErrorState
         title="Unable to load admin settings"
-        message={loadingError}
+        message={loadError}
         actionLabel="Retry"
         onAction={() => window.location.reload()}
       />
@@ -471,6 +528,16 @@ export function AdminSettingsPanel() {
 
   return (
     <section className="admin-page">
+      <section className="panel-card">
+        <div className="panel-header compact">
+          <h2>Settings Status</h2>
+        </div>
+        <p className="panel-description">Changes save automatically as you edit any setting.</p>
+        {settingsSaving ? <p className="warning-text">Saving changes...</p> : null}
+        {!settingsSaving && settingsMessage ? <p className="success-text">{settingsMessage}</p> : null}
+        {saveError ? <p className="error-text">{saveError}</p> : null}
+      </section>
+
       <div className="panel-grid">
         <div className="panel-stack-left">
           <section className="panel-card panel-card-repo">
@@ -493,13 +560,7 @@ export function AdminSettingsPanel() {
             Configure repository connectivity, write credentials, and docs cache behavior.
           </p>
 
-          <form
-            className="form-grid"
-            onSubmit={async (event) => {
-              event.preventDefault();
-              await saveSettingsChanges(clearTokenOnSave, clearOpenRouterApiKeyOnSave);
-            }}
-          >
+          <div className="form-grid">
             <label className="field-row" htmlFor="docs-cache-ttl-seconds">
               <span className="field-label">Docs cache TTL (seconds)</span>
               <input
@@ -612,11 +673,6 @@ export function AdminSettingsPanel() {
             </div>
 
             <div className="action-row">
-              <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
-                <MaterialIcon name={settingsSaving ? "sync" : "save"} />
-                <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
-              </button>
-
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -624,13 +680,13 @@ export function AdminSettingsPanel() {
                 onClick={async () => {
                   setTestingConnection(true);
                   setConnectionMessage(null);
-                  setLoadingError(null);
+                  setConnectionError(null);
 
                   try {
                     const message = await testAdminConnection(settings);
                     setConnectionMessage(message);
                   } catch (error) {
-                    setLoadingError(formatApiError(error));
+                    setConnectionError(formatApiError(error));
                   } finally {
                     setTestingConnection(false);
                   }
@@ -640,11 +696,10 @@ export function AdminSettingsPanel() {
                 <span>{testingConnection ? "Testing..." : "Test connection"}</span>
               </button>
             </div>
-          </form>
+          </div>
 
-          {settingsMessage ? <p className="success-text">{settingsMessage}</p> : null}
           {connectionMessage ? <p className="success-text">{connectionMessage}</p> : null}
-          {loadingError ? <p className="error-text">{loadingError}</p> : null}
+          {connectionError ? <p className="error-text">{connectionError}</p> : null}
           </section>
 
           <section className="panel-card panel-card-site">
@@ -654,13 +709,7 @@ export function AdminSettingsPanel() {
 
             <p className="panel-description">Configure site branding, footer text, start page behavior, and icon assets.</p>
 
-            <form
-              className="form-grid"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                await saveSettingsChanges(false, false);
-              }}
-            >
+            <div className="form-grid">
               <div className="field-inline">
                 <label className="field-row" htmlFor="site-title">
                   <span className="field-label">Site title</span>
@@ -786,13 +835,7 @@ export function AdminSettingsPanel() {
                 </span>
               </label>
 
-              <div className="action-row">
-                <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
-                  <MaterialIcon name={settingsSaving ? "sync" : "save"} />
-                  <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
-                </button>
-              </div>
-            </form>
+            </div>
           </section>
 
           <section className="panel-card panel-card-domain">
@@ -804,13 +847,7 @@ export function AdminSettingsPanel() {
               Configure your custom domain and Let&apos;s Encrypt contact email for automatic HTTPS certificate management.
             </p>
 
-            <form
-              className="form-grid"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                await saveSettingsChanges(false, false);
-              }}
-            >
+            <div className="form-grid">
               <label className="field-row" htmlFor="domain-custom-domain">
                 <span className="field-label">Custom domain</span>
                 <input
@@ -886,13 +923,7 @@ export function AdminSettingsPanel() {
                 Automatic SSL runs only when both values are set and DNS points this domain to your server.
               </p>
 
-              <div className="action-row">
-                <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
-                  <MaterialIcon name={settingsSaving ? "sync" : "save"} />
-                  <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
-                </button>
-              </div>
-            </form>
+            </div>
           </section>
         </div>
 
@@ -904,13 +935,7 @@ export function AdminSettingsPanel() {
 
             <p className="panel-description">Customize the built-in Light and Dark modes with a simpler accent setup.</p>
 
-            <form
-              className="theme-editor"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                await saveThemeChanges();
-              }}
-            >
+            <div className="theme-editor">
               <div className="theme-color-grid">
                 <div className="theme-color-section">
                   <strong className="theme-color-section-title">Light mode</strong>
@@ -1012,14 +1037,7 @@ export function AdminSettingsPanel() {
                 </span>
               </label>
 
-              <button type="submit" className="btn btn-primary" disabled={themeSaving}>
-                <MaterialIcon name={themeSaving ? "sync" : "save"} />
-                <span>{themeSaving ? "Saving..." : "Save theme customization"}</span>
-              </button>
-            </form>
-
-            {themeMessage ? <p className="success-text">{themeMessage}</p> : null}
-            {themeError ? <p className="error-text">{themeError}</p> : null}
+            </div>
           </section>
 
           <section className="panel-card panel-card-ai-chat">
@@ -1031,13 +1049,7 @@ export function AdminSettingsPanel() {
               Configure the AI chat assistant shown in docs pages.
             </p>
 
-            <form
-              className="form-grid"
-              onSubmit={async (event) => {
-                event.preventDefault();
-                await saveSettingsChanges(false, clearOpenRouterApiKeyOnSave);
-              }}
-            >
+            <div className="form-grid">
               <div className="field-row">
                 <span className="field-label">Enable AI chat</span>
                 <label className="toggle-row" htmlFor="ai-chat-enabled">
@@ -1254,13 +1266,7 @@ export function AdminSettingsPanel() {
                 {aiChatFieldErrors.systemPrompt ? <span className="error-text">{aiChatFieldErrors.systemPrompt}</span> : null}
               </div>
 
-              <div className="action-row">
-                <button type="submit" className="btn btn-primary" disabled={settingsSaving}>
-                  <MaterialIcon name={settingsSaving ? "sync" : "save"} />
-                  <span>{settingsSaving ? "Saving..." : "Save settings"}</span>
-                </button>
-              </div>
-            </form>
+            </div>
           </section>
 
         </div>
