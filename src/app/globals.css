@@ -2139,7 +2139,6 @@ html[data-color-mode="light"] .page-copy-menu {
 .toggle-input:checked + .toggle-control {
   background: color-mix(in srgb, var(--accent) 76%, var(--accent-surface));
   border-color: color-mix(in srgb, var(--accent) 68%, var(--accent-surface));
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .toggle-input:checked + .toggle-control .toggle-thumb {
@@ -2787,7 +2786,6 @@ html[data-color-mode="light"] .page-copy-menu {
 .editor-switch-active {
   background: color-mix(in srgb, var(--accent) 76%, var(--accent-surface));
   border-color: color-mix(in srgb, var(--accent) 68%, var(--accent-surface));
-  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 22%, transparent);
 }
 
 .editor-switch-active .editor-switch-thumb {
