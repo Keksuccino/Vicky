@@ -8,7 +8,7 @@ It gives you:
 - an optional AI chat assistant for docs pages
 - an in-browser markdown editor that saves directly back to GitHub
 
-![Screenshot_6_7](https://github.com/user-attachments/assets/241f4ffe-edb6-49a7-a006-a4b7a75ea261)
+![Screenshot_4_5](https://github.com/user-attachments/assets/1b2e9754-5402-48e5-808c-5f79c254318d)
 
 ## Highlights
 
