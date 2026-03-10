@@ -292,8 +292,7 @@ export function AdminSettingsPanel() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [settingsMessage, setSettingsMessage] = useState<string | null>(null);
+  const [, setSettingsSaving] = useState(false);
   const [clearTokenOnSave, setClearTokenOnSave] = useState(false);
   const [clearOpenRouterApiKeyOnSave, setClearOpenRouterApiKeyOnSave] = useState(false);
   const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_DOMAIN_FIELD_ERRORS);
@@ -379,14 +378,12 @@ export function AdminSettingsPanel() {
     setAiChatFieldErrors(aiErrors);
 
     if (hasDomainFieldErrors(domainErrors) || hasAiChatFieldErrors(aiErrors)) {
-      setSettingsMessage(null);
       setSaveError(null);
       return;
     }
 
     autoSaveInFlightRef.current = true;
     setSettingsSaving(true);
-    setSettingsMessage(null);
     setSaveError(null);
 
     try {
@@ -418,7 +415,6 @@ export function AdminSettingsPanel() {
       setAiChatFieldErrors(validateAiChatFields(saved));
       setClearTokenOnSave(false);
       setClearOpenRouterApiKeyOnSave(false);
-      setSettingsMessage("Changes saved automatically.");
 
       if (shouldRefreshSslStatus) {
         await refreshSslStatus();
@@ -528,15 +524,7 @@ export function AdminSettingsPanel() {
 
   return (
     <section className="admin-page">
-      <section className="panel-card">
-        <div className="panel-header compact">
-          <h2>Settings Status</h2>
-        </div>
-        <p className="panel-description">Changes save automatically as you edit any setting.</p>
-        {settingsSaving ? <p className="warning-text">Saving changes...</p> : null}
-        {!settingsSaving && settingsMessage ? <p className="success-text">{settingsMessage}</p> : null}
-        {saveError ? <p className="error-text">{saveError}</p> : null}
-      </section>
+      {saveError ? <p className="error-text">{saveError}</p> : null}
 
       <div className="panel-grid">
         <div className="panel-stack-left">
