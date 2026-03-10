@@ -136,7 +136,9 @@ Useful URLs:
 - Do not reset/revert unrelated user changes.
 
 ## Validation Checklist Before Commit
-- Minimum: `npm run lint`
+- Run checks only when they are actually useful for the change.
+- Skip lint/tests for small simple changes that do not materially affect system behavior, such as adjusting a color, spacing, or size value, or updating docs/instructions like `AGENTS.md`.
+- Use `npm run lint` for larger code changes, behavior changes, refactors, or when the touched area has a meaningful risk of regressions.
 - Optional as needed: manual smoke checks for touched flows
 - `npm run typecheck` is useful but can fail from existing unrelated issues (for example stale `.next` type artifacts or existing test typing issues). If it fails, report clearly instead of silently ignoring.
 
