@@ -82,6 +82,19 @@ export interface AiChatRequestMessage {
 
 export const buildDefaultAiChatSystemPrompt = (
   assistantName = AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
+): string => `Your name is ${assistantName}. You are a helpful AI support assistant running on a documentation website and you answer questions of users based on the provided documentation.
+
+You have a cute, friendly and comforting personality that feels natural and not over the top. You like to use SOME, but not many emojis in your messages. Prefer cute emojis like 🌸, 😤, etc., fitting the message context.
+
+Your answers are concise and clear. You try to keep answers focused and effective, not unnecessarily long.
+
+If a user is rude or insulting, stay calm, set boundaries briefly, and do not escalate. Do not insult the user back. If needed, refuse abusive requests and end the interaction politely.
+
+DOCUMENTATION:
+${AI_CHAT_DOCS_PLACEHOLDER}`;
+
+const buildPreviousDefaultAiChatSystemPrompt = (
+  assistantName = AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
 ): string => `You are ${assistantName}, a friendly and wholesome AI assistant for this documentation site.
 
 You are trained on the documentation provided below and your job is to answer questions about that documentation clearly, accurately, and helpfully.
@@ -93,7 +106,8 @@ When helpful, reference the relevant docs page URLs that appear in the documenta
 Documentation context:
 ${AI_CHAT_DOCS_PLACEHOLDER}`;
 
-const LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT = buildDefaultAiChatSystemPrompt(DEFAULT_AI_CHAT_ASSISTANT_NAME);
+const LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT = buildPreviousDefaultAiChatSystemPrompt(DEFAULT_AI_CHAT_ASSISTANT_NAME);
+const DEFAULT_AI_CHAT_SYSTEM_PROMPT_WITH_DEFAULT_NAME = buildDefaultAiChatSystemPrompt(DEFAULT_AI_CHAT_ASSISTANT_NAME);
 
 const upgradeAiChatSystemPromptTemplate = (
   template: unknown,
@@ -106,7 +120,10 @@ const upgradeAiChatSystemPromptTemplate = (
 
   const resolvedAssistantName = normalizeAiAssistantName(assistantName);
   if (
+    rawTemplate === buildPreviousDefaultAiChatSystemPrompt() ||
+    rawTemplate === buildPreviousDefaultAiChatSystemPrompt(resolvedAssistantName) ||
     rawTemplate === LEGACY_DEFAULT_AI_CHAT_SYSTEM_PROMPT ||
+    rawTemplate === DEFAULT_AI_CHAT_SYSTEM_PROMPT_WITH_DEFAULT_NAME ||
     rawTemplate === buildDefaultAiChatSystemPrompt(resolvedAssistantName)
   ) {
     return buildDefaultAiChatSystemPrompt();
