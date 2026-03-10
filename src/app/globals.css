@@ -2968,8 +2968,8 @@ html[data-color-mode="light"] .page-copy-menu {
 
 .docs-ai-chat-resize-handle {
   position: absolute;
-  top: -0.16rem;
-  left: -0.16rem;
+  top: 0.2rem;
+  left: 0.2rem;
   z-index: 3;
   width: 1.24rem;
   height: 1.24rem;
