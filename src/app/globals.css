@@ -499,7 +499,7 @@ select {
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
   background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
-  color: color-mix(in srgb, var(--accent-surface) 76%, var(--text-secondary));
+  color: var(--text-secondary);
   display: none;
   align-items: center;
   justify-content: center;
@@ -525,6 +525,8 @@ select {
 
 .mode-toggle-compact .material-icon {
   font-size: 1.24rem;
+  color: inherit;
+  transition: color 160ms ease;
 }
 
 .admin-icon-link {
