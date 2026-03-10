@@ -24,6 +24,14 @@ export const normalizeAiAssistantName = (
   return trimmed || fallback;
 };
 
+export const normalizeAiChatAvatarUrl = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim();
+};
+
 const normalizeAiChatTemplateString = (value: unknown, fallback: string): string => {
   if (typeof value !== "string") {
     return fallback;
@@ -112,6 +120,7 @@ export const normalizeAiChatSystemPromptTemplate = (
 export const DEFAULT_AI_CHAT_SETTINGS = (): AiChatSettings => ({
   enabled: false,
   assistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  avatarUrl: "",
   headerSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE,
   welcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   systemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,

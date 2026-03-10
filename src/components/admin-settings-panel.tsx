@@ -54,6 +54,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   tokenConfigured: false,
   aiChatEnabled: false,
   aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  aiChatAvatarUrl: "",
   aiChatHeaderSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE,
   aiChatWelcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
@@ -1056,6 +1057,20 @@ export function AdminSettingsPanel() {
                 <span className="field-hint">
                   Shown in the chat header, welcome message, and reply labels. Use <code>{AI_CHAT_ASSISTANT_NAME_PLACEHOLDER}</code>{" "}
                   in the system prompt to reference this value dynamically.
+                </span>
+              </label>
+
+              <label className="field-row" htmlFor="ai-chat-avatar-url">
+                <span className="field-label">Assistant profile image URL</span>
+                <input
+                  id="ai-chat-avatar-url"
+                  className="input"
+                  value={settings.aiChatAvatarUrl}
+                  onChange={(event) => setSettings((prev) => ({ ...prev, aiChatAvatarUrl: event.target.value }))}
+                  placeholder="https://example.com/assistant-avatar.png"
+                />
+                <span className="field-hint">
+                  Optional image shown in the top-left chat header badge. Leave blank to use the default assistant icon.
                 </span>
               </label>
 

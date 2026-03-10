@@ -243,6 +243,7 @@ export function DocsAiChat() {
     initialStateRef.current = createInitialConversationState();
   }
   const [assistantName, setAssistantName] = useState(DEFAULT_AI_CHAT_ASSISTANT_NAME);
+  const [assistantAvatarUrl, setAssistantAvatarUrl] = useState("");
   const [headerSubtitle, setHeaderSubtitle] = useState(DEFAULT_AI_CHAT_HEADER_SUBTITLE);
   const [welcomeMessage, setWelcomeMessage] = useState(DEFAULT_AI_CHAT_WELCOME_MESSAGE);
   const [featureReady, setFeatureReady] = useState(false);
@@ -260,6 +261,7 @@ export function DocsAiChat() {
     () => initialStateRef.current?.activeConversationId ?? null,
   );
   const [cookiesHydrated, setCookiesHydrated] = useState(false);
+  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -273,6 +275,8 @@ export function DocsAiChat() {
     assistantName,
     DEFAULT_AI_CHAT_HEADER_SUBTITLE,
   );
+  const resolvedAssistantAvatarUrl = assistantAvatarUrl.trim();
+  const showAssistantAvatar = resolvedAssistantAvatarUrl.length > 0 && !avatarLoadFailed;
 
   useEffect(() => {
     let mounted = true;
@@ -286,8 +290,10 @@ export function DocsAiChat() {
 
         setFeatureEnabled(settings.aiChatEnabled);
         setAssistantName(settings.aiChatAssistantName);
+        setAssistantAvatarUrl(settings.aiChatAvatarUrl);
         setHeaderSubtitle(settings.aiChatHeaderSubtitle);
         setWelcomeMessage(settings.aiChatWelcomeMessage);
+        setAvatarLoadFailed(false);
       } catch {
         if (!mounted) {
           return;
@@ -307,6 +313,10 @@ export function DocsAiChat() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    setAvatarLoadFailed(false);
+  }, [resolvedAssistantAvatarUrl]);
 
   useEffect(() => {
     const restored = restoreAiChatConversationsWithSettings(loadStoredChatState(), assistantName, welcomeMessage);
@@ -613,8 +623,19 @@ export function DocsAiChat() {
           <div className="docs-ai-chat-panel-surface">
             <header className="docs-ai-chat-header">
               <div className="docs-ai-chat-title-group">
-                <span className="docs-ai-chat-title-badge">
-                  <MaterialIcon name="auto_awesome" />
+                <span
+                  className={cn("docs-ai-chat-title-badge", showAssistantAvatar && "docs-ai-chat-title-badge-image")}
+                >
+                  {showAssistantAvatar ? (
+                    <img
+                      src={resolvedAssistantAvatarUrl}
+                      alt=""
+                      className="docs-ai-chat-title-avatar"
+                      onError={() => setAvatarLoadFailed(true)}
+                    />
+                  ) : (
+                    <MaterialIcon name="auto_awesome" />
+                  )}
                 </span>
                 <div>
                   <strong>{assistantName}</strong>

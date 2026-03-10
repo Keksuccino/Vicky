@@ -40,6 +40,7 @@ export type PublicSiteSettings = {
   customDomain: string;
   aiChatEnabled: boolean;
   aiChatAssistantName: string;
+  aiChatAvatarUrl: string;
   aiChatHeaderSubtitle: string;
   aiChatWelcomeMessage: string;
   themeLightAccent: string;
@@ -82,6 +83,7 @@ const DEFAULT_SETTINGS: AdminSettings = {
   tokenConfigured: false,
   aiChatEnabled: false,
   aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
+  aiChatAvatarUrl: "",
   aiChatHeaderSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE,
   aiChatWelcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
@@ -448,6 +450,7 @@ function normalizeSettings(source: unknown): AdminSettings {
     tokenConfigured: asBoolean(github.tokenConfigured, false),
     aiChatEnabled: asBoolean(aiChat.enabled, DEFAULT_SETTINGS.aiChatEnabled),
     aiChatAssistantName: asString(aiChat.assistantName, DEFAULT_SETTINGS.aiChatAssistantName),
+    aiChatAvatarUrl: asString(aiChat.avatarUrl, DEFAULT_SETTINGS.aiChatAvatarUrl),
     aiChatHeaderSubtitle: asString(aiChat.headerSubtitle, DEFAULT_SETTINGS.aiChatHeaderSubtitle),
     aiChatWelcomeMessage: asString(aiChat.welcomeMessage, DEFAULT_SETTINGS.aiChatWelcomeMessage),
     aiChatSystemPrompt: asString(aiChat.systemPrompt, DEFAULT_SETTINGS.aiChatSystemPrompt),
@@ -483,6 +486,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
     aiChatEnabled: asBoolean(aiChat.enabled, DEFAULT_SETTINGS.aiChatEnabled),
     aiChatAssistantName: asString(aiChat.assistantName, DEFAULT_SETTINGS.aiChatAssistantName),
+    aiChatAvatarUrl: asString(aiChat.avatarUrl, DEFAULT_SETTINGS.aiChatAvatarUrl),
     aiChatHeaderSubtitle: asString(aiChat.headerSubtitle, DEFAULT_SETTINGS.aiChatHeaderSubtitle),
     aiChatWelcomeMessage: asString(aiChat.welcomeMessage, DEFAULT_SETTINGS.aiChatWelcomeMessage),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
@@ -632,6 +636,7 @@ export async function saveAdminSettings(
     aiChat: {
       enabled: settings.aiChatEnabled,
       assistantName: settings.aiChatAssistantName,
+      avatarUrl: settings.aiChatAvatarUrl,
       headerSubtitle: settings.aiChatHeaderSubtitle,
       welcomeMessage: settings.aiChatWelcomeMessage,
       systemPrompt: settings.aiChatSystemPrompt,

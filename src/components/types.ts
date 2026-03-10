@@ -70,6 +70,7 @@ export type AdminSettings = {
   tokenConfigured: boolean;
   aiChatEnabled: boolean;
   aiChatAssistantName: string;
+  aiChatAvatarUrl: string;
   aiChatHeaderSubtitle: string;
   aiChatWelcomeMessage: string;
   aiChatSystemPrompt: string;

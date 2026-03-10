@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   AI_CHAT_DOCS_PLACEHOLDER,
   normalizeAiAssistantName,
+  normalizeAiChatAvatarUrl,
   normalizeAiChatHeaderSubtitle,
   normalizeAiChatSystemPromptTemplate,
   normalizeAiChatWelcomeMessage,
@@ -68,6 +69,7 @@ const settingsPatchSchema = z
       .object({
         enabled: z.boolean().optional(),
         assistantName: z.string().optional(),
+        avatarUrl: z.string().optional(),
         headerSubtitle: z.string().optional(),
         welcomeMessage: z.string().optional(),
         openRouterModel: z.string().optional(),
@@ -225,6 +227,10 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
         if (patch.aiChat.assistantName !== undefined) {
           store.settings.aiChat.assistantName = normalizeAiAssistantName(patch.aiChat.assistantName);
+        }
+
+        if (patch.aiChat.avatarUrl !== undefined) {
+          store.settings.aiChat.avatarUrl = normalizeAiChatAvatarUrl(patch.aiChat.avatarUrl);
         }
 
         if (patch.aiChat.headerSubtitle !== undefined) {

@@ -4,6 +4,7 @@ import path from "node:path";
 import {
   DEFAULT_AI_CHAT_SETTINGS,
   normalizeAiAssistantName,
+  normalizeAiChatAvatarUrl,
   normalizeAiChatHeaderSubtitle,
   normalizeAiChatSystemPromptTemplate,
   normalizeAiChatWelcomeMessage,
@@ -146,6 +147,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
   const fallbackTheme = sourceTheme ? defaults.theme : deriveThemeCustomizationFromLegacyStore(source, legacyThemes);
   const defaultAiChat = DEFAULT_AI_CHAT_SETTINGS();
   const assistantName = normalizeAiAssistantName(sourceAiChat.assistantName, defaultAiChat.assistantName);
+  const avatarUrl = normalizeAiChatAvatarUrl(sourceAiChat.avatarUrl);
   const headerSubtitle = normalizeAiChatHeaderSubtitle(sourceAiChat.headerSubtitle, defaultAiChat.headerSubtitle);
   const welcomeMessage = normalizeAiChatWelcomeMessage(sourceAiChat.welcomeMessage, defaultAiChat.welcomeMessage);
 
@@ -178,6 +180,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
     aiChat: {
       enabled: typeof sourceAiChat.enabled === "boolean" ? sourceAiChat.enabled : defaultAiChat.enabled,
       assistantName,
+      avatarUrl,
       headerSubtitle,
       welcomeMessage,
       openRouterModel: normalizeString(sourceAiChat.openRouterModel, defaultAiChat.openRouterModel),
@@ -287,6 +290,7 @@ export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "git
   aiChat: {
     enabled: settings.aiChat.enabled,
     assistantName: settings.aiChat.assistantName,
+    avatarUrl: settings.aiChat.avatarUrl,
     headerSubtitle: settings.aiChat.headerSubtitle,
     welcomeMessage: settings.aiChat.welcomeMessage,
     openRouterModel: settings.aiChat.openRouterModel,
