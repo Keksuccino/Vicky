@@ -739,8 +739,7 @@ export function AdminSettingsPanel() {
 
               <label className="field-row" htmlFor="site-footer-text">
                 <span className="field-label">
-                  Footer text (supports <code>{`{{year}}`}</code>, <code>{`{{owner}}`}</code>, and{" "}
-                  <code>{`{{vicky}}`}</code>)
+                  Footer Text
                 </span>
                 <input
                   id="site-footer-text"
