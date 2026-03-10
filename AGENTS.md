@@ -130,6 +130,7 @@ Useful URLs:
 ## Commit and Push Workflow (Important)
 - User preference for this repo: commit after each finished task.
 - Keep commits focused and descriptive.
+- Always run `git commit` and `git push` sequentially. Wait for `git commit` to finish successfully before starting `git push`; do not run them in parallel.
 - Push to `origin main` after each task-level commit unless the user says otherwise.
 - Do not amend/rewrite history unless explicitly requested.
 - Do not reset/revert unrelated user changes.
