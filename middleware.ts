@@ -4,26 +4,6 @@ import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from "@/lib/auth";
 
 const LOGIN_PAGE_PATH = "/admin/login";
 const LOGIN_API_PATH = "/api/auth/login";
-const RAW_DOCS_QUERY_PARAM = "raw";
-
-const isRawDocsRequest = (request: NextRequest): boolean => {
-  const { pathname, searchParams } = request.nextUrl;
-  if (!pathname.startsWith("/docs/") || !searchParams.has(RAW_DOCS_QUERY_PARAM)) {
-    return false;
-  }
-
-  const rawValue = searchParams.get(RAW_DOCS_QUERY_PARAM)?.trim().toLowerCase();
-  return rawValue !== "0" && rawValue !== "false";
-};
-
-const rawDocsRewriteResponse = (request: NextRequest): NextResponse => {
-  const slug = request.nextUrl.pathname.slice("/docs/".length);
-  const rewriteUrl = request.nextUrl.clone();
-  rewriteUrl.pathname = "/api/docs/raw";
-  rewriteUrl.search = "";
-  rewriteUrl.searchParams.set("slug", slug);
-  return NextResponse.rewrite(rewriteUrl);
-};
 
 const isProtectedPath = (pathname: string): boolean => {
   if (pathname.startsWith("/api/admin/")) {
@@ -53,10 +33,6 @@ const unauthorizedApiResponse = (): NextResponse =>
 
 export const middleware = async (request: NextRequest): Promise<NextResponse> => {
   const { pathname } = request.nextUrl;
-
-  if (isRawDocsRequest(request)) {
-    return rawDocsRewriteResponse(request);
-  }
 
   if (!isProtectedPath(pathname) || isAllowedWithoutSession(pathname)) {
     return NextResponse.next();
