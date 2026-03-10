@@ -1,6 +1,14 @@
 "use client";
 
-import { type CSSProperties, type ChangeEvent, type KeyboardEvent, useEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
 import { fetchPublicSiteSettings, formatApiError, sendDocsAiChatMessage } from "@/components/api";
 import { cn } from "@/components/cn";
@@ -243,6 +251,7 @@ export function DocsAiChat() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const resizeCleanupRef = useRef<(() => void) | null>(null);
 
   const activeConversation =
     conversations.find((conversation) => conversation.id === activeConversationId) ?? conversations.at(-1) ?? null;
@@ -377,6 +386,12 @@ export function DocsAiChat() {
   }, [isCompactViewport, isOpen]);
 
   useEffect(() => {
+    return () => {
+      resizeCleanupRef.current?.();
+    };
+  }, []);
+
+  useEffect(() => {
     if (activeConversation) {
       return;
     }
@@ -500,6 +515,54 @@ export function DocsAiChat() {
     void handleSubmit();
   };
 
+  const handleResizePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (isCompactViewport || !panelRef.current || typeof window === "undefined") {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    resizeCleanupRef.current?.();
+
+    const panelRect = panelRef.current.getBoundingClientRect();
+    const startRight = panelRect.right;
+    const startBottom = panelRect.bottom;
+
+    const cleanup = () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      window.removeEventListener("pointercancel", handlePointerUp);
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      resizeCleanupRef.current = null;
+    };
+
+    const handlePointerMove = (moveEvent: PointerEvent) => {
+      const nextSize = clampWindowSize({
+        width: startRight - moveEvent.clientX,
+        height: startBottom - moveEvent.clientY,
+      });
+
+      setWindowSize((current) =>
+        current.width === nextSize.width && current.height === nextSize.height ? current : nextSize,
+      );
+    };
+
+    const handlePointerUp = () => {
+      cleanup();
+    };
+
+    resizeCleanupRef.current = cleanup;
+    document.body.style.userSelect = "none";
+    document.body.style.cursor = "nwse-resize";
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+    window.addEventListener("pointercancel", handlePointerUp);
+
+    handlePointerMove(event.nativeEvent);
+  };
+
   if (!featureReady || !featureEnabled || !activeConversation) {
     return null;
   }
@@ -540,6 +603,14 @@ export function DocsAiChat() {
           style={panelStyle}
           aria-label="Ask Docs chat"
         >
+          {!isCompactViewport ? (
+            <div
+              className="docs-ai-chat-resize-handle"
+              onPointerDown={handleResizePointerDown}
+              aria-hidden="true"
+            />
+          ) : null}
+
           <header className="docs-ai-chat-header">
             <div className="docs-ai-chat-title-group">
               <span className="docs-ai-chat-title-badge">
