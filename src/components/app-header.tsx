@@ -156,6 +156,18 @@ export function AppHeader() {
         </Link>
 
         <div className="app-header-actions">
+          <Link
+            href={PLAINTEXT_EXPORT_NAVIGATION.href}
+            className="admin-icon-link"
+            aria-label={PLAINTEXT_EXPORT_NAVIGATION.label}
+            title={PLAINTEXT_EXPORT_NAVIGATION.label}
+            target="_blank"
+            rel="noreferrer"
+            prefetch={false}
+          >
+            <MaterialIcon name={PLAINTEXT_EXPORT_NAVIGATION.icon} />
+          </Link>
+
           {isAdminAuthenticated ? (
             <Link
               href={EDITOR_NAVIGATION.href}
@@ -174,18 +186,6 @@ export function AppHeader() {
             title={ADMIN_NAVIGATION.label}
           >
             <MaterialIcon name={ADMIN_NAVIGATION.icon} />
-          </Link>
-
-          <Link
-            href={PLAINTEXT_EXPORT_NAVIGATION.href}
-            className="admin-icon-link"
-            aria-label={PLAINTEXT_EXPORT_NAVIGATION.label}
-            title={PLAINTEXT_EXPORT_NAVIGATION.label}
-            target="_blank"
-            rel="noreferrer"
-            prefetch={false}
-          >
-            <MaterialIcon name={PLAINTEXT_EXPORT_NAVIGATION.icon} />
           </Link>
           <ThemeSwitcher />
         </div>
