@@ -10,6 +10,8 @@ It gives you:
 
 ![Screenshot_4_5](https://github.com/user-attachments/assets/1b2e9754-5402-48e5-808c-5f79c254318d)
 
+<img width="665" height="566" alt="Screenshot_4" src="https://github.com/user-attachments/assets/6f65dbec-0367-48a0-8449-166c64e31a27" />
+
 ## Highlights
 
 - GitHub-backed docs storage: pages are read from a configured repository and path, not from this repo
