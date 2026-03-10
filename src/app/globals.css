@@ -3058,6 +3058,11 @@ html[data-color-mode="light"] .page-copy-menu {
   height: 100%;
   display: block;
   object-fit: cover;
+  border-radius: inherit;
+  background: #fff;
+  opacity: 1;
+  mix-blend-mode: normal;
+  filter: none;
 }
 
 .docs-ai-chat-title-group strong,
