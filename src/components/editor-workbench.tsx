@@ -340,7 +340,7 @@ export function EditorWorkbench({ initialPath }: EditorWorkbenchProps) {
             }}
           >
             <MaterialIcon name="note_add" />
-            <span>New page</span>
+            <span>New Page</span>
           </button>
 
           <button
@@ -352,7 +352,7 @@ export function EditorWorkbench({ initialPath }: EditorWorkbenchProps) {
             }}
           >
             <MaterialIcon name={saveLoading ? "sync" : "save"} />
-            <span>{saveLoading ? "Saving..." : "Save draft"}</span>
+            <span>{saveLoading ? "Saving..." : "Save Changes"}</span>
           </button>
         </div>
       </div>
