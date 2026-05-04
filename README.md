@@ -87,7 +87,7 @@ If you run the repo from `/mnt/<drive>/...` inside WSL, `npm run dev` automatica
 
 ## First-Time Setup
 
-1. Sign in at `/admin/login` with the password from `ADMIN_PASSWORD`.
+1. Sign in at `/admin/login` with username `admin` and the password from `ADMIN_PASSWORD`.
 2. Open `/admin/settings`.
 3. In `Repository Settings`, configure:
    - GitHub owner
@@ -107,23 +107,6 @@ After setup:
 - `/` redirects to your configured start page
 - docs pages are served at `/docs/<path>`
 - the editor is available at `/editor`
-
-## Admin Panel
-
-The settings UI is split into five areas:
-
-- `Repository Settings`: GitHub owner/repo/branch/docs path, token handling, docs cache TTL, and connection testing
-- `Site Settings`: title, description, footer template, start page, title gradient, and docs icon URLs
-- `Domain Settings`: custom domain, Let's Encrypt email, and live SSL runtime status
-- `Theme Management`: built-in Light/Dark accent colors plus custom CSS
-- `AI Chat`: assistant enable/disable toggle, assistant name/avatar, chat header copy, welcome message, OpenRouter model/API key, and system prompt template
-
-Footer text supports these placeholders:
-- `{{year}}`
-- `{{owner}}`
-- `{{vicky}}`
-
-`{{vicky}}` is rendered as a clickable link to the Vicky repository.
 
 ## AI Chat Assistant
 
