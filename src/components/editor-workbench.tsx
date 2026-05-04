@@ -76,6 +76,15 @@ function pathFromInput(input: string): string {
   return toAbsoluteDocPath(slugify(cleaned));
 }
 
+function toDocsHref(path: string): string {
+  const normalized = toAbsoluteDocPath(path);
+  if (normalized === "/") {
+    return "/docs";
+  }
+
+  return `/docs/${normalized.slice(1)}`;
+}
+
 function nodeMatchesFilter(node: DocTreeNode, query: string): boolean {
   const q = query.toLowerCase();
   if (!q) {
@@ -353,6 +362,17 @@ export function EditorWorkbench({ initialPath }: EditorWorkbenchProps) {
           >
             <MaterialIcon name={saveLoading ? "sync" : "save"} />
             <span>{saveLoading ? "Saving..." : "Save Changes"}</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              router.push(toDocsHref(draft.path || draft.slug));
+            }}
+          >
+            <MaterialIcon name="exit_to_app" />
+            <span>Leave Editor</span>
           </button>
         </div>
       </div>
