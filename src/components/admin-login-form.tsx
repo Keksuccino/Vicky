@@ -176,7 +176,6 @@ export function AdminLoginForm() {
               autoComplete="username"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              placeholder="admin"
               required
             />
           </label>
