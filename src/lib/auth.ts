@@ -4,6 +4,14 @@ import { NextResponse, type NextRequest } from "next/server";
 const encoder = new TextEncoder();
 
 export const ADMIN_COOKIE_NAME = "vicky_admin_session";
+export const ADMIN_USERNAME = "admin";
+
+export type AuthRole = "admin" | "moderator";
+
+export type AuthSession = {
+  role: AuthRole;
+  username: string;
+};
 
 const defaultSessionSeconds = Number(process.env.ADMIN_SESSION_MAX_AGE_SECONDS ?? "43200");
 export const ADMIN_SESSION_MAX_AGE_SECONDS =
@@ -70,27 +78,54 @@ export const verifyAdminPassword = async (candidate: string): Promise<boolean> =
   return constantTimeEqual(candidateHash, expectedHash);
 };
 
-export const createAdminSessionToken = async (): Promise<string> => {
+export const normalizeUsername = (value: string): string => value.trim().toLowerCase();
+
+export const createSessionToken = async (session: AuthSession): Promise<string> => {
   const secret = getJwtSecret();
 
-  return new SignJWT({ role: "admin" })
+  return new SignJWT({
+    role: session.role,
+    username: normalizeUsername(session.username),
+  })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${ADMIN_SESSION_MAX_AGE_SECONDS}s`)
     .sign(secret);
 };
 
-export const verifyAdminSessionToken = async (token: string): Promise<boolean> => {
+export const createAdminSessionToken = async (): Promise<string> =>
+  createSessionToken({ role: "admin", username: ADMIN_USERNAME });
+
+export const verifySessionToken = async (token: string): Promise<AuthSession | null> => {
   try {
     const secret = getJwtSecret();
     const { payload } = await jwtVerify(token, secret);
-    return payload.role === "admin";
+    const role = payload.role === "admin" || payload.role === "moderator" ? payload.role : null;
+    if (!role) {
+      return null;
+    }
+
+    const rawUsername = typeof payload.username === "string" ? payload.username : "";
+    const username = normalizeUsername(rawUsername || (role === "admin" ? ADMIN_USERNAME : ""));
+    if (!username) {
+      return null;
+    }
+
+    return {
+      role,
+      username,
+    };
   } catch {
-    return false;
+    return null;
   }
 };
 
-export const applyAdminSessionCookie = (response: NextResponse, token: string): void => {
+export const verifyAdminSessionToken = async (token: string): Promise<boolean> => {
+  const session = await verifySessionToken(token);
+  return session?.role === "admin";
+};
+
+export const applySessionCookie = (response: NextResponse, token: string): void => {
   response.cookies.set({
     name: ADMIN_COOKIE_NAME,
     value: token,
@@ -102,7 +137,9 @@ export const applyAdminSessionCookie = (response: NextResponse, token: string): 
   });
 };
 
-export const clearAdminSessionCookie = (response: NextResponse): void => {
+export const applyAdminSessionCookie = applySessionCookie;
+
+export const clearSessionCookie = (response: NextResponse): void => {
   response.cookies.set({
     name: ADMIN_COOKIE_NAME,
     value: "",
@@ -115,14 +152,21 @@ export const clearAdminSessionCookie = (response: NextResponse): void => {
   });
 };
 
-export const isAdminRequest = async (request: NextRequest): Promise<boolean> => {
+export const clearAdminSessionCookie = clearSessionCookie;
+
+export const getRequestSession = async (request: NextRequest): Promise<AuthSession | null> => {
   const token = request.cookies.get(ADMIN_COOKIE_NAME)?.value;
 
   if (!token) {
-    return false;
+    return null;
   }
 
-  return verifyAdminSessionToken(token);
+  return verifySessionToken(token);
+};
+
+export const isAdminRequest = async (request: NextRequest): Promise<boolean> => {
+  const session = await getRequestSession(request);
+  return session?.role === "admin";
 };
 
 export const requireAdminRequest = async (request: NextRequest): Promise<NextResponse | null> => {

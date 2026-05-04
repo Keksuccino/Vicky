@@ -6,42 +6,51 @@ import { useRouter } from "next/navigation";
 import { ApiError, formatApiError, getCurrentUser, login } from "@/components/api";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
+import type { AuthUser } from "@/components/types";
 
-const DEFAULT_NEXT_PATH = "/admin/settings";
+const DEFAULT_ADMIN_NEXT_PATH = "/admin/settings";
+const DEFAULT_EDITOR_NEXT_PATH = "/editor";
 const ALLOWED_NEXT_PATH_PREFIXES = ["/admin", "/editor"];
 const DISALLOWED_NEXT_PATHS = new Set(["/admin/login"]);
 
-const isAllowedNextPathname = (pathname: string): boolean => {
+const getDefaultNextPath = (user: AuthUser | null): string =>
+  user?.role === "admin" ? DEFAULT_ADMIN_NEXT_PATH : DEFAULT_EDITOR_NEXT_PATH;
+
+const isAllowedNextPathname = (pathname: string, user: AuthUser | null): boolean => {
   if (DISALLOWED_NEXT_PATHS.has(pathname)) {
     return false;
+  }
+
+  if (user?.role === "moderator") {
+    return pathname === "/editor" || pathname.startsWith("/editor/");
   }
 
   return ALLOWED_NEXT_PATH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 };
 
-const getNextPath = (): string => {
+const getNextPath = (user: AuthUser | null): string => {
   if (typeof window === "undefined") {
-    return DEFAULT_NEXT_PATH;
+    return getDefaultNextPath(user);
   }
 
   const rawNext = new URLSearchParams(window.location.search).get("next");
   if (!rawNext) {
-    return DEFAULT_NEXT_PATH;
+    return getDefaultNextPath(user);
   }
 
   try {
     const parsed = new URL(rawNext, window.location.origin);
     if (parsed.origin !== window.location.origin) {
-      return DEFAULT_NEXT_PATH;
+      return getDefaultNextPath(user);
     }
 
-    if (!isAllowedNextPathname(parsed.pathname)) {
-      return DEFAULT_NEXT_PATH;
+    if (!isAllowedNextPathname(parsed.pathname, user)) {
+      return getDefaultNextPath(user);
     }
 
     return `${parsed.pathname}${parsed.search}${parsed.hash}`;
   } catch {
-    return DEFAULT_NEXT_PATH;
+    return getDefaultNextPath(user);
   }
 };
 
@@ -94,6 +103,7 @@ const extractLoginWarning = (error: unknown): string | null => {
 
 export function AdminLoginForm() {
   const router = useRouter();
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
@@ -107,7 +117,7 @@ export function AdminLoginForm() {
       try {
         const user = await getCurrentUser();
         if (isActive && user) {
-          router.replace(getNextPath());
+          router.replace(getNextPath(user));
         }
       } catch {
         // Keep login form visible when auth check fails.
@@ -134,8 +144,8 @@ export function AdminLoginForm() {
       <div className="auth-card">
         <div className="auth-hero">
           <MaterialIcon name="verified_user" className="auth-icon" />
-          <h1>Admin sign in</h1>
-          <p>Sign in with your admin password to manage repository settings, appearance, and pages.</p>
+          <h1>Sign in</h1>
+          <p>Use the admin account or a moderator account to access the tools available to you.</p>
         </div>
 
         <form
@@ -147,8 +157,8 @@ export function AdminLoginForm() {
             setWarning(null);
 
             try {
-              await login(password);
-              router.replace(getNextPath());
+              const user = await login(username, password);
+              router.replace(getNextPath(user));
             } catch (submitError) {
               setError(formatApiError(submitError));
               setWarning(extractLoginWarning(submitError));
@@ -157,8 +167,22 @@ export function AdminLoginForm() {
             }
           }}
         >
+          <label className="field-row" htmlFor="login-username">
+            <span className="field-label">Username</span>
+            <input
+              id="login-username"
+              className="input"
+              type="text"
+              autoComplete="username"
+              value={username}
+              onChange={(event) => setUsername(event.target.value)}
+              placeholder="admin"
+              required
+            />
+          </label>
+
           <label className="field-row" htmlFor="admin-password">
-            <span className="field-label">Admin password</span>
+            <span className="field-label">Password</span>
             <input
               id="admin-password"
               className="input"

@@ -1,14 +1,16 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { applyAdminSessionCookie, createAdminSessionToken, verifyAdminPassword } from "@/lib/auth";
+import { applySessionCookie, createSessionToken } from "@/lib/auth";
 import { errorResponse, parseJsonBody } from "@/lib/http";
 import { clearFailedLoginAttempts, getLoginRateLimitStatus, registerFailedLoginAttempt } from "@/lib/login-rate-limit";
+import { authenticateCredentials } from "@/lib/moderators";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const loginSchema = z.object({
+  username: z.string().min(1, "Username is required."),
   password: z.string().min(1, "Password is required."),
 });
 
@@ -36,8 +38,8 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     const body = await parseJsonBody<unknown>(request);
     const parsed = loginSchema.parse(body);
 
-    const isValid = await verifyAdminPassword(parsed.password);
-    if (!isValid) {
+    const session = await authenticateCredentials(parsed.username, parsed.password);
+    if (!session) {
       const nextRateLimit = await registerFailedLoginAttempt(request);
       if (nextRateLimit.blocked) {
         return blockedLoginResponse(nextRateLimit.retryAfterSeconds);
@@ -53,9 +55,9 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     }
 
     await clearFailedLoginAttempts(request);
-    const token = await createAdminSessionToken();
-    const response = NextResponse.json({ authenticated: true });
-    applyAdminSessionCookie(response, token);
+    const token = await createSessionToken(session);
+    const response = NextResponse.json({ authenticated: true, role: session.role, username: session.username });
+    applySessionCookie(response, token);
 
     return response;
   } catch (error: unknown) {

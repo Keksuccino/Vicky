@@ -4,13 +4,17 @@ import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState }
 import { useRouter } from "next/navigation";
 
 import {
+  createAdminModerator,
+  deleteAdminModerator,
   fetchAdminDomainSslStatus,
+  fetchAdminModerators,
   fetchAdminSettings,
   formatApiError,
   getCurrentUser,
   logout,
   saveAdminSettings,
   testAdminConnection,
+  updateAdminModerator,
 } from "@/components/api";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
@@ -24,7 +28,7 @@ import {
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   DEFAULT_AI_CHAT_WELCOME_MESSAGE,
 } from "@/lib/ai-chat";
-import type { AdminSettings, DomainSslRuntimeStatus, ThemeCustomization } from "@/components/types";
+import type { AdminSettings, DomainSslRuntimeStatus, ModeratorAccount, ThemeCustomization } from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor } from "@/lib/theme";
@@ -306,6 +310,16 @@ export function AdminSettingsPanel() {
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
   const [sslStatusError, setSslStatusError] = useState<string | null>(null);
 
+  const [moderators, setModerators] = useState<ModeratorAccount[]>([]);
+  const [moderatorUsername, setModeratorUsername] = useState("");
+  const [moderatorPassword, setModeratorPassword] = useState("");
+  const [moderatorError, setModeratorError] = useState<string | null>(null);
+  const [moderatorSaving, setModeratorSaving] = useState(false);
+  const [moderatorActionId, setModeratorActionId] = useState<string | null>(null);
+  const [editingModeratorId, setEditingModeratorId] = useState<string | null>(null);
+  const [editingModeratorUsername, setEditingModeratorUsername] = useState("");
+  const [editingModeratorPassword, setEditingModeratorPassword] = useState("");
+
   const autoSaveReadyRef = useRef(false);
   const autoSaveInFlightRef = useRef(false);
   const autoSaveQueuedRef = useRef(false);
@@ -342,6 +356,93 @@ export function AdminSettingsPanel() {
       setSslStatusLoading(false);
     }
   }, []);
+
+  const resetModeratorEditor = useCallback(() => {
+    setEditingModeratorId(null);
+    setEditingModeratorUsername("");
+    setEditingModeratorPassword("");
+  }, []);
+
+  const handleCreateModerator = useCallback(async () => {
+    setModeratorSaving(true);
+    setModeratorError(null);
+
+    try {
+      const created = await createAdminModerator({
+        username: moderatorUsername,
+        password: moderatorPassword,
+      });
+      setModerators((prev) => [...prev, created].sort((left, right) => left.username.localeCompare(right.username)));
+      setModeratorUsername("");
+      setModeratorPassword("");
+    } catch (error) {
+      setModeratorError(formatApiError(error));
+    } finally {
+      setModeratorSaving(false);
+    }
+  }, [moderatorPassword, moderatorUsername]);
+
+  const handleUpdateModerator = useCallback(
+    async (account: ModeratorAccount) => {
+      const username = editingModeratorUsername.trim();
+      if (!username) {
+        setModeratorError("Moderator username is required.");
+        return;
+      }
+
+      const payload: { username?: string; password?: string } = {};
+      if (username !== account.username) {
+        payload.username = username;
+      }
+
+      if (editingModeratorPassword) {
+        payload.password = editingModeratorPassword;
+      }
+
+      if (!payload.username && !payload.password) {
+        resetModeratorEditor();
+        return;
+      }
+
+      setModeratorActionId(account.id);
+      setModeratorError(null);
+
+      try {
+        const updated = await updateAdminModerator(account.id, payload);
+        setModerators((prev) =>
+          prev
+            .map((moderator) => (moderator.id === account.id ? updated : moderator))
+            .sort((left, right) => left.username.localeCompare(right.username)),
+        );
+        resetModeratorEditor();
+      } catch (error) {
+        setModeratorError(formatApiError(error));
+      } finally {
+        setModeratorActionId(null);
+      }
+    },
+    [editingModeratorPassword, editingModeratorUsername, resetModeratorEditor],
+  );
+
+  const handleDeleteModerator = useCallback(
+    async (account: ModeratorAccount) => {
+      setModeratorActionId(account.id);
+      setModeratorError(null);
+
+      try {
+        await deleteAdminModerator(account.id);
+        setModerators((prev) => prev.filter((moderator) => moderator.id !== account.id));
+        if (editingModeratorId === account.id) {
+          resetModeratorEditor();
+        }
+      } catch (error) {
+        setModeratorError(formatApiError(error));
+      } finally {
+        setModeratorActionId(null);
+      }
+    },
+    [editingModeratorId, resetModeratorEditor],
+  );
 
   const createSaveSnapshot = useCallback(
     (draft: AdminSettings, clearToken: boolean, clearOpenRouterApiKey: boolean): string =>
@@ -479,7 +580,12 @@ export function AdminSettingsPanel() {
           return;
         }
 
-        const loadedSettings = await fetchAdminSettings();
+        if (currentUser.role !== "admin") {
+          router.replace("/editor");
+          return;
+        }
+
+        const [loadedSettings, loadedModerators] = await Promise.all([fetchAdminSettings(), fetchAdminModerators()]);
         if (!isActive) {
           return;
         }
@@ -494,6 +600,7 @@ export function AdminSettingsPanel() {
         };
 
         setSettings(loadedSettings);
+        setModerators(loadedModerators);
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(loadedSettings));
@@ -701,6 +808,161 @@ export function AdminSettingsPanel() {
 
           {connectionMessage ? <p className="success-text">{connectionMessage}</p> : null}
           {connectionError ? <p className="error-text">{connectionError}</p> : null}
+          </section>
+
+          <section className="panel-card panel-card-moderators">
+            <div className="panel-header">
+              <h2>Moderator Accounts</h2>
+            </div>
+
+            <p className="panel-description">
+              Create editor-only users. The built-in <code>admin</code> account stays fixed.
+            </p>
+
+            <form
+              className="form-grid"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void handleCreateModerator();
+              }}
+            >
+              <div className="field-inline">
+                <label className="field-row" htmlFor="moderator-username">
+                  <span className="field-label">Username</span>
+                  <input
+                    id="moderator-username"
+                    className="input"
+                    value={moderatorUsername}
+                    onChange={(event) => setModeratorUsername(event.target.value)}
+                    placeholder="docs-editor"
+                    autoComplete="off"
+                    required
+                  />
+                </label>
+
+                <label className="field-row" htmlFor="moderator-password">
+                  <span className="field-label">Password</span>
+                  <input
+                    id="moderator-password"
+                    className="input"
+                    type="password"
+                    value={moderatorPassword}
+                    onChange={(event) => setModeratorPassword(event.target.value)}
+                    autoComplete="new-password"
+                    required
+                  />
+                </label>
+              </div>
+
+              <div className="action-row">
+                <button type="submit" className="btn btn-primary" disabled={moderatorSaving}>
+                  <MaterialIcon name={moderatorSaving ? "hourglass_top" : "person_add"} />
+                  <span>{moderatorSaving ? "Adding..." : "Add moderator"}</span>
+                </button>
+              </div>
+            </form>
+
+            {moderatorError ? <p className="error-text">{moderatorError}</p> : null}
+
+            <div className="moderator-list">
+              {moderators.length > 0 ? (
+                moderators.map((moderator) => {
+                  const isEditing = editingModeratorId === moderator.id;
+                  const isBusy = moderatorActionId === moderator.id;
+
+                  return (
+                    <div className="moderator-item" key={moderator.id}>
+                      {isEditing ? (
+                        <form
+                          className="moderator-edit-form"
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void handleUpdateModerator(moderator);
+                          }}
+                        >
+                          <div className="field-inline">
+                            <label className="field-row" htmlFor={`moderator-edit-username-${moderator.id}`}>
+                              <span className="field-label">Username</span>
+                              <input
+                                id={`moderator-edit-username-${moderator.id}`}
+                                className="input"
+                                value={editingModeratorUsername}
+                                onChange={(event) => setEditingModeratorUsername(event.target.value)}
+                                autoComplete="off"
+                                required
+                              />
+                            </label>
+
+                            <label className="field-row" htmlFor={`moderator-edit-password-${moderator.id}`}>
+                              <span className="field-label">New password</span>
+                              <input
+                                id={`moderator-edit-password-${moderator.id}`}
+                                className="input"
+                                type="password"
+                                value={editingModeratorPassword}
+                                onChange={(event) => setEditingModeratorPassword(event.target.value)}
+                                autoComplete="new-password"
+                                placeholder="Leave blank to keep"
+                              />
+                            </label>
+                          </div>
+
+                          <div className="action-row">
+                            <button type="submit" className="btn btn-primary" disabled={isBusy}>
+                              <MaterialIcon name={isBusy ? "hourglass_top" : "save"} />
+                              <span>{isBusy ? "Saving..." : "Save moderator"}</span>
+                            </button>
+                            <button type="button" className="btn btn-secondary" disabled={isBusy} onClick={resetModeratorEditor}>
+                              <MaterialIcon name="close" />
+                              <span>Cancel</span>
+                            </button>
+                          </div>
+                        </form>
+                      ) : (
+                        <>
+                          <div className="moderator-item-main">
+                            <strong>{moderator.username}</strong>
+                            <span>Updated {formatStatusTimestamp(moderator.updatedAt)}</span>
+                          </div>
+
+                          <div className="moderator-actions">
+                            <button
+                              type="button"
+                              className="btn btn-secondary"
+                              disabled={Boolean(moderatorActionId)}
+                              onClick={() => {
+                                setModeratorError(null);
+                                setEditingModeratorId(moderator.id);
+                                setEditingModeratorUsername(moderator.username);
+                                setEditingModeratorPassword("");
+                              }}
+                            >
+                              <MaterialIcon name="edit" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-ghost danger"
+                              disabled={Boolean(moderatorActionId)}
+                              onClick={() => {
+                                if (window.confirm(`Remove moderator "${moderator.username}"?`)) {
+                                  void handleDeleteModerator(moderator);
+                                }
+                              }}
+                            >
+                              <MaterialIcon name={isBusy ? "hourglass_top" : "delete"} />
+                              <span>{isBusy ? "Removing..." : "Remove"}</span>
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="muted-caption">No moderator accounts yet.</p>
+              )}
+            </div>
           </section>
 
           <section className="panel-card panel-card-site">

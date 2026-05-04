@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadGitHubDoc, resolveRuntimeConfig, saveGitHubDoc } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
+import { requireEditorAccountRequest } from "@/lib/moderators";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -25,7 +25,7 @@ const saveSchema = z
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
   try {
-    const unauthorizedResponse = await requireAdminRequest(request);
+    const unauthorizedResponse = await requireEditorAccountRequest(request);
     if (unauthorizedResponse) {
       return unauthorizedResponse;
     }
@@ -50,7 +50,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
 
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   try {
-    const unauthorizedResponse = await requireAdminRequest(request);
+    const unauthorizedResponse = await requireEditorAccountRequest(request);
     if (unauthorizedResponse) {
       return unauthorizedResponse;
     }

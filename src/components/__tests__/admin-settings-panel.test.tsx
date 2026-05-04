@@ -8,18 +8,23 @@ import type { AdminSettings, DomainSslRuntimeStatus } from "@/components/types";
 import { AdminSettingsPanel } from "../admin-settings-panel";
 
 const replaceMock = vi.fn();
+const routerMock = {
+  replace: replaceMock,
+};
 const setThemeSettingsMock = vi.fn();
+const createAdminModeratorMock = vi.fn();
+const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
+const fetchAdminModeratorsMock = vi.fn();
 const fetchAdminSettingsMock = vi.fn();
 const getCurrentUserMock = vi.fn();
 const logoutMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
 const testAdminConnectionMock = vi.fn();
+const updateAdminModeratorMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({
-    replace: replaceMock,
-  }),
+  useRouter: () => routerMock,
 }));
 
 vi.mock("@/components/theme-provider", () => ({
@@ -29,13 +34,17 @@ vi.mock("@/components/theme-provider", () => ({
 }));
 
 vi.mock("@/components/api", () => ({
+  createAdminModerator: (...args: unknown[]) => createAdminModeratorMock(...args),
+  deleteAdminModerator: (...args: unknown[]) => deleteAdminModeratorMock(...args),
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
+  fetchAdminModerators: (...args: unknown[]) => fetchAdminModeratorsMock(...args),
   fetchAdminSettings: (...args: unknown[]) => fetchAdminSettingsMock(...args),
   formatApiError: (error: unknown) => (error instanceof Error ? error.message : "Something went wrong. Please try again."),
   getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),
   logout: (...args: unknown[]) => logoutMock(...args),
   saveAdminSettings: (...args: unknown[]) => saveAdminSettingsMock(...args),
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
+  updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
 }));
 
 function createDeferred<T>() {
@@ -104,9 +113,23 @@ const SSL_STATUS: DomainSslRuntimeStatus = {
 describe("AdminSettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    getCurrentUserMock.mockResolvedValue({ role: "admin" });
+    getCurrentUserMock.mockResolvedValue({ role: "admin", username: "admin" });
     fetchAdminSettingsMock.mockResolvedValue(INITIAL_SETTINGS);
+    fetchAdminModeratorsMock.mockResolvedValue([]);
     fetchAdminDomainSslStatusMock.mockResolvedValue(SSL_STATUS);
+    createAdminModeratorMock.mockResolvedValue({
+      id: "mod-1",
+      username: "docs-editor",
+      createdAt: "2026-03-10T12:00:00.000Z",
+      updatedAt: "2026-03-10T12:00:00.000Z",
+    });
+    updateAdminModeratorMock.mockResolvedValue({
+      id: "mod-1",
+      username: "docs-editor",
+      createdAt: "2026-03-10T12:00:00.000Z",
+      updatedAt: "2026-03-10T12:00:00.000Z",
+    });
+    deleteAdminModeratorMock.mockResolvedValue(undefined);
     logoutMock.mockResolvedValue(undefined);
     testAdminConnectionMock.mockResolvedValue("ok");
   });
@@ -121,7 +144,7 @@ describe("AdminSettingsPanel", () => {
 
     render(<AdminSettingsPanel />);
 
-    const siteTitleInput = (await screen.findByLabelText("Site title")) as HTMLInputElement;
+    const siteTitleInput = (await screen.findByRole("textbox", { name: /^Site title\b/ })) as HTMLInputElement;
 
     fireEvent.change(siteTitleInput, {
       target: { value: "Vicky Docs 1" },

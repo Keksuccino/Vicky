@@ -2,18 +2,19 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { type CSSProperties, useEffect, useState } from "react";
 
-import { fetchPublicSiteSettings, getCurrentUser } from "@/components/api";
+import { fetchPublicSiteSettings, getCurrentUser, logout } from "@/components/api";
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
+import type { AuthUser } from "@/components/types";
 
 const ADMIN_NAVIGATION = {
   settingsHref: "/admin/settings",
   loginHref: "/admin/login",
-  label: "Admin",
+  label: "Admin Panel",
   icon: "admin_panel_settings",
   activePrefix: "/admin",
 };
@@ -51,9 +52,11 @@ function editorHrefForPathname(pathname: string): string {
 
 export function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const [brandTitle, setBrandTitle] = useState<string | null>(null);
   const [siteTitleGradient, setSiteTitleGradient] = useState({ from: "", to: "" });
-  const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState<boolean | null>(null);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
 
@@ -103,13 +106,13 @@ export function AppHeader() {
           return;
         }
 
-        setIsAdminAuthenticated(Boolean(user));
+        setCurrentUser(user);
       } catch {
         if (!active) {
           return;
         }
 
-        setIsAdminAuthenticated(false);
+        setCurrentUser(null);
       }
     };
 
@@ -138,9 +141,9 @@ export function AppHeader() {
     pathname.startsWith(`${EDITOR_NAVIGATION.href}/`);
   const editorHref = editorHrefForPathname(pathname);
   const adminIsActive = pathname === ADMIN_NAVIGATION.activePrefix || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
-  const adminHref = isAdminAuthenticated
-    ? ADMIN_NAVIGATION.settingsHref
-    : `${ADMIN_NAVIGATION.loginHref}?next=${encodeURIComponent(ADMIN_NAVIGATION.settingsHref)}`;
+  const isAuthenticated = Boolean(currentUser);
+  const isAdminAuthenticated = currentUser?.role === "admin";
+  const loginHref = ADMIN_NAVIGATION.loginHref;
 
   return (
     <header className="app-header">
@@ -185,7 +188,7 @@ export function AppHeader() {
             <MaterialIcon name={PLAINTEXT_EXPORT_NAVIGATION.icon} />
           </Link>
 
-          {isAdminAuthenticated ? (
+          {isAuthenticated ? (
             <Link
               href={editorHref}
               className={cn("admin-icon-link ui-tooltip", editorIsActive && "admin-icon-link-active")}
@@ -196,14 +199,46 @@ export function AppHeader() {
             </Link>
           ) : null}
 
-          <Link
-            href={adminHref}
-            className={cn("admin-icon-link ui-tooltip", adminIsActive && "admin-icon-link-active")}
-            aria-label={ADMIN_NAVIGATION.label}
-            data-ui-tooltip={ADMIN_NAVIGATION.label}
-          >
-            <MaterialIcon name={ADMIN_NAVIGATION.icon} />
-          </Link>
+          {isAdminAuthenticated ? (
+            <Link
+              href={ADMIN_NAVIGATION.settingsHref}
+              className={cn("admin-icon-link ui-tooltip", adminIsActive && "admin-icon-link-active")}
+              aria-label={ADMIN_NAVIGATION.label}
+              data-ui-tooltip={ADMIN_NAVIGATION.label}
+            >
+              <MaterialIcon name={ADMIN_NAVIGATION.icon} />
+            </Link>
+          ) : null}
+
+          {isAuthenticated ? (
+            <button
+              type="button"
+              className="admin-icon-link ui-tooltip"
+              aria-label="Logout"
+              data-ui-tooltip="Logout"
+              disabled={isLoggingOut}
+              onClick={async () => {
+                setIsLoggingOut(true);
+                try {
+                  await logout();
+                  setCurrentUser(null);
+                  if (pathname === "/admin" || pathname.startsWith("/admin/") || pathname === "/editor" || pathname.startsWith("/editor/")) {
+                    router.push(`${ADMIN_NAVIGATION.loginHref}?next=${encodeURIComponent(pathname)}`);
+                  } else {
+                    router.refresh();
+                  }
+                } finally {
+                  setIsLoggingOut(false);
+                }
+              }}
+            >
+              <MaterialIcon name={isLoggingOut ? "hourglass_top" : "logout"} />
+            </button>
+          ) : (
+            <Link href={loginHref} className="admin-icon-link ui-tooltip" aria-label="Login" data-ui-tooltip="Login">
+              <MaterialIcon name="login" />
+            </Link>
+          )}
           <ThemeSwitcher />
         </div>
       </div>

@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { EditorWorkbench } from "@/components/editor-workbench";
-import { ADMIN_COOKIE_NAME, verifyAdminSessionToken } from "@/lib/auth";
+import { ADMIN_COOKIE_NAME } from "@/lib/auth";
+import { getActiveSessionForToken } from "@/lib/moderators";
 
 type EditorPageProps = {
   searchParams?: Promise<{
@@ -30,7 +31,7 @@ export default async function EditorPage({ searchParams }: EditorPageProps) {
   const initialPath = firstSearchParam(resolvedSearchParams.path);
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_COOKIE_NAME)?.value;
-  const isAuthenticated = token ? await verifyAdminSessionToken(token) : false;
+  const isAuthenticated = token ? Boolean(await getActiveSessionForToken(token)) : false;
 
   if (!isAuthenticated) {
     redirect(`/admin/login?next=${encodeURIComponent(editorHref(initialPath))}`);

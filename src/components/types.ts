@@ -46,7 +46,15 @@ export type DocSearchResult = {
 };
 
 export type AuthUser = {
-  role: "admin";
+  role: "admin" | "moderator";
+  username: string;
+};
+
+export type ModeratorAccount = {
+  id: string;
+  username: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type AdminSettings = {

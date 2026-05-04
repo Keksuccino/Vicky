@@ -43,6 +43,14 @@ export interface ThemeCustomizationSettings {
   customCss: string;
 }
 
+export interface ModeratorAccount {
+  id: string;
+  username: string;
+  passwordHash: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
@@ -59,8 +67,9 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 3;
+  version: 4;
   settings: AppSettings;
+  moderators: ModeratorAccount[];
 }
 
 export interface GitHubRuntimeConfig {

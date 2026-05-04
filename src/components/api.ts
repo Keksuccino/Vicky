@@ -9,6 +9,7 @@ import {
   type DomainSslRuntimeStatus,
   type EditableDoc,
   type MarkdownHeading,
+  type ModeratorAccount,
 } from "@/components/types";
 import {
   DEFAULT_AI_CHAT_ASSISTANT_NAME,
@@ -465,6 +466,47 @@ function normalizeSettings(source: unknown): AdminSettings {
   };
 }
 
+function normalizeAuthUser(source: unknown): AuthUser | null {
+  const payload = asRecord(source);
+  const role = asString(payload.role).trim();
+  const username = asString(payload.username).trim() || (role === "admin" ? "admin" : "");
+
+  if ((role !== "admin" && role !== "moderator") || !username) {
+    return null;
+  }
+
+  return {
+    role,
+    username,
+  };
+}
+
+function normalizeModeratorAccount(source: unknown): ModeratorAccount | null {
+  const payload = asRecord(source);
+  const id = asString(payload.id).trim();
+  const username = asString(payload.username).trim();
+  const createdAt = asString(payload.createdAt).trim();
+  const updatedAt = asString(payload.updatedAt).trim();
+
+  if (!id || !username) {
+    return null;
+  }
+
+  return {
+    id,
+    username,
+    createdAt,
+    updatedAt,
+  };
+}
+
+function normalizeModeratorAccounts(source: unknown): ModeratorAccount[] {
+  const rawModerators = asRecord(source).moderators;
+  return (Array.isArray(rawModerators) ? rawModerators : [])
+    .map((entry) => normalizeModeratorAccount(entry))
+    .filter((entry): entry is ModeratorAccount => Boolean(entry));
+}
+
 function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
@@ -565,9 +607,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       return null;
     }
 
-    return {
-      role: "admin",
-    };
+    return normalizeAuthUser(payload);
   } catch (error) {
     if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
       return null;
@@ -576,11 +616,18 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
   }
 }
 
-export async function login(password: string): Promise<void> {
-  await requestJson("/api/auth/login", {
+export async function login(username: string, password: string): Promise<AuthUser> {
+  const response = await requestJson<unknown>("/api/auth/login", {
     method: "POST",
-    body: JSON.stringify({ password }),
+    body: JSON.stringify({ username, password }),
   });
+
+  const user = normalizeAuthUser(response);
+  if (!user) {
+    throw new ApiError("Login succeeded but the server did not return a valid user.", 500, response);
+  }
+
+  return user;
 }
 
 export async function logout(): Promise<void> {
@@ -590,6 +637,44 @@ export async function logout(): Promise<void> {
 export async function fetchAdminSettings(): Promise<AdminSettings> {
   const response = await requestJson<unknown>("/api/admin/settings");
   return normalizeSettings(response);
+}
+
+export async function fetchAdminModerators(): Promise<ModeratorAccount[]> {
+  const response = await requestJson<unknown>("/api/admin/moderators");
+  return normalizeModeratorAccounts(response);
+}
+
+export async function createAdminModerator(input: { username: string; password: string }): Promise<ModeratorAccount> {
+  const response = await requestJson<unknown>("/api/admin/moderators", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+  const moderator = normalizeModeratorAccount(asRecord(response).moderator);
+  if (!moderator) {
+    throw new ApiError("The server did not return the created moderator account.", 500, response);
+  }
+
+  return moderator;
+}
+
+export async function updateAdminModerator(
+  id: string,
+  input: { username?: string; password?: string },
+): Promise<ModeratorAccount> {
+  const response = await requestJson<unknown>(`/api/admin/moderators/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+  const moderator = normalizeModeratorAccount(asRecord(response).moderator);
+  if (!moderator) {
+    throw new ApiError("The server did not return the updated moderator account.", 500, response);
+  }
+
+  return moderator;
+}
+
+export async function deleteAdminModerator(id: string): Promise<void> {
+  await requestJson(`/api/admin/moderators/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
 export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatus> {

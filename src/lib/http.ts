@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ZodError } from "zod";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -25,6 +26,10 @@ export const parseJsonBody = async <T>(request: Request): Promise<T> => {
 export const errorResponse = (error: unknown): NextResponse => {
   if (error instanceof ApiError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
+  }
+
+  if (error instanceof ZodError) {
+    return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
   }
 
   return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

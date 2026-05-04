@@ -600,6 +600,7 @@ select {
   justify-content: center;
   padding: 0;
   text-decoration: none;
+  cursor: pointer;
   transition:
     background 160ms ease,
     color 160ms ease,
@@ -610,6 +611,11 @@ select {
 .admin-icon-link:hover {
   color: var(--text-primary);
   background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+}
+
+.admin-icon-link:disabled {
+  opacity: 0.66;
+  cursor: wait;
 }
 
 .admin-icon-link .material-icon {
@@ -2421,6 +2427,54 @@ html[data-color-mode="light"] .page-copy-menu {
   gap: 0.55rem;
 }
 
+.moderator-list {
+  display: grid;
+  gap: 0.58rem;
+}
+
+.moderator-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.72rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  padding: 0.72rem;
+}
+
+.moderator-item-main,
+.moderator-edit-form {
+  min-width: 0;
+}
+
+.moderator-item-main {
+  display: grid;
+  gap: 0.14rem;
+}
+
+.moderator-item-main strong {
+  overflow-wrap: anywhere;
+}
+
+.moderator-item-main span {
+  color: var(--text-secondary);
+  font-size: 0.88rem;
+}
+
+.moderator-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.48rem;
+}
+
+.moderator-edit-form {
+  width: 100%;
+  display: grid;
+  gap: 0.65rem;
+}
+
 .success-text,
 .error-text,
 .warning-text {
@@ -3616,6 +3670,15 @@ html[data-color-mode="light"] .page-copy-menu {
 
   .field-inline {
     grid-template-columns: 1fr;
+  }
+
+  .moderator-item {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .moderator-actions {
+    justify-content: flex-start;
   }
 
   .card-grid {

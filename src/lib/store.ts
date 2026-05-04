@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import path from "node:path";
 
 import {
@@ -15,7 +16,7 @@ import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-s
 import { normalizeFooterTemplate } from "@/lib/footer";
 import { normalizeStartPage } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
-import type { AppSettings, DocsStore } from "@/lib/types";
+import type { AppSettings, DocsStore, ModeratorAccount } from "@/lib/types";
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
@@ -46,6 +47,63 @@ const normalizeOptionalString = (value: unknown): string | null => {
 
   const trimmed = value.trim();
   return trimmed || null;
+};
+
+const normalizeTimestamp = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return now();
+  }
+
+  const trimmed = value.trim();
+  return Number.isNaN(Date.parse(trimmed)) ? now() : trimmed;
+};
+
+const normalizeModeratorUsername = (value: unknown): string => {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value.trim().toLowerCase();
+};
+
+const MODERATOR_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,31}$/;
+
+const normalizeModerator = (value: unknown): ModeratorAccount | null => {
+  if (typeof value !== "object" || value === null) {
+    return null;
+  }
+
+  const source = value as Record<string, unknown>;
+  const username = normalizeModeratorUsername(source.username);
+  const passwordHash = normalizeTrimmedString(source.passwordHash);
+
+  if (!MODERATOR_USERNAME_PATTERN.test(username) || username === "admin" || !passwordHash) {
+    return null;
+  }
+
+  const createdAt = normalizeTimestamp(source.createdAt);
+
+  return {
+    id: normalizeTrimmedString(source.id) || randomUUID(),
+    username,
+    passwordHash,
+    createdAt,
+    updatedAt: normalizeTimestamp(source.updatedAt) || createdAt,
+  };
+};
+
+const normalizeModerators = (value: unknown): ModeratorAccount[] => {
+  const seenUsernames = new Set<string>();
+  return (Array.isArray(value) ? value : [])
+    .map((entry) => normalizeModerator(entry))
+    .filter((entry): entry is ModeratorAccount => {
+      if (!entry || seenUsernames.has(entry.username)) {
+        return false;
+      }
+
+      seenUsernames.add(entry.username);
+      return true;
+    });
 };
 
 const normalizeThemeAccentValue = (variables: unknown): string | null => {
@@ -204,6 +262,7 @@ const normalizeStore = (value: unknown): DocsStore => {
   return {
     version: STORE_VERSION,
     settings,
+    moderators: normalizeModerators(source.moderators),
   };
 };
 
