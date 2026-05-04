@@ -8,7 +8,7 @@ const LIGHT_DEFAULT_SURFACE_ACCENT = "#7db8f0";
 const DARK_DEFAULT_ACCENT = "#5caedf";
 const DARK_DEFAULT_SURFACE_ACCENT = "#47729c";
 const LIGHT_CONTRAST = "#f8fbff";
-const DARK_CONTRAST = "#07121e";
+const DARK_CONTRAST = "#111111";
 
 export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
   "--surface": "#f8fbff",
@@ -31,23 +31,23 @@ export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
 };
 
 export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
-  "--surface": "#121820",
-  "--surface-elevated": "#18212c",
-  "--surface-muted": "#232f3d",
-  "--text-primary": "#e8edf5",
-  "--text-secondary": "#c0c9d7",
-  "--text-muted": "#96a3b5",
-  "--border": "#334153",
+  "--surface": "#1c1c1c",
+  "--surface-elevated": "#242424",
+  "--surface-muted": "#303030",
+  "--text-primary": "#eeeeee",
+  "--text-secondary": "#c9c9c9",
+  "--text-muted": "#9d9d9d",
+  "--border": "#3a3a3a",
   "--accent": DARK_DEFAULT_ACCENT,
-  "--accent-soft": "#22384d",
+  "--accent-soft": "#243744",
   "--accent-contrast": DARK_CONTRAST,
   "--accent-surface": DARK_DEFAULT_SURFACE_ACCENT,
-  "--accent-surface-soft": "#1f3143",
-  "--accent-surface-contrast": "#e8edf5",
+  "--accent-surface-soft": "#29333c",
+  "--accent-surface-contrast": "#eeeeee",
   "--success": "#2bd08a",
   "--danger": "#ff6a7f",
-  "--header-bg": "rgba(19, 27, 38, 0.8)",
-  "--page-gradient": "#121820",
+  "--header-bg": "rgba(28, 28, 28, 0.86)",
+  "--page-gradient": "#1c1c1c",
 };
 
 const clampByte = (value: number): number => Math.max(0, Math.min(255, Math.round(value)));
@@ -167,8 +167,8 @@ const buildMobileFabVariables = (mode: ThemeMode, surfaceAccent: string): ThemeV
         "--mobile-fab-bg-hover": hexToRgba(surfaceAccent, 0.33),
         "--mobile-fab-bg-active": hexToRgba(surfaceAccent, 0.4),
         "--mobile-fab-border": hexToRgba(surfaceAccent, 0.62),
-        "--mobile-fab-shadow": "rgba(2, 8, 18, 0.56)",
-        "--mobile-fab-icon": "#eef8ff",
+        "--mobile-fab-shadow": "rgba(0, 0, 0, 0.56)",
+        "--mobile-fab-icon": "#f2f2f2",
       }
     : {
         "--mobile-fab-bg": hexToRgba(surfaceAccent, 0.24),
