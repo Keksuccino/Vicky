@@ -105,6 +105,7 @@ export function AdminLoginForm() {
   const router = useRouter();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,18 +181,31 @@ export function AdminLoginForm() {
             />
           </label>
 
-          <label className="field-row" htmlFor="admin-password">
-            <span className="field-label">Password</span>
-            <input
-              id="admin-password"
-              className="input"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              required
-            />
-          </label>
+          <div className="field-row">
+            <label className="field-label" htmlFor="admin-password">
+              Password
+            </label>
+            <div className="password-input-row">
+              <input
+                id="admin-password"
+                className="input"
+                type={showPassword ? "text" : "password"}
+                autoComplete="current-password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                required
+              />
+              <button
+                type="button"
+                className="btn btn-ghost password-toggle-button"
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                aria-pressed={showPassword}
+                onClick={() => setShowPassword((current) => !current)}
+              >
+                <MaterialIcon name={showPassword ? "visibility_off" : "visibility"} />
+              </button>
+            </div>
+          </div>
 
           <button type="submit" className="btn btn-primary" disabled={loading}>
             <MaterialIcon name={loading ? "hourglass_top" : "login"} />

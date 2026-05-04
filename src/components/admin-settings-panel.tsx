@@ -313,12 +313,14 @@ export function AdminSettingsPanel() {
   const [moderators, setModerators] = useState<ModeratorAccount[]>([]);
   const [moderatorUsername, setModeratorUsername] = useState("");
   const [moderatorPassword, setModeratorPassword] = useState("");
+  const [showModeratorPassword, setShowModeratorPassword] = useState(false);
   const [moderatorError, setModeratorError] = useState<string | null>(null);
   const [moderatorSaving, setModeratorSaving] = useState(false);
   const [moderatorActionId, setModeratorActionId] = useState<string | null>(null);
   const [editingModeratorId, setEditingModeratorId] = useState<string | null>(null);
   const [editingModeratorUsername, setEditingModeratorUsername] = useState("");
   const [editingModeratorPassword, setEditingModeratorPassword] = useState("");
+  const [showEditingModeratorPassword, setShowEditingModeratorPassword] = useState(false);
 
   const autoSaveReadyRef = useRef(false);
   const autoSaveInFlightRef = useRef(false);
@@ -361,6 +363,7 @@ export function AdminSettingsPanel() {
     setEditingModeratorId(null);
     setEditingModeratorUsername("");
     setEditingModeratorPassword("");
+    setShowEditingModeratorPassword(false);
   }, []);
 
   const handleCreateModerator = useCallback(async () => {
@@ -375,6 +378,7 @@ export function AdminSettingsPanel() {
       setModerators((prev) => [...prev, created].sort((left, right) => left.username.localeCompare(right.username)));
       setModeratorUsername("");
       setModeratorPassword("");
+      setShowModeratorPassword(false);
     } catch (error) {
       setModeratorError(formatApiError(error));
     } finally {
@@ -840,18 +844,31 @@ export function AdminSettingsPanel() {
                   />
                 </label>
 
-                <label className="field-row" htmlFor="moderator-password">
-                  <span className="field-label">Password</span>
-                  <input
-                    id="moderator-password"
-                    className="input"
-                    type="password"
-                    value={moderatorPassword}
-                    onChange={(event) => setModeratorPassword(event.target.value)}
-                    autoComplete="new-password"
-                    required
-                  />
-                </label>
+                <div className="field-row">
+                  <label className="field-label" htmlFor="moderator-password">
+                    Password
+                  </label>
+                  <div className="password-input-row">
+                    <input
+                      id="moderator-password"
+                      className="input"
+                      type={showModeratorPassword ? "text" : "password"}
+                      value={moderatorPassword}
+                      onChange={(event) => setModeratorPassword(event.target.value)}
+                      autoComplete="new-password"
+                      required
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-ghost password-toggle-button"
+                      aria-label={showModeratorPassword ? "Hide password" : "Show password"}
+                      aria-pressed={showModeratorPassword}
+                      onClick={() => setShowModeratorPassword((current) => !current)}
+                    >
+                      <MaterialIcon name={showModeratorPassword ? "visibility_off" : "visibility"} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               <div className="action-row">
@@ -893,18 +910,31 @@ export function AdminSettingsPanel() {
                               />
                             </label>
 
-                            <label className="field-row" htmlFor={`moderator-edit-password-${moderator.id}`}>
-                              <span className="field-label">New password</span>
-                              <input
-                                id={`moderator-edit-password-${moderator.id}`}
-                                className="input"
-                                type="password"
-                                value={editingModeratorPassword}
-                                onChange={(event) => setEditingModeratorPassword(event.target.value)}
-                                autoComplete="new-password"
-                                placeholder="Leave blank to keep"
-                              />
-                            </label>
+                            <div className="field-row">
+                              <label className="field-label" htmlFor={`moderator-edit-password-${moderator.id}`}>
+                                New password
+                              </label>
+                              <div className="password-input-row">
+                                <input
+                                  id={`moderator-edit-password-${moderator.id}`}
+                                  className="input"
+                                  type={showEditingModeratorPassword ? "text" : "password"}
+                                  value={editingModeratorPassword}
+                                  onChange={(event) => setEditingModeratorPassword(event.target.value)}
+                                  autoComplete="new-password"
+                                  placeholder="Leave blank to keep"
+                                />
+                                <button
+                                  type="button"
+                                  className="btn btn-ghost password-toggle-button"
+                                  aria-label={showEditingModeratorPassword ? "Hide password" : "Show password"}
+                                  aria-pressed={showEditingModeratorPassword}
+                                  onClick={() => setShowEditingModeratorPassword((current) => !current)}
+                                >
+                                  <MaterialIcon name={showEditingModeratorPassword ? "visibility_off" : "visibility"} />
+                                </button>
+                              </div>
+                            </div>
                           </div>
 
                           <div className="action-row">
@@ -935,6 +965,7 @@ export function AdminSettingsPanel() {
                                 setEditingModeratorId(moderator.id);
                                 setEditingModeratorUsername(moderator.username);
                                 setEditingModeratorPassword("");
+                                setShowEditingModeratorPassword(false);
                               }}
                             >
                               <MaterialIcon name="edit" />

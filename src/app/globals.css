@@ -2040,6 +2040,28 @@ html[data-color-mode="light"] .page-copy-menu {
   min-height: 2.75rem;
 }
 
+.password-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.password-input-row > .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.password-toggle-button {
+  width: 2.75rem;
+  min-width: 2.75rem;
+  min-height: 2.75rem;
+  padding: 0;
+}
+
+.password-toggle-button .material-icon {
+  font-size: 1.22rem;
+}
+
 .checkbox-row {
   display: inline-flex;
   align-items: center;
