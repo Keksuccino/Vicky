@@ -324,7 +324,7 @@ export function EditorWorkbench({ initialPath }: EditorWorkbenchProps) {
     <section className="editor-page" id="main-content">
       <div className="editor-topbar">
         <div>
-          <h1>Docs editor</h1>
+          <h1>Page Editor</h1>
           <p>Write markdown and commit directly to your docs repository.</p>
         </div>
 
