@@ -2876,9 +2876,9 @@ html[data-color-mode="light"] .page-copy-menu {
         110deg,
         transparent 18%,
         color-mix(in srgb, var(--accent) 20%, transparent) 31%,
-        color-mix(in srgb, var(--accent) 64%, #43d7df) 41%,
-        #a7f2ff 50%,
-        color-mix(in srgb, var(--accent-surface) 72%, #37a0ff) 59%,
+        color-mix(in srgb, var(--accent) 72%, var(--accent-surface)) 41%,
+        color-mix(in srgb, var(--accent) 42%, white) 50%,
+        color-mix(in srgb, var(--accent-surface) 72%, var(--accent)) 59%,
         color-mix(in srgb, var(--accent) 20%, transparent) 69%,
         transparent 82%
       )
