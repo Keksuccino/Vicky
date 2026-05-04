@@ -33,6 +33,22 @@ const PLAINTEXT_EXPORT_NAVIGATION = {
 
 const DEFAULT_BRAND_TITLE = "Vicky Docs";
 
+function editorHrefForPathname(pathname: string): string {
+  const docsPrefix = "/docs/";
+
+  if (!pathname.startsWith(docsPrefix)) {
+    return EDITOR_NAVIGATION.href;
+  }
+
+  const docPath = pathname.slice(docsPrefix.length).replace(/\/+$/, "");
+  if (!docPath) {
+    return EDITOR_NAVIGATION.href;
+  }
+
+  const params = new URLSearchParams({ path: `/${docPath}` });
+  return `${EDITOR_NAVIGATION.href}?${params.toString()}`;
+}
+
 export function AppHeader() {
   const pathname = usePathname();
   const [brandTitle, setBrandTitle] = useState<string | null>(null);
@@ -120,6 +136,7 @@ export function AppHeader() {
     pathname.startsWith(`${EDITOR_NAVIGATION.activePrefix}/`) ||
     pathname === EDITOR_NAVIGATION.href ||
     pathname.startsWith(`${EDITOR_NAVIGATION.href}/`);
+  const editorHref = editorHrefForPathname(pathname);
   const adminIsActive = pathname === ADMIN_NAVIGATION.activePrefix || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
   const adminHref = isAdminAuthenticated
     ? ADMIN_NAVIGATION.settingsHref
@@ -170,7 +187,7 @@ export function AppHeader() {
 
           {isAdminAuthenticated ? (
             <Link
-              href={EDITOR_NAVIGATION.href}
+              href={editorHref}
               className={cn("admin-icon-link ui-tooltip", editorIsActive && "admin-icon-link-active")}
               aria-label={EDITOR_NAVIGATION.label}
               data-ui-tooltip={EDITOR_NAVIGATION.label}

@@ -43,6 +43,10 @@ type EditorTreeNodeProps = {
   level: number;
 };
 
+type EditorWorkbenchProps = {
+  initialPath?: string | null;
+};
+
 function slugify(input: string): string {
   return input
     .toLowerCase()
@@ -83,6 +87,23 @@ function nodeMatchesFilter(node: DocTreeNode, query: string): boolean {
   }
 
   return node.children.some((child) => nodeMatchesFilter(child, q));
+}
+
+function normalizeInitialPath(path: string | null | undefined): string | null {
+  if (!path) {
+    return null;
+  }
+
+  const normalized = toAbsoluteDocPath(path);
+  if (normalized === "/" || normalized === "/docs") {
+    return null;
+  }
+
+  if (normalized.startsWith("/docs/")) {
+    return toAbsoluteDocPath(normalized.slice("/docs/".length));
+  }
+
+  return normalized;
 }
 
 function EditorTreeNode({ node, currentPath, expanded, onToggle, onSelect, level }: EditorTreeNodeProps) {
@@ -140,9 +161,10 @@ function EditorTreeNode({ node, currentPath, expanded, onToggle, onSelect, level
   );
 }
 
-export function EditorWorkbench() {
+export function EditorWorkbench({ initialPath }: EditorWorkbenchProps) {
   const router = useRouter();
   const { mode } = useTheme();
+  const initialDocPath = useMemo(() => normalizeInitialPath(initialPath), [initialPath]);
 
   const [tree, setTree] = useState<DocTreeNode[]>([]);
   const [treeLoading, setTreeLoading] = useState(true);
@@ -214,12 +236,12 @@ export function EditorWorkbench() {
       return;
     }
 
-    const firstPath = firstLeafPath(tree);
+    const firstPath = initialDocPath ?? firstLeafPath(tree);
     if (firstPath) {
       setHasLoadedInitialDoc(true);
       void loadPage(firstPath);
     }
-  }, [hasLoadedInitialDoc, loadPage, tree, treeLoading]);
+  }, [hasLoadedInitialDoc, initialDocPath, loadPage, tree, treeLoading]);
 
   const filteredTree = useMemo(() => {
     if (!searchTerm.trim()) {

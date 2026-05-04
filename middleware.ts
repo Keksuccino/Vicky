@@ -32,7 +32,7 @@ const unauthorizedApiResponse = (): NextResponse =>
   );
 
 export const middleware = async (request: NextRequest): Promise<NextResponse> => {
-  const { pathname } = request.nextUrl;
+  const { pathname, search } = request.nextUrl;
 
   if (!isProtectedPath(pathname) || isAllowedWithoutSession(pathname)) {
     return NextResponse.next();
@@ -50,7 +50,7 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
 
   const loginUrl = request.nextUrl.clone();
   loginUrl.pathname = LOGIN_PAGE_PATH;
-  loginUrl.searchParams.set("next", pathname);
+  loginUrl.searchParams.set("next", `${pathname}${search}`);
 
   return NextResponse.redirect(loginUrl);
 };
