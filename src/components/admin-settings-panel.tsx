@@ -12,7 +12,6 @@ import {
   fetchAdminVisitorStats,
   formatApiError,
   getCurrentUser,
-  logout,
   saveAdminSettings,
   testAdminConnection,
   updateAdminModerator,
@@ -860,17 +859,6 @@ export function AdminSettingsPanel() {
           <section className="panel-card panel-card-repo">
           <div className="panel-header">
             <h1>Repository Settings</h1>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={async () => {
-                await logout();
-                router.replace("/admin/login");
-              }}
-            >
-              <MaterialIcon name="logout" />
-              <span>Sign out</span>
-            </button>
           </div>
 
           <p className="panel-description">
