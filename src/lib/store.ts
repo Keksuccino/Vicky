@@ -1,4 +1,5 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { mkdir, rename, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -11,12 +12,19 @@ import {
   normalizeAiChatWelcomeMessage,
 } from "@/lib/ai-chat";
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
-import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
+import { DEFAULT_SETTINGS, DEFAULT_STORE, DEFAULT_VISITOR_STATS, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeFooterTemplate } from "@/lib/footer";
 import { normalizeStartPage } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
-import type { AppSettings, DocsStore, ModeratorAccount } from "@/lib/types";
+import type {
+  AppSettings,
+  DocsStore,
+  ModeratorAccount,
+  VisitorStatsBucket,
+  VisitorStatsPageBucket,
+  VisitorStatsStore,
+} from "@/lib/types";
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
@@ -104,6 +112,135 @@ const normalizeModerators = (value: unknown): ModeratorAccount[] => {
       seenUsernames.add(entry.username);
       return true;
     });
+};
+
+const normalizeVisitorId = (value: unknown): string | null => {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed || null;
+};
+
+const normalizeVisitorIds = (value: unknown): string[] => {
+  const seen = new Set<string>();
+  const ids: string[] = [];
+
+  for (const entry of Array.isArray(value) ? value : []) {
+    const id = normalizeVisitorId(entry);
+    if (!id || seen.has(id)) {
+      continue;
+    }
+
+    seen.add(id);
+    ids.push(id);
+  }
+
+  return ids;
+};
+
+const normalizeVisitorStatsSlug = (value: unknown, fallback = ""): string => {
+  const rawValue = typeof value === "string" ? value : fallback;
+
+  return rawValue
+    .trim()
+    .replace(/\\+/g, "/")
+    .replace(/^\/?docs\//i, "")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "")
+    .replace(/\.(md|mdx)$/i, "")
+    .replace(/\/+/g, "/");
+};
+
+const visitorStatsPathFromSlug = (slug: string): string => (slug ? `/${slug}` : "/");
+
+const prettyVisitorStatsTitle = (slug: string): string => {
+  const segment = slug.split("/").filter(Boolean).at(-1) ?? "Docs";
+  return segment
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const normalizeVisitorStatsPageBucket = (
+  value: unknown,
+  fallbackKey: string,
+): VisitorStatsPageBucket | null => {
+  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const slug = normalizeVisitorStatsSlug(source.slug, fallbackKey);
+
+  if (!slug) {
+    return null;
+  }
+
+  return {
+    path: visitorStatsPathFromSlug(slug),
+    slug,
+    title: normalizeString(source.title, prettyVisitorStatsTitle(slug)),
+    visitorIds: normalizeVisitorIds(source.visitorIds),
+    updatedAt: normalizeTimestamp(source.updatedAt),
+  };
+};
+
+const normalizeVisitorStatsBucket = (value: unknown): VisitorStatsBucket => {
+  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const visitorIds = normalizeVisitorIds(source.visitorIds);
+  const visitorIdSet = new Set(visitorIds);
+  const pages: Record<string, VisitorStatsPageBucket> = {};
+  const pagesSource =
+    typeof source.pages === "object" && source.pages !== null ? (source.pages as Record<string, unknown>) : {};
+
+  for (const [key, entry] of Object.entries(pagesSource)) {
+    const page = normalizeVisitorStatsPageBucket(entry, key);
+    if (!page || pages[page.slug]) {
+      continue;
+    }
+
+    pages[page.slug] = page;
+    for (const visitorId of page.visitorIds) {
+      if (!visitorIdSet.has(visitorId)) {
+        visitorIdSet.add(visitorId);
+        visitorIds.push(visitorId);
+      }
+    }
+  }
+
+  return {
+    visitorIds,
+    pages,
+  };
+};
+
+const normalizeVisitorStatsBucketMap = (value: unknown): Record<string, VisitorStatsBucket> => {
+  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const buckets: Record<string, VisitorStatsBucket> = {};
+
+  for (const [key, entry] of Object.entries(source)) {
+    const normalizedKey = key.trim();
+    if (!normalizedKey) {
+      continue;
+    }
+
+    buckets[normalizedKey] = normalizeVisitorStatsBucket(entry);
+  }
+
+  return buckets;
+};
+
+const normalizeVisitorStats = (value: unknown): VisitorStatsStore => {
+  const defaults = DEFAULT_VISITOR_STATS();
+  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+
+  return {
+    salt: normalizeString(source.salt, defaults.salt),
+    updatedAt: normalizeTimestamp(source.updatedAt),
+    allTime: normalizeVisitorStatsBucket(source.allTime),
+    daily: normalizeVisitorStatsBucketMap(source.daily),
+    weekly: normalizeVisitorStatsBucketMap(source.weekly),
+    monthly: normalizeVisitorStatsBucketMap(source.monthly),
+    yearly: normalizeVisitorStatsBucketMap(source.yearly),
+  };
 };
 
 const normalizeThemeAccentValue = (variables: unknown): string | null => {
@@ -263,6 +400,7 @@ const normalizeStore = (value: unknown): DocsStore => {
     version: STORE_VERSION,
     settings,
     moderators: normalizeModerators(source.moderators),
+    visitorStats: normalizeVisitorStats(source.visitorStats),
   };
 };
 
@@ -275,7 +413,7 @@ const writeStoreFile = async (store: DocsStore): Promise<void> => {
 
 const readStoreFile = async (): Promise<unknown> => {
   try {
-    const raw = await readFile(STORE_PATH, "utf8");
+    const raw = readFileSync(STORE_PATH, "utf8");
     return JSON.parse(raw) as unknown;
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
@@ -322,14 +460,23 @@ export const saveStore = async (store: DocsStore): Promise<DocsStore> => {
   return normalized;
 };
 
-export const updateStore = async (mutator: (store: DocsStore) => void | Promise<void>): Promise<DocsStore> =>
+export const updateStore = async (
+  mutator: (store: DocsStore) => boolean | void | Promise<boolean | void>,
+  options?: { touchSettings?: boolean },
+): Promise<DocsStore> =>
   enqueueMutation(async () => {
     const current = await getStore();
     const next = structuredClone(current);
-    await mutator(next);
+    const result = await mutator(next);
+
+    if (result === false) {
+      return current;
+    }
 
     next.version = STORE_VERSION;
-    next.settings.updatedAt = now();
+    if (options?.touchSettings !== false) {
+      next.settings.updatedAt = now();
+    }
 
     return saveStore(next);
   });

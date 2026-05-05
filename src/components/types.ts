@@ -57,6 +57,35 @@ export type ModeratorAccount = {
   updatedAt: string;
 };
 
+export type VisitorStatsScope = "allTime" | "daily" | "weekly" | "monthly" | "yearly";
+
+export type VisitorStatsPeriod = {
+  key: string;
+  label: string;
+  visitors: number;
+  current: boolean;
+};
+
+export type VisitorStatsPage = {
+  path: string;
+  slug: string;
+  title: string;
+  visitors: number;
+};
+
+export type VisitorStatsScopeData = {
+  totalVisitors: number;
+  currentPeriodKey: string;
+  currentPeriodLabel: string;
+  periods: VisitorStatsPeriod[];
+  pages: VisitorStatsPage[];
+};
+
+export type VisitorStatsSummary = {
+  updatedAt: string;
+  scopes: Record<VisitorStatsScope, VisitorStatsScopeData>;
+};
+
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;

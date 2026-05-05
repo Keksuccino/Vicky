@@ -77,6 +77,7 @@
 - `GET|PATCH /api/admin/settings`
 - `POST /api/admin/test-connection`
 - `GET|POST /api/admin/docs`
+- `GET /api/admin/visitors`
 - Themes:
 - `GET|POST /api/themes`
 - `PATCH|DELETE /api/themes/[id]`

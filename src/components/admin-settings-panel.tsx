@@ -9,6 +9,7 @@ import {
   fetchAdminDomainSslStatus,
   fetchAdminModerators,
   fetchAdminSettings,
+  fetchAdminVisitorStats,
   formatApiError,
   getCurrentUser,
   logout,
@@ -28,7 +29,14 @@ import {
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   DEFAULT_AI_CHAT_WELCOME_MESSAGE,
 } from "@/lib/ai-chat";
-import type { AdminSettings, DomainSslRuntimeStatus, ModeratorAccount, ThemeCustomization } from "@/components/types";
+import type {
+  AdminSettings,
+  DomainSslRuntimeStatus,
+  ModeratorAccount,
+  ThemeCustomization,
+  VisitorStatsScope,
+  VisitorStatsSummary,
+} from "@/components/types";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor } from "@/lib/theme";
@@ -36,6 +44,13 @@ import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor 
 const THEME_DEFAULTS = DEFAULT_THEME_CUSTOMIZATION();
 const DEFAULT_SITE_TITLE_GRADIENT_FROM = "#3b82f6";
 const DEFAULT_SITE_TITLE_GRADIENT_TO = "#22d3ee";
+const VISITOR_STATS_TABS: Array<{ icon: string; label: string; scope: VisitorStatsScope }> = [
+  { icon: "all_inclusive", label: "All-time", scope: "allTime" },
+  { icon: "today", label: "Daily", scope: "daily" },
+  { icon: "view_week", label: "Weekly", scope: "weekly" },
+  { icon: "calendar_month", label: "Monthly", scope: "monthly" },
+  { icon: "event_available", label: "Yearly", scope: "yearly" },
+];
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -261,6 +276,171 @@ function ResetToDefaultButton({ disabled, onClick }: ResetToDefaultButtonProps) 
   );
 }
 
+type VisitorStatsLoadResult =
+  | { error: null; stats: VisitorStatsSummary }
+  | { error: string; stats: null };
+
+const loadVisitorStatsResult = async (): Promise<VisitorStatsLoadResult> => {
+  try {
+    return {
+      stats: await fetchAdminVisitorStats(),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      stats: null,
+      error: formatApiError(error),
+    };
+  }
+};
+
+const visitorNumberFormatter = new Intl.NumberFormat();
+
+const formatVisitorCount = (value: number): string => visitorNumberFormatter.format(value);
+
+const formatVisitorStatsTimestamp = (value: string): string => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.valueOf()) || parsed.getTime() === 0) {
+    return "Never";
+  }
+
+  return parsed.toLocaleString();
+};
+
+type VisitorStatsCardProps = {
+  activeScope: VisitorStatsScope;
+  error: string | null;
+  loading: boolean;
+  stats: VisitorStatsSummary | null;
+  onRefresh: () => void;
+  onScopeChange: (scope: VisitorStatsScope) => void;
+};
+
+function VisitorStatsCard({
+  activeScope,
+  error,
+  loading,
+  stats,
+  onRefresh,
+  onScopeChange,
+}: VisitorStatsCardProps) {
+  const scopeStats = stats?.scopes[activeScope] ?? null;
+  const maxPeriodVisitors = Math.max(1, ...(scopeStats?.periods.map((period) => period.visitors) ?? [0]));
+  const maxPageVisitors = Math.max(1, ...(scopeStats?.pages.map((page) => page.visitors) ?? [0]));
+  const pagesWithVisitors = scopeStats?.pages.filter((page) => page.visitors > 0).length ?? 0;
+  const totalLabel = activeScope === "allTime" ? "Total visitors" : `${scopeStats?.currentPeriodLabel ?? "Current"} visitors`;
+
+  return (
+    <section className="panel-card panel-card-visitors">
+      <div className="panel-header">
+        <div>
+          <h2>Visitor Stats</h2>
+          <p className="panel-description">Unique docs visitors, grouped by hashed IP.</p>
+        </div>
+        <button type="button" className="btn btn-secondary" disabled={loading} onClick={onRefresh}>
+          <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
+          <span>{loading ? "Loading..." : "Refresh"}</span>
+        </button>
+      </div>
+
+      <div className="visitor-tabs" role="tablist" aria-label="Visitor stats range">
+        {VISITOR_STATS_TABS.map((tab) => (
+          <button
+            key={tab.scope}
+            type="button"
+            className={`visitor-tab${activeScope === tab.scope ? " visitor-tab-active" : ""}`}
+            role="tab"
+            aria-selected={activeScope === tab.scope}
+            onClick={() => onScopeChange(tab.scope)}
+          >
+            <MaterialIcon name={tab.icon} />
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {error ? <p className="error-text">{error}</p> : null}
+
+      <div className="visitor-stats-scroll">
+        {!stats || !scopeStats ? (
+          <p className="muted-caption">{loading ? "Loading visitor stats..." : "No visitor stats recorded yet."}</p>
+        ) : (
+          <>
+            <div className="visitor-summary-grid">
+              <div className="visitor-summary-tile">
+                <span>{totalLabel}</span>
+                <strong>{formatVisitorCount(scopeStats.totalVisitors)}</strong>
+              </div>
+              <div className="visitor-summary-tile">
+                <span>Pages with visitors</span>
+                <strong>{formatVisitorCount(pagesWithVisitors)}</strong>
+              </div>
+              <div className="visitor-summary-tile">
+                <span>Updated</span>
+                <strong>{formatVisitorStatsTimestamp(stats.updatedAt)}</strong>
+              </div>
+            </div>
+
+            <div className="visitor-chart-wrap">
+              <div className="visitor-section-heading">
+                <h3>{activeScope === "allTime" ? "All-time total" : "Visitor trend"}</h3>
+                <span>{scopeStats.currentPeriodLabel}</span>
+              </div>
+              <div className="visitor-period-chart" aria-label="Visitor chart">
+                {scopeStats.periods.map((period) => {
+                  const size = Math.max(6, (period.visitors / maxPeriodVisitors) * 100);
+                  const style = { "--visitor-bar-size": `${size}%` } as CSSProperties;
+
+                  return (
+                    <div className={`visitor-period-bar${period.current ? " visitor-period-bar-current" : ""}`} key={period.key}>
+                      <div className="visitor-bar-track" aria-hidden="true">
+                        <span className="visitor-bar-fill" style={style} />
+                      </div>
+                      <span className="visitor-period-label">{period.label}</span>
+                      <strong>{formatVisitorCount(period.visitors)}</strong>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="visitor-page-section">
+              <div className="visitor-section-heading">
+                <h3>Pages</h3>
+                <span>{formatVisitorCount(scopeStats.pages.length)}</span>
+              </div>
+
+              {scopeStats.pages.length > 0 ? (
+                <div className="visitor-page-list">
+                  {scopeStats.pages.map((page) => {
+                    const size = page.visitors > 0 ? Math.max(5, (page.visitors / maxPageVisitors) * 100) : 0;
+                    const style = { "--visitor-bar-size": `${size}%` } as CSSProperties;
+
+                    return (
+                      <a className="visitor-page-row" href={`/docs/${page.slug}`} key={page.slug}>
+                        <span className="visitor-page-main">
+                          <strong>{page.title}</strong>
+                          <span>{page.path}</span>
+                        </span>
+                        <span className="visitor-page-count">{formatVisitorCount(page.visitors)}</span>
+                        <span className="visitor-page-meter" aria-hidden="true">
+                          <span className="visitor-page-meter-fill" style={style} />
+                        </span>
+                      </a>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="muted-caption">No visitors recorded for this range yet.</p>
+              )}
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "warning-text" | "error-text" => {
   switch (status.certificateState) {
     case "valid":
@@ -310,6 +490,11 @@ export function AdminSettingsPanel() {
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
   const [sslStatusError, setSslStatusError] = useState<string | null>(null);
 
+  const [visitorStats, setVisitorStats] = useState<VisitorStatsSummary | null>(null);
+  const [visitorStatsLoading, setVisitorStatsLoading] = useState(true);
+  const [visitorStatsError, setVisitorStatsError] = useState<string | null>(null);
+  const [visitorStatsScope, setVisitorStatsScope] = useState<VisitorStatsScope>("allTime");
+
   const [moderators, setModerators] = useState<ModeratorAccount[]>([]);
   const [moderatorUsername, setModeratorUsername] = useState("");
   const [moderatorPassword, setModeratorPassword] = useState("");
@@ -357,6 +542,16 @@ export function AdminSettingsPanel() {
     } finally {
       setSslStatusLoading(false);
     }
+  }, []);
+
+  const refreshVisitorStats = useCallback(async () => {
+    setVisitorStatsLoading(true);
+    setVisitorStatsError(null);
+
+    const result = await loadVisitorStatsResult();
+    setVisitorStats(result.stats);
+    setVisitorStatsError(result.error);
+    setVisitorStatsLoading(false);
   }, []);
 
   const resetModeratorEditor = useCallback(() => {
@@ -576,6 +771,8 @@ export function AdminSettingsPanel() {
     const run = async () => {
       setLoading(true);
       setLoadError(null);
+      setVisitorStatsLoading(true);
+      setVisitorStatsError(null);
 
       try {
         const currentUser = await getCurrentUser();
@@ -589,7 +786,11 @@ export function AdminSettingsPanel() {
           return;
         }
 
-        const [loadedSettings, loadedModerators] = await Promise.all([fetchAdminSettings(), fetchAdminModerators()]);
+        const [loadedSettings, loadedModerators, loadedVisitorStats] = await Promise.all([
+          fetchAdminSettings(),
+          fetchAdminModerators(),
+          loadVisitorStatsResult(),
+        ]);
         if (!isActive) {
           return;
         }
@@ -605,6 +806,9 @@ export function AdminSettingsPanel() {
 
         setSettings(loadedSettings);
         setModerators(loadedModerators);
+        setVisitorStats(loadedVisitorStats.stats);
+        setVisitorStatsError(loadedVisitorStats.error);
+        setVisitorStatsLoading(false);
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(loadedSettings));
@@ -615,6 +819,7 @@ export function AdminSettingsPanel() {
       } catch (error) {
         if (isActive) {
           setLoadError(formatApiError(error));
+          setVisitorStatsLoading(false);
         }
       } finally {
         if (isActive) {
@@ -1221,6 +1426,17 @@ export function AdminSettingsPanel() {
         </div>
 
         <div className="panel-stack-right">
+          <VisitorStatsCard
+            activeScope={visitorStatsScope}
+            error={visitorStatsError}
+            loading={visitorStatsLoading}
+            stats={visitorStats}
+            onRefresh={() => {
+              void refreshVisitorStats();
+            }}
+            onScopeChange={setVisitorStatsScope}
+          />
+
           <section className="panel-card panel-card-theme">
             <div className="panel-header">
               <h2>Theme Management</h2>

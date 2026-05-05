@@ -2521,6 +2521,259 @@ html[data-color-mode="light"] .page-copy-menu {
   background: color-mix(in srgb, var(--warning, var(--accent)) 16%, transparent);
 }
 
+.panel-card-visitors {
+  max-height: min(46rem, calc(100vh - var(--header-height) - 2rem));
+  overflow: hidden;
+}
+
+.panel-card-visitors > .panel-header {
+  align-items: flex-start;
+}
+
+.panel-card-visitors > .panel-header > div {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.visitor-tabs {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.38rem;
+}
+
+.visitor-tab {
+  min-width: 0;
+  min-height: 2.55rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.38rem;
+  padding: 0.46rem 0.54rem;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.visitor-tab:hover {
+  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  color: var(--text-primary);
+}
+
+.visitor-tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--accent) 48%, transparent);
+  outline-offset: 2px;
+}
+
+.visitor-tab-active {
+  border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.visitor-tab .material-icon {
+  font-size: 1.14rem;
+}
+
+.visitor-stats-scroll {
+  display: grid;
+  gap: 0.85rem;
+  max-height: 34rem;
+  min-height: 9rem;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding-right: 0.15rem;
+}
+
+.visitor-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.58rem;
+}
+
+.visitor-summary-tile {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-muted) 76%, var(--surface-elevated));
+  padding: 0.72rem;
+  display: grid;
+  gap: 0.28rem;
+}
+
+.visitor-summary-tile span {
+  color: var(--text-secondary);
+  font-size: 0.83rem;
+  overflow-wrap: anywhere;
+}
+
+.visitor-summary-tile strong {
+  color: var(--text-primary);
+  font-size: 1.18rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.visitor-chart-wrap,
+.visitor-page-section {
+  display: grid;
+  gap: 0.58rem;
+  min-width: 0;
+}
+
+.visitor-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.62rem;
+}
+
+.visitor-section-heading h3 {
+  margin: 0;
+  font-family: var(--font-display), "Segoe UI", sans-serif;
+  font-size: 1rem;
+}
+
+.visitor-section-heading span {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+}
+
+.visitor-period-chart {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(4.7rem, 1fr);
+  gap: 0.48rem;
+  overflow-x: auto;
+  padding-bottom: 0.18rem;
+}
+
+.visitor-period-bar {
+  min-width: 0;
+  display: grid;
+  grid-template-rows: 7.4rem auto auto;
+  gap: 0.35rem;
+  align-items: end;
+}
+
+.visitor-bar-track {
+  width: 100%;
+  height: 7.4rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-muted);
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+}
+
+.visitor-bar-fill {
+  width: 100%;
+  height: var(--visitor-bar-size, 0%);
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--accent) 72%, white),
+    color-mix(in srgb, var(--accent-surface) 82%, var(--accent))
+  );
+  border-radius: 8px 8px 0 0;
+}
+
+.visitor-period-bar-current .visitor-bar-track {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.visitor-period-label {
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.visitor-period-bar strong {
+  color: var(--text-primary);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.visitor-page-list {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.visitor-page-row {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  color: inherit;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.58rem;
+  padding: 0.68rem;
+  text-decoration: none;
+  overflow: hidden;
+}
+
+.visitor-page-row:hover {
+  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
+  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface-muted));
+}
+
+.visitor-page-main {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  display: grid;
+  gap: 0.14rem;
+}
+
+.visitor-page-main strong,
+.visitor-page-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visitor-page-main span {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.visitor-page-count {
+  position: relative;
+  z-index: 1;
+  align-self: center;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.visitor-page-meter {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 3px;
+  background: color-mix(in srgb, var(--border) 70%, transparent);
+}
+
+.visitor-page-meter-fill {
+  display: block;
+  width: var(--visitor-bar-size, 0%);
+  height: 100%;
+  background: color-mix(in srgb, var(--accent) 72%, var(--accent-surface));
+}
+
 .theme-color-grid {
   display: grid;
   gap: 0.8rem;
@@ -3701,6 +3954,22 @@ html[data-color-mode="light"] .page-copy-menu {
 
   .moderator-actions {
     justify-content: flex-start;
+  }
+
+  .panel-card-visitors {
+    max-height: none;
+  }
+
+  .visitor-stats-scroll {
+    max-height: 32rem;
+  }
+
+  .visitor-tabs {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .visitor-summary-grid {
+    grid-template-columns: 1fr;
   }
 
   .card-grid {

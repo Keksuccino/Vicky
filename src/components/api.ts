@@ -10,6 +10,10 @@ import {
   type EditableDoc,
   type MarkdownHeading,
   type ModeratorAccount,
+  type VisitorStatsPage,
+  type VisitorStatsPeriod,
+  type VisitorStatsScopeData,
+  type VisitorStatsSummary,
 } from "@/components/types";
 import {
   DEFAULT_AI_CHAT_ASSISTANT_NAME,
@@ -507,6 +511,82 @@ function normalizeModeratorAccounts(source: unknown): ModeratorAccount[] {
     .filter((entry): entry is ModeratorAccount => Boolean(entry));
 }
 
+function normalizeVisitorStatsPeriods(source: unknown): VisitorStatsPeriod[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((entry) => {
+      const record = asRecord(entry);
+      const key = asString(record.key).trim();
+      if (!key) {
+        return null;
+      }
+
+      return {
+        key,
+        label: asString(record.label, key).trim() || key,
+        visitors: Math.max(0, Math.round(asNumber(record.visitors, 0))),
+        current: asBoolean(record.current, false),
+      };
+    })
+    .filter((entry): entry is VisitorStatsPeriod => Boolean(entry));
+}
+
+function normalizeVisitorStatsPages(source: unknown): VisitorStatsPage[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+
+  return source
+    .map((entry) => {
+      const record = asRecord(entry);
+      const slug = asString(record.slug).trim();
+      if (!slug) {
+        return null;
+      }
+
+      return {
+        path: asString(record.path, `/${slug}`).trim() || `/${slug}`,
+        slug,
+        title: asString(record.title, slug).trim() || slug,
+        visitors: Math.max(0, Math.round(asNumber(record.visitors, 0))),
+      };
+    })
+    .filter((entry): entry is VisitorStatsPage => Boolean(entry));
+}
+
+function normalizeVisitorStatsScopeData(source: unknown, fallbackLabel: string): VisitorStatsScopeData {
+  const payload = asRecord(source);
+  const currentPeriodKey = asString(payload.currentPeriodKey).trim();
+  const currentPeriodLabel = asString(payload.currentPeriodLabel, fallbackLabel).trim() || fallbackLabel;
+
+  return {
+    totalVisitors: Math.max(0, Math.round(asNumber(payload.totalVisitors, 0))),
+    currentPeriodKey,
+    currentPeriodLabel,
+    periods: normalizeVisitorStatsPeriods(payload.periods),
+    pages: normalizeVisitorStatsPages(payload.pages),
+  };
+}
+
+function normalizeVisitorStatsSummary(source: unknown): VisitorStatsSummary {
+  const payload = asRecord(asRecord(source).stats ?? source);
+  const scopes = asRecord(payload.scopes);
+
+  return {
+    updatedAt: asString(payload.updatedAt).trim() || new Date(0).toISOString(),
+    scopes: {
+      allTime: normalizeVisitorStatsScopeData(scopes.allTime, "All time"),
+      daily: normalizeVisitorStatsScopeData(scopes.daily, "Today"),
+      weekly: normalizeVisitorStatsScopeData(scopes.weekly, "This week"),
+      monthly: normalizeVisitorStatsScopeData(scopes.monthly, "This month"),
+      yearly: normalizeVisitorStatsScopeData(scopes.yearly, "This year"),
+    },
+  };
+}
+
 function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
@@ -680,6 +760,11 @@ export async function deleteAdminModerator(id: string): Promise<void> {
 export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatus> {
   const response = await requestJson<unknown>("/api/admin/domain-status");
   return normalizeDomainSslRuntimeStatus(response);
+}
+
+export async function fetchAdminVisitorStats(): Promise<VisitorStatsSummary> {
+  const response = await requestJson<unknown>("/api/admin/visitors");
+  return normalizeVisitorStatsSummary(response);
 }
 
 export async function saveAdminSettings(

@@ -17,6 +17,7 @@ const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
 const fetchAdminModeratorsMock = vi.fn();
 const fetchAdminSettingsMock = vi.fn();
+const fetchAdminVisitorStatsMock = vi.fn();
 const getCurrentUserMock = vi.fn();
 const logoutMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
@@ -39,6 +40,7 @@ vi.mock("@/components/api", () => ({
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
   fetchAdminModerators: (...args: unknown[]) => fetchAdminModeratorsMock(...args),
   fetchAdminSettings: (...args: unknown[]) => fetchAdminSettingsMock(...args),
+  fetchAdminVisitorStats: (...args: unknown[]) => fetchAdminVisitorStatsMock(...args),
   formatApiError: (error: unknown) => (error instanceof Error ? error.message : "Something went wrong. Please try again."),
   getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),
   logout: (...args: unknown[]) => logoutMock(...args),
@@ -110,6 +112,47 @@ const SSL_STATUS: DomainSslRuntimeStatus = {
   message: "SSL runtime status is unavailable.",
 };
 
+const VISITOR_STATS = {
+  updatedAt: "2026-03-10T12:00:00.000Z",
+  scopes: {
+    allTime: {
+      totalVisitors: 0,
+      currentPeriodKey: "all-time",
+      currentPeriodLabel: "All time",
+      periods: [{ key: "all-time", label: "All time", visitors: 0, current: true }],
+      pages: [],
+    },
+    daily: {
+      totalVisitors: 0,
+      currentPeriodKey: "2026-03-10",
+      currentPeriodLabel: "Mar 10",
+      periods: [{ key: "2026-03-10", label: "Mar 10", visitors: 0, current: true }],
+      pages: [],
+    },
+    weekly: {
+      totalVisitors: 0,
+      currentPeriodKey: "2026-W11",
+      currentPeriodLabel: "Week 11, 2026",
+      periods: [{ key: "2026-W11", label: "Week 11, 2026", visitors: 0, current: true }],
+      pages: [],
+    },
+    monthly: {
+      totalVisitors: 0,
+      currentPeriodKey: "2026-03",
+      currentPeriodLabel: "Mar 2026",
+      periods: [{ key: "2026-03", label: "Mar 2026", visitors: 0, current: true }],
+      pages: [],
+    },
+    yearly: {
+      totalVisitors: 0,
+      currentPeriodKey: "2026",
+      currentPeriodLabel: "2026",
+      periods: [{ key: "2026", label: "2026", visitors: 0, current: true }],
+      pages: [],
+    },
+  },
+};
+
 describe("AdminSettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -117,6 +160,7 @@ describe("AdminSettingsPanel", () => {
     fetchAdminSettingsMock.mockResolvedValue(INITIAL_SETTINGS);
     fetchAdminModeratorsMock.mockResolvedValue([]);
     fetchAdminDomainSslStatusMock.mockResolvedValue(SSL_STATUS);
+    fetchAdminVisitorStatsMock.mockResolvedValue(VISITOR_STATS);
     createAdminModeratorMock.mockResolvedValue({
       id: "mod-1",
       username: "docs-editor",

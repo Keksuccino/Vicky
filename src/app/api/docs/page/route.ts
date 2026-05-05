@@ -4,6 +4,7 @@ import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadGitHubDoc, resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
+import { recordDocPageVisit } from "@/lib/visitors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const page = await loadGitHubDoc(config, { slug, path });
+    await recordDocPageVisit(request, page);
 
     return NextResponse.json({ page });
   } catch (error: unknown) {

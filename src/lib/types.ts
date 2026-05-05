@@ -51,6 +51,66 @@ export interface ModeratorAccount {
   updatedAt: string;
 }
 
+export type VisitorStatsScope = "allTime" | "daily" | "weekly" | "monthly" | "yearly";
+
+export interface VisitorStatsPageBucket {
+  path: string;
+  slug: string;
+  title: string;
+  visitorIds: string[];
+  updatedAt: string;
+}
+
+export interface VisitorStatsBucket {
+  visitorIds: string[];
+  pages: Record<string, VisitorStatsPageBucket>;
+}
+
+export interface VisitorStatsStore {
+  salt: string;
+  updatedAt: string;
+  allTime: VisitorStatsBucket;
+  daily: Record<string, VisitorStatsBucket>;
+  weekly: Record<string, VisitorStatsBucket>;
+  monthly: Record<string, VisitorStatsBucket>;
+  yearly: Record<string, VisitorStatsBucket>;
+}
+
+export interface VisitorStatsPeriodSummary {
+  key: string;
+  label: string;
+  visitors: number;
+  current: boolean;
+}
+
+export interface VisitorStatsPageSummary {
+  path: string;
+  slug: string;
+  title: string;
+  visitors: number;
+}
+
+export interface VisitorStatsScopeSummary {
+  totalVisitors: number;
+  currentPeriodKey: string;
+  currentPeriodLabel: string;
+  periods: VisitorStatsPeriodSummary[];
+  pages: VisitorStatsPageSummary[];
+}
+
+export type VisitorStatsScopeSummaries = Record<VisitorStatsScope, VisitorStatsScopeSummary>;
+
+export interface VisitorStatsSummary {
+  updatedAt: string;
+  scopes: VisitorStatsScopeSummaries;
+}
+
+export interface VisitorPageIdentity {
+  path: string;
+  slug: string;
+  title: string;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
@@ -67,9 +127,10 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 4;
+  version: 5;
   settings: AppSettings;
   moderators: ModeratorAccount[];
+  visitorStats: VisitorStatsStore;
 }
 
 export interface GitHubRuntimeConfig {
