@@ -298,6 +298,8 @@ const visitorNumberFormatter = new Intl.NumberFormat();
 
 const formatVisitorCount = (value: number): string => visitorNumberFormatter.format(value);
 
+const formatVisitorLabel = (value: number): string => `${formatVisitorCount(value)} visitor${value === 1 ? "" : "s"}`;
+
 const formatVisitorStatsTimestamp = (value: string): string => {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf()) || parsed.getTime() === 0) {
@@ -325,17 +327,17 @@ function VisitorStatsCard({
   onScopeChange,
 }: VisitorStatsCardProps) {
   const scopeStats = stats?.scopes[activeScope] ?? null;
-  const maxPeriodVisitors = Math.max(1, ...(scopeStats?.periods.map((period) => period.visitors) ?? [0]));
-  const maxPageVisitors = Math.max(1, ...(scopeStats?.pages.map((page) => page.visitors) ?? [0]));
+  const maxPeriodVisits = Math.max(1, ...(scopeStats?.periods.map((period) => period.visits) ?? [0]));
+  const maxPageVisits = Math.max(1, ...(scopeStats?.pages.map((page) => page.visits) ?? [0]));
   const pagesWithVisitors = scopeStats?.pages.filter((page) => page.visitors > 0).length ?? 0;
-  const totalLabel = activeScope === "allTime" ? "Total visitors" : `${scopeStats?.currentPeriodLabel ?? "Current"} visitors`;
+  const totalLabel = activeScope === "allTime" ? "Unique visitors" : `${scopeStats?.currentPeriodLabel ?? "Current"} visitors`;
 
   return (
     <section className="panel-card panel-card-visitors">
       <div className="panel-header">
         <div>
           <h2>Visitor Stats</h2>
-          <p className="panel-description">Unique docs visitors, grouped by hashed IP.</p>
+          <p className="panel-description">Docs visits and unique visitors, grouped by hashed IP.</p>
         </div>
         <button type="button" className="btn btn-secondary" disabled={loading} onClick={onRefresh}>
           <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
@@ -372,6 +374,10 @@ function VisitorStatsCard({
                 <strong>{formatVisitorCount(scopeStats.totalVisitors)}</strong>
               </div>
               <div className="visitor-summary-tile">
+                <span>Visits</span>
+                <strong>{formatVisitorCount(scopeStats.totalVisits)}</strong>
+              </div>
+              <div className="visitor-summary-tile">
                 <span>Pages with visitors</span>
                 <strong>{formatVisitorCount(pagesWithVisitors)}</strong>
               </div>
@@ -383,12 +389,12 @@ function VisitorStatsCard({
 
             <div className="visitor-chart-wrap">
               <div className="visitor-section-heading">
-                <h3>{activeScope === "allTime" ? "All-time total" : "Visitor trend"}</h3>
+                <h3>{activeScope === "allTime" ? "All-time visits" : "Visit trend"}</h3>
                 <span>{scopeStats.currentPeriodLabel}</span>
               </div>
               <div className="visitor-period-chart" aria-label="Visitor chart">
                 {scopeStats.periods.map((period) => {
-                  const size = Math.max(6, (period.visitors / maxPeriodVisitors) * 100);
+                  const size = Math.max(6, (period.visits / maxPeriodVisits) * 100);
                   const style = { "--visitor-bar-size": `${size}%` } as CSSProperties;
 
                   return (
@@ -397,7 +403,7 @@ function VisitorStatsCard({
                         <span className="visitor-bar-fill" style={style} />
                       </div>
                       <span className="visitor-period-label">{period.label}</span>
-                      <strong>{formatVisitorCount(period.visitors)}</strong>
+                      <strong title={formatVisitorLabel(period.visitors)}>{formatVisitorCount(period.visits)}</strong>
                     </div>
                   );
                 })}
@@ -413,16 +419,18 @@ function VisitorStatsCard({
               {scopeStats.pages.length > 0 ? (
                 <div className="visitor-page-list">
                   {scopeStats.pages.map((page) => {
-                    const size = page.visitors > 0 ? Math.max(5, (page.visitors / maxPageVisitors) * 100) : 0;
+                    const size = page.visits > 0 ? Math.max(5, (page.visits / maxPageVisits) * 100) : 0;
                     const style = { "--visitor-bar-size": `${size}%` } as CSSProperties;
 
                     return (
                       <a className="visitor-page-row" href={`/docs/${page.slug}`} key={page.slug}>
                         <span className="visitor-page-main">
                           <strong>{page.title}</strong>
-                          <span>{page.path}</span>
+                          <span>{page.path} - {formatVisitorLabel(page.visitors)}</span>
                         </span>
-                        <span className="visitor-page-count">{formatVisitorCount(page.visitors)}</span>
+                        <span className="visitor-page-count" title={formatVisitorLabel(page.visitors)}>
+                          {formatVisitorCount(page.visits)}
+                        </span>
                         <span className="visitor-page-meter" aria-hidden="true">
                           <span className="visitor-page-meter-fill" style={style} />
                         </span>

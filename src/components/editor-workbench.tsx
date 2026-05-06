@@ -8,8 +8,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  fetchAdminDocPage,
   fetchAdminDocs,
-  fetchDocPage,
   firstLeafPath,
   flattenTree,
   formatApiError,
@@ -218,7 +218,7 @@ export function EditorWorkbench({ initialPath }: EditorWorkbenchProps) {
     setStatusMessage(null);
 
     try {
-      const page = await fetchDocPage(normalized);
+      const page = await fetchAdminDocPage(normalized);
       setDraft({
         title: page.title,
         description: page.description,

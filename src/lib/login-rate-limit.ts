@@ -30,6 +30,10 @@ const STORE_PATH = process.env.AUTH_LOGIN_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
 const TRUST_PROXY_HEADERS = String(process.env.AUTH_TRUST_PROXY_HEADERS ?? "")
   .trim()
   .toLowerCase() === "true";
+const TRUST_INTERNAL_CLIENT_IP_HEADER = String(process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER ?? "")
+  .trim()
+  .toLowerCase() === "true";
+export const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
 
 type PersistedLoginRateLimitStore = {
   version: typeof STORE_VERSION;
@@ -237,6 +241,15 @@ const getForwardedIp = (request: NextRequest): string | null => {
   return null;
 };
 
+const getInternalClientIp = (request: NextRequest): string | null => {
+  if (!TRUST_INTERNAL_CLIENT_IP_HEADER) {
+    return null;
+  }
+
+  const internalIp = request.headers.get(INTERNAL_CLIENT_IP_HEADER);
+  return internalIp ? normalizeIp(internalIp) : null;
+};
+
 export const getClientIp = (request: NextRequest): string => {
   const directIp = (request as NextRequest & { ip?: string }).ip;
   if (typeof directIp === "string") {
@@ -249,6 +262,11 @@ export const getClientIp = (request: NextRequest): string => {
   const forwardedIp = getForwardedIp(request);
   if (forwardedIp) {
     return forwardedIp;
+  }
+
+  const internalIp = getInternalClientIp(request);
+  if (internalIp) {
+    return internalIp;
   }
 
   return "unknown";

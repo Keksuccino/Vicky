@@ -16,6 +16,12 @@ import type {
 } from "@/lib/types";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const VISITOR_STATS_RETENTION = {
+  daily: 90,
+  weekly: 104,
+  monthly: 60,
+  yearly: 10,
+} as const;
 
 const normalizeStatsSlug = (value: string): string =>
   value
@@ -97,9 +103,12 @@ const labelWeek = (key: string): string => {
 };
 
 const createEmptyBucket = (): VisitorStatsBucket => ({
+  visits: 0,
   visitorIds: [],
   pages: {},
 });
+
+const bucketVisitCount = (bucket: VisitorStatsBucket | undefined): number => bucket?.visits ?? 0;
 
 const bucketVisitorCount = (bucket: VisitorStatsBucket | undefined): number => bucket?.visitorIds.length ?? 0;
 
@@ -111,31 +120,34 @@ const upsertVisitor = (
 ): boolean => {
   let changed = false;
 
+  bucket.visits += 1;
+  changed = true;
+
   if (!bucket.visitorIds.includes(visitorId)) {
     bucket.visitorIds.push(visitorId);
-    changed = true;
   }
 
   const existingPage = bucket.pages[page.slug];
   if (!existingPage) {
     bucket.pages[page.slug] = {
       ...page,
+      visits: 1,
       visitorIds: [visitorId],
       updatedAt: timestamp,
     };
     return true;
   }
 
+  existingPage.visits += 1;
+  existingPage.updatedAt = timestamp;
+
   if (existingPage.title !== page.title || existingPage.path !== page.path) {
     existingPage.title = page.title;
     existingPage.path = page.path;
-    changed = true;
   }
 
   if (!existingPage.visitorIds.includes(visitorId)) {
     existingPage.visitorIds.push(visitorId);
-    existingPage.updatedAt = timestamp;
-    changed = true;
   }
 
   return changed;
@@ -144,6 +156,29 @@ const upsertVisitor = (
 const ensurePeriodBucket = (buckets: Record<string, VisitorStatsBucket>, key: string): VisitorStatsBucket => {
   buckets[key] ??= createEmptyBucket();
   return buckets[key];
+};
+
+const prunePeriodBuckets = (
+  buckets: Record<string, VisitorStatsBucket>,
+  currentKey: string,
+  maxBuckets: number,
+): boolean => {
+  const removableKeys = Object.keys(buckets)
+    .filter((key) => key !== currentKey)
+    .sort((left, right) => right.localeCompare(left));
+  let changed = false;
+
+  while (removableKeys.length >= maxBuckets) {
+    const key = removableKeys.pop();
+    if (!key) {
+      break;
+    }
+
+    delete buckets[key];
+    changed = true;
+  }
+
+  return changed;
 };
 
 export const recordVisitorInStats = (
@@ -164,6 +199,10 @@ export const recordVisitorInStats = (
     upsertVisitor(ensurePeriodBucket(stats.weekly, keys.weekly), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.monthly, keys.monthly), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.yearly, keys.yearly), page, visitorId, timestamp),
+    prunePeriodBuckets(stats.daily, keys.daily, VISITOR_STATS_RETENTION.daily),
+    prunePeriodBuckets(stats.weekly, keys.weekly, VISITOR_STATS_RETENTION.weekly),
+    prunePeriodBuckets(stats.monthly, keys.monthly, VISITOR_STATS_RETENTION.monthly),
+    prunePeriodBuckets(stats.yearly, keys.yearly, VISITOR_STATS_RETENTION.yearly),
   ].some(Boolean);
 
   if (changed) {
@@ -202,6 +241,7 @@ const summarizePages = (
       path: statsPathFromSlug(slug),
       slug,
       title: page.title.trim() || prettyTitleFromSlug(slug),
+      visits: 0,
       visitors: 0,
     });
   }
@@ -211,12 +251,13 @@ const summarizePages = (
       path: page.path,
       slug: page.slug,
       title: page.title,
+      visits: page.visits,
       visitors: page.visitorIds.length,
     });
   }
 
   return [...pages.values()]
-    .sort((left, right) => right.visitors - left.visitors || left.title.localeCompare(right.title));
+    .sort((left, right) => right.visits - left.visits || right.visitors - left.visitors || left.title.localeCompare(right.title));
 };
 
 const summarizePeriods = (
@@ -231,6 +272,7 @@ const summarizePeriods = (
     .map((key) => ({
       key,
       label: labelForKey(key),
+      visits: bucketVisitCount(buckets[key]),
       visitors: bucketVisitorCount(buckets[key]),
       current: key === currentKey,
     }));
@@ -245,6 +287,7 @@ const summarizeScope = (
   const currentBucket = buckets[currentKey];
 
   return {
+    totalVisits: bucketVisitCount(currentBucket),
     totalVisitors: bucketVisitorCount(currentBucket),
     currentPeriodKey: currentKey,
     currentPeriodLabel: labelForKey(currentKey),
@@ -264,6 +307,7 @@ export const createVisitorStatsSummary = (
     updatedAt: stats.updatedAt,
     scopes: {
       allTime: {
+        totalVisits: bucketVisitCount(stats.allTime),
         totalVisitors: bucketVisitorCount(stats.allTime),
         currentPeriodKey: "all-time",
         currentPeriodLabel: "All time",
@@ -271,6 +315,7 @@ export const createVisitorStatsSummary = (
           {
             key: "all-time",
             label: "All time",
+            visits: bucketVisitCount(stats.allTime),
             visitors: bucketVisitorCount(stats.allTime),
             current: true,
           },

@@ -528,6 +528,7 @@ function normalizeVisitorStatsPeriods(source: unknown): VisitorStatsPeriod[] {
       return {
         key,
         label: asString(record.label, key).trim() || key,
+        visits: Math.max(0, Math.round(asNumber(record.visits, asNumber(record.visitors, 0)))),
         visitors: Math.max(0, Math.round(asNumber(record.visitors, 0))),
         current: asBoolean(record.current, false),
       };
@@ -552,6 +553,7 @@ function normalizeVisitorStatsPages(source: unknown): VisitorStatsPage[] {
         path: asString(record.path, `/${slug}`).trim() || `/${slug}`,
         slug,
         title: asString(record.title, slug).trim() || slug,
+        visits: Math.max(0, Math.round(asNumber(record.visits, asNumber(record.visitors, 0)))),
         visitors: Math.max(0, Math.round(asNumber(record.visitors, 0))),
       };
     })
@@ -564,6 +566,7 @@ function normalizeVisitorStatsScopeData(source: unknown, fallbackLabel: string):
   const currentPeriodLabel = asString(payload.currentPeriodLabel, fallbackLabel).trim() || fallbackLabel;
 
   return {
+    totalVisits: Math.max(0, Math.round(asNumber(payload.totalVisits, asNumber(payload.totalVisitors, 0)))),
     totalVisitors: Math.max(0, Math.round(asNumber(payload.totalVisitors, 0))),
     currentPeriodKey,
     currentPeriodLabel,
@@ -677,6 +680,13 @@ export async function fetchDocPage(pathOrSlug: string): Promise<DocPage> {
   const query = new URLSearchParams({ slug });
   const response = await requestJson<unknown>(`/api/docs/page?${query.toString()}`);
   return normalizePage(response, slugToPath(slug));
+}
+
+export async function fetchAdminDocPage(pathOrSlug: string): Promise<DocPage> {
+  const slug = toDocSlug(pathOrSlug);
+  const query = new URLSearchParams({ slug });
+  const response = await requestJson<unknown>(`/api/admin/docs?${query.toString()}`);
+  return normalizePage(asRecord(response).page, slugToPath(slug));
 }
 
 export async function searchDocs(query: string, signal?: AbortSignal): Promise<DocSearchResult[]> {

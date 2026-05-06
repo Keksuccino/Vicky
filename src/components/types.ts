@@ -62,6 +62,7 @@ export type VisitorStatsScope = "allTime" | "daily" | "weekly" | "monthly" | "ye
 export type VisitorStatsPeriod = {
   key: string;
   label: string;
+  visits: number;
   visitors: number;
   current: boolean;
 };
@@ -70,10 +71,12 @@ export type VisitorStatsPage = {
   path: string;
   slug: string;
   title: string;
+  visits: number;
   visitors: number;
 };
 
 export type VisitorStatsScopeData = {
+  totalVisits: number;
   totalVisitors: number;
   currentPeriodKey: string;
   currentPeriodLabel: string;

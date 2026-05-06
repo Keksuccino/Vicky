@@ -57,11 +57,13 @@ export interface VisitorStatsPageBucket {
   path: string;
   slug: string;
   title: string;
+  visits: number;
   visitorIds: string[];
   updatedAt: string;
 }
 
 export interface VisitorStatsBucket {
+  visits: number;
   visitorIds: string[];
   pages: Record<string, VisitorStatsPageBucket>;
 }
@@ -79,6 +81,7 @@ export interface VisitorStatsStore {
 export interface VisitorStatsPeriodSummary {
   key: string;
   label: string;
+  visits: number;
   visitors: number;
   current: boolean;
 }
@@ -87,10 +90,12 @@ export interface VisitorStatsPageSummary {
   path: string;
   slug: string;
   title: string;
+  visits: number;
   visitors: number;
 }
 
 export interface VisitorStatsScopeSummary {
+  totalVisits: number;
   totalVisitors: number;
   currentPeriodKey: string;
   currentPeriodLabel: string;

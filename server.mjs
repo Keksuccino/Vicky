@@ -32,6 +32,9 @@ const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_S
 const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DIRECTORY_PERMISSION_MODE = 0o700;
+const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
+
+process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER = "true";
 
 const challengeResponses = new Map();
 
@@ -346,6 +349,15 @@ function isStatusRequestAuthorized(request) {
   }
 
   return authHeader === `Bearer ${SSL_STATUS_BEARER_TOKEN}`;
+}
+
+function setInternalClientIpHeader(request) {
+  delete request.headers[INTERNAL_CLIENT_IP_HEADER];
+
+  const remoteAddress = request.socket?.remoteAddress || request.connection?.remoteAddress;
+  if (typeof remoteAddress === "string" && remoteAddress.trim()) {
+    request.headers[INTERNAL_CLIENT_IP_HEADER] = remoteAddress.trim();
+  }
 }
 
 function tryServeRuntimeStatus(request, response) {
@@ -910,6 +922,7 @@ async function handleRequest(request, response) {
   const requestHandler = app.getRequestHandler();
 
   try {
+    setInternalClientIpHeader(request);
     await requestHandler(request, response);
   } catch (error) {
     warn("Next.js request handler failed.", error);

@@ -12,6 +12,7 @@ export const STORE_VERSION = 5 as const;
 const now = (): string => new Date().toISOString();
 
 export const DEFAULT_VISITOR_STATS_BUCKET = (): VisitorStatsBucket => ({
+  visits: 0,
   visitorIds: [],
   pages: {},
 });

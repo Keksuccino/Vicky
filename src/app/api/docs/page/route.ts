@@ -22,7 +22,12 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const page = await loadGitHubDoc(config, { slug, path });
-    await recordDocPageVisit(request, page);
+    try {
+      await recordDocPageVisit(request, page);
+    } catch (visitError: unknown) {
+      const message = visitError instanceof Error ? visitError.message : String(visitError);
+      console.warn(`[visitors] Failed to record docs page visit: ${message}`);
+    }
 
     return NextResponse.json({ page });
   } catch (error: unknown) {

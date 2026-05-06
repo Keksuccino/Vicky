@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -28,8 +28,13 @@ import type {
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
+const STORE_LOCK_PATH = `${STORE_PATH}.lock`;
+const STORE_LOCK_RETRY_MS = 25;
+const STORE_LOCK_STALE_MS = 300_000;
 
 const now = (): string => new Date().toISOString();
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const normalizeString = (value: unknown, fallback: string): string => {
   if (typeof value !== "string") {
@@ -152,6 +157,17 @@ const normalizeVisitorIds = (value: unknown): string[] => {
   return ids;
 };
 
+const normalizeNonNegativeInteger = (value: unknown, fallback = 0): number => {
+  const numericValue =
+    typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+
+  if (!Number.isFinite(numericValue) || numericValue < 0) {
+    return fallback;
+  }
+
+  return Math.round(numericValue);
+};
+
 const normalizeVisitorStatsSlug = (value: unknown, fallback = ""): string => {
   const rawValue = typeof value === "string" ? value : fallback;
 
@@ -190,6 +206,7 @@ const normalizeVisitorStatsPageBucket = (
     path: visitorStatsPathFromSlug(slug),
     slug,
     title: normalizeString(source.title, prettyVisitorStatsTitle(slug)),
+    visits: Math.max(normalizeNonNegativeInteger(source.visits, 0), normalizeVisitorIds(source.visitorIds).length),
     visitorIds: normalizeVisitorIds(source.visitorIds),
     updatedAt: normalizeTimestamp(source.updatedAt),
   };
@@ -200,6 +217,7 @@ const normalizeVisitorStatsBucket = (value: unknown): VisitorStatsBucket => {
   const visitorIds = normalizeVisitorIds(source.visitorIds);
   const visitorIdSet = new Set(visitorIds);
   const pages: Record<string, VisitorStatsPageBucket> = {};
+  let pageVisits = 0;
   const pagesSource =
     typeof source.pages === "object" && source.pages !== null ? (source.pages as Record<string, unknown>) : {};
 
@@ -210,6 +228,7 @@ const normalizeVisitorStatsBucket = (value: unknown): VisitorStatsBucket => {
     }
 
     pages[page.slug] = page;
+    pageVisits += page.visits;
     for (const visitorId of page.visitorIds) {
       if (!visitorIdSet.has(visitorId)) {
         visitorIdSet.add(visitorId);
@@ -219,6 +238,7 @@ const normalizeVisitorStatsBucket = (value: unknown): VisitorStatsBucket => {
   }
 
   return {
+    visits: Math.max(normalizeNonNegativeInteger(source.visits, 0), pageVisits, visitorIds.length),
     visitorIds,
     pages,
   };
@@ -423,6 +443,49 @@ const writeStoreFile = async (store: DocsStore): Promise<void> => {
   await rename(tempPath, STORE_PATH);
 };
 
+const acquireStoreLock = async (): Promise<() => Promise<void>> => {
+  await mkdir(path.dirname(STORE_LOCK_PATH), { recursive: true });
+
+  for (;;) {
+    try {
+      const handle = await open(STORE_LOCK_PATH, "wx");
+      await handle.writeFile(`${process.pid}:${Date.now()}`, "utf8");
+
+      return async () => {
+        await handle.close();
+        await rm(STORE_LOCK_PATH, { force: true });
+      };
+    } catch (error: unknown) {
+      const err = error as NodeJS.ErrnoException;
+      if (err.code !== "EEXIST") {
+        throw error;
+      }
+
+      try {
+        const lockStat = await stat(STORE_LOCK_PATH);
+        if (Date.now() - lockStat.mtimeMs > STORE_LOCK_STALE_MS) {
+          await rm(STORE_LOCK_PATH, { force: true });
+          continue;
+        }
+      } catch {
+        continue;
+      }
+
+      await sleep(STORE_LOCK_RETRY_MS);
+    }
+  }
+};
+
+const withStoreLock = async <T>(work: () => Promise<T>): Promise<T> => {
+  const release = await acquireStoreLock();
+
+  try {
+    return await work();
+  } finally {
+    await release();
+  }
+};
+
 const readStoreFile = async (): Promise<unknown> => {
   try {
     const raw = readFileSync(STORE_PATH, "utf8");
@@ -452,7 +515,7 @@ const enqueueMutation = <T>(work: () => Promise<T>): Promise<T> => {
 
 export const getStorePath = (): string => STORE_PATH;
 
-export const getStore = async (): Promise<DocsStore> => {
+const getStoreUnlocked = async (): Promise<DocsStore> => {
   const raw = await readStoreFile();
   const normalized = normalizeStore(raw);
 
@@ -466,31 +529,37 @@ export const getStore = async (): Promise<DocsStore> => {
   return normalized;
 };
 
-export const saveStore = async (store: DocsStore): Promise<DocsStore> => {
+export const getStore = async (): Promise<DocsStore> => withStoreLock(getStoreUnlocked);
+
+const saveStoreUnlocked = async (store: DocsStore): Promise<DocsStore> => {
   const normalized = normalizeStore(store);
   await writeStoreFile(normalized);
   return normalized;
 };
+
+export const saveStore = async (store: DocsStore): Promise<DocsStore> => withStoreLock(() => saveStoreUnlocked(store));
 
 export const updateStore = async (
   mutator: (store: DocsStore) => boolean | void | Promise<boolean | void>,
   options?: { touchSettings?: boolean },
 ): Promise<DocsStore> =>
   enqueueMutation(async () => {
-    const current = await getStore();
-    const next = structuredClone(current);
-    const result = await mutator(next);
+    return withStoreLock(async () => {
+      const current = await getStoreUnlocked();
+      const next = structuredClone(current);
+      const result = await mutator(next);
 
-    if (result === false) {
-      return current;
-    }
+      if (result === false) {
+        return current;
+      }
 
-    next.version = STORE_VERSION;
-    if (options?.touchSettings !== false) {
-      next.settings.updatedAt = now();
-    }
+      next.version = STORE_VERSION;
+      if (options?.touchSettings !== false) {
+        next.settings.updatedAt = now();
+      }
 
-    return saveStore(next);
+      return saveStoreUnlocked(next);
+    });
   });
 
 export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "github" | "aiChat"> & {

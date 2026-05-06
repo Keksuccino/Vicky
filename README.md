@@ -195,8 +195,10 @@ Common optional settings:
 | `HTTPS_PORT` | HTTPS listen port | `443` |
 | `LETS_ENCRYPT_STAGING` | Use Let's Encrypt staging CA for test runs | `false` |
 | `AUTH_TRUST_PROXY_HEADERS` | Trust forwarded client IP headers | `false` |
+| `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER` | Trust an ingress-overwritten `x-vicky-client-ip` header for visitor stats and login rate limiting | `false` |
 
 `HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
+`npm run start` sets `x-vicky-client-ip` from the socket address internally; only set `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER=true` yourself when another trusted ingress overwrites that header.
 
 For the full list of optional runtime settings, check [.env.example](.env.example).
 
@@ -223,6 +225,7 @@ If you run Vicky behind a reverse proxy:
 - forward `/.well-known/acme-challenge/*` to Vicky unchanged
 - preserve the original `Host` header
 - keep DNS pointed at the proxy/public ingress
+- set `AUTH_TRUST_PROXY_HEADERS=true` only when the proxy overwrites `x-forwarded-for` or `x-real-ip`
 
 For direct HTTP-01 validation without a reverse proxy, you usually want:
 - `HTTP_PORT=80`
