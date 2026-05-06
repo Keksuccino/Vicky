@@ -98,8 +98,8 @@ const DEFAULT_SETTINGS: AdminSettings = {
   openRouterApiKeyConfigured: false,
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
-  themeDarkAccent: "#507D91",
-  themeDarkSurfaceAccent: "#516E76",
+  themeDarkAccent: "#5EBBE4",
+  themeDarkSurfaceAccent: "#AFE0EE",
   themeCustomCss: "",
 };
 

@@ -5,8 +5,8 @@ export type ThemeVariables = Record<string, string>;
 
 const LIGHT_DEFAULT_ACCENT = "#006ecf";
 const LIGHT_DEFAULT_SURFACE_ACCENT = "#7db8f0";
-const DARK_DEFAULT_ACCENT = "#507D91";
-const DARK_DEFAULT_SURFACE_ACCENT = "#516E76";
+const DARK_DEFAULT_ACCENT = "#5EBBE4";
+const DARK_DEFAULT_SURFACE_ACCENT = "#AFE0EE";
 const LIGHT_CONTRAST = "#f8fbff";
 const DARK_CONTRAST = "#111111";
 
