@@ -1346,7 +1346,7 @@ export function AdminSettingsPanel() {
                 <input
                   id="github-token"
                   className="input"
-                  type="password"
+                  type="text"
                   autoComplete="off"
                   value={settings.githubToken}
                   onChange={(event) => {
@@ -2163,7 +2163,7 @@ export function AdminSettingsPanel() {
                   <input
                     id="openrouter-api-key"
                     className="input"
-                    type="password"
+                    type="text"
                     autoComplete="off"
                     value={settings.openRouterApiKey}
                     onChange={(event) => {
