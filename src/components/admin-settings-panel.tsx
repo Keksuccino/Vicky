@@ -731,9 +731,15 @@ function VisitorStatsCard({
           <h2>Visitor Stats</h2>
           <p className="panel-description">Docs visits and unique visitors, grouped by hashed IP.</p>
         </div>
-        <button type="button" className="btn btn-secondary" disabled={loading} onClick={onRefresh}>
+        <button
+          type="button"
+          className="btn btn-secondary visitor-refresh-button"
+          disabled={loading}
+          aria-label={loading ? "Refreshing visitor stats" : "Refresh visitor stats"}
+          title={loading ? "Refreshing visitor stats" : "Refresh visitor stats"}
+          onClick={onRefresh}
+        >
           <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
-          <span>{loading ? "Loading..." : "Refresh"}</span>
         </button>
       </div>
 

@@ -2535,6 +2535,17 @@ html[data-color-mode="light"] .page-copy-menu {
   min-width: 0;
 }
 
+.visitor-refresh-button {
+  width: 2.42rem;
+  height: 2.42rem;
+  flex: 0 0 auto;
+  padding: 0;
+}
+
+.visitor-refresh-button .material-icon {
+  font-size: 1.18rem;
+}
+
 .visitor-tabs {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
