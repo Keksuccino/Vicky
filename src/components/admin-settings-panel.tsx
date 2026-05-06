@@ -729,7 +729,7 @@ function VisitorStatsCard({
       <div className="panel-header">
         <div>
           <h2>Analytics</h2>
-          <p className="panel-description">Docs visits and unique visitors, grouped by hashed IP.</p>
+          <p className="panel-description">Visits and unique visitors over time.</p>
         </div>
         <button
           type="button"
