@@ -47,10 +47,10 @@ const DEFAULT_SITE_TITLE_GRADIENT_FROM = "#3b82f6";
 const DEFAULT_SITE_TITLE_GRADIENT_TO = "#22d3ee";
 const VISITOR_STATS_TABS: Array<{ icon: string; label: string; scope: VisitorStatsScope }> = [
   { icon: "all_inclusive", label: "All-time", scope: "allTime" },
-  { icon: "today", label: "Daily", scope: "daily" },
-  { icon: "view_week", label: "Weekly", scope: "weekly" },
-  { icon: "calendar_month", label: "Monthly", scope: "monthly" },
-  { icon: "event_available", label: "Yearly", scope: "yearly" },
+  { icon: "today", label: "Day", scope: "daily" },
+  { icon: "view_week", label: "Week", scope: "weekly" },
+  { icon: "calendar_month", label: "Month", scope: "monthly" },
+  { icon: "event_available", label: "Year", scope: "yearly" },
 ];
 
 const INITIAL_SETTINGS: AdminSettings = {
