@@ -332,9 +332,9 @@ const VISITOR_SPARKLINE_WIDTH = 240;
 const VISITOR_SPARKLINE_HEIGHT = 84;
 const VISITOR_SPARKLINE_PADDING_X = 5;
 const VISITOR_SPARKLINE_PADDING_Y = 7;
-const VISITOR_SPARKLINE_TOOLTIP_GAP = 10;
+const VISITOR_SPARKLINE_TOOLTIP_GAP = 14;
 const VISITOR_SPARKLINE_TOOLTIP_MARGIN_X = 14;
-const VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y = 8;
+const VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y = 10;
 
 const formatSparklineCoordinate = (value: number): string => value.toFixed(2).replace(/\.?0+$/, "");
 
@@ -425,6 +425,7 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
   const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const gradientId = `visitor-sparkline-fill-${chartId}`;
   const tooltipId = `visitor-sparkline-tooltip-${chartId}`;
+  const chartCardRef = useRef<HTMLDivElement>(null);
   const chartStageRef = useRef<HTMLDivElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
@@ -464,39 +465,66 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
 
     const updateTooltipPosition = () => {
       const chartStage = chartStageRef.current;
+      const chartCard = chartCardRef.current;
       const tooltip = tooltipRef.current;
 
-      if (!chartStage || !tooltip) {
+      if (!chartStage || !chartCard || !tooltip) {
         return;
       }
 
       const stageBounds = chartStage.getBoundingClientRect();
+      const cardBounds = chartCard.getBoundingClientRect();
       const tooltipBounds = tooltip.getBoundingClientRect();
 
-      if (stageBounds.width <= 0 || stageBounds.height <= 0 || tooltipBounds.width <= 0 || tooltipBounds.height <= 0) {
+      if (
+        stageBounds.width <= 0 ||
+        stageBounds.height <= 0 ||
+        cardBounds.width <= 0 ||
+        cardBounds.height <= 0 ||
+        tooltipBounds.width <= 0 ||
+        tooltipBounds.height <= 0
+      ) {
         return;
       }
 
-      const pointX = (activePoint.x / VISITOR_SPARKLINE_WIDTH) * stageBounds.width;
-      const pointY = (activePoint.y / VISITOR_SPARKLINE_HEIGHT) * stageBounds.height;
+      const pointX = stageBounds.left - cardBounds.left + (activePoint.x / VISITOR_SPARKLINE_WIDTH) * stageBounds.width;
+      const pointY = stageBounds.top - cardBounds.top + (activePoint.y / VISITOR_SPARKLINE_HEIGHT) * stageBounds.height;
       const maxLeft = Math.max(
         VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
-        stageBounds.width - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
+        cardBounds.width - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
       );
       const maxTop = Math.max(
         VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
-        stageBounds.height - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
+        cardBounds.height - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
       );
-      const preferredLeft = pointX - tooltipBounds.width / 2;
-      const aboveTop = pointY - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_GAP;
-      const belowTop = pointY + VISITOR_SPARKLINE_TOOLTIP_GAP;
-      const hasRoomAbove = aboveTop >= VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y;
-      const hasRoomBelow =
-        belowTop + tooltipBounds.height <= stageBounds.height - VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y;
-      const preferredTop = hasRoomAbove || !hasRoomBelow ? aboveTop : belowTop;
+      const leftSide = pointX - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_GAP;
+      const rightSide = pointX + VISITOR_SPARKLINE_TOOLTIP_GAP;
+      const upperSide = pointY - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_GAP;
+      const lowerSide = pointY + VISITOR_SPARKLINE_TOOLTIP_GAP;
+      const horizontalPreference = pointX <= cardBounds.width / 2 ? "right" : "left";
+      const verticalPreference = pointY <= cardBounds.height / 2 ? "lower" : "upper";
+      const fallbackHorizontalPreference = horizontalPreference === "right" ? "left" : "right";
+      const fallbackVerticalPreference = verticalPreference === "lower" ? "upper" : "lower";
+      const candidates = [
+        { horizontal: horizontalPreference, vertical: verticalPreference },
+        { horizontal: fallbackHorizontalPreference, vertical: verticalPreference },
+        { horizontal: horizontalPreference, vertical: fallbackVerticalPreference },
+        { horizontal: fallbackHorizontalPreference, vertical: fallbackVerticalPreference },
+      ].map((placement) => ({
+        left: placement.horizontal === "right" ? rightSide : leftSide,
+        top: placement.vertical === "lower" ? lowerSide : upperSide,
+      }));
+      const selectedPosition =
+        candidates.find(
+          (candidate) =>
+            candidate.left >= VISITOR_SPARKLINE_TOOLTIP_MARGIN_X &&
+            candidate.left <= maxLeft &&
+            candidate.top >= VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y &&
+            candidate.top <= maxTop,
+        ) ?? candidates[0];
       const nextPosition = {
-        left: Math.round(clampNumber(preferredLeft, VISITOR_SPARKLINE_TOOLTIP_MARGIN_X, maxLeft)),
-        top: Math.round(clampNumber(preferredTop, VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y, maxTop)),
+        left: Math.round(clampNumber(selectedPosition.left, VISITOR_SPARKLINE_TOOLTIP_MARGIN_X, maxLeft)),
+        top: Math.round(clampNumber(selectedPosition.top, VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y, maxTop)),
       };
 
       setTooltipPosition((currentPosition) =>
@@ -511,7 +539,8 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
 
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateTooltipPosition);
 
-    if (resizeObserver && chartStageRef.current && tooltipRef.current) {
+    if (resizeObserver && chartCardRef.current && chartStageRef.current && tooltipRef.current) {
+      resizeObserver.observe(chartCardRef.current);
       resizeObserver.observe(chartStageRef.current);
       resizeObserver.observe(tooltipRef.current);
     }
@@ -598,7 +627,7 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
   );
 
   return (
-    <div className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
+    <div ref={chartCardRef} className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
       <div className="visitor-sparkline-meta">
         <strong>{formatVisitorCount(value)}</strong>
         <span>{label}</span>
@@ -646,30 +675,30 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
           ) : null}
         </svg>
         {activePoint && activePointStyle ? (
-          <>
-            <span className="visitor-sparkline-active-dot" style={activePointStyle} aria-hidden="true" />
-            <div
-              ref={tooltipRef}
-              id={tooltipId}
-              className="visitor-sparkline-tooltip"
-              role="tooltip"
-              style={tooltipStyle}
-            >
-              <strong>{activePoint.label}</strong>
-              <dl>
-                <div>
-                  <dt>Visitors</dt>
-                  <dd>{formatVisitorCount(activePoint.period.visitors)}</dd>
-                </div>
-                <div>
-                  <dt>Visits</dt>
-                  <dd>{formatVisitorCount(activePoint.period.visits)}</dd>
-                </div>
-              </dl>
-            </div>
-          </>
+          <span className="visitor-sparkline-active-dot" style={activePointStyle} aria-hidden="true" />
         ) : null}
       </div>
+      {activePoint ? (
+        <div
+          ref={tooltipRef}
+          id={tooltipId}
+          className="visitor-sparkline-tooltip"
+          role="tooltip"
+          style={tooltipStyle}
+        >
+          <strong>{activePoint.label}</strong>
+          <dl>
+            <div>
+              <dt>Visitors</dt>
+              <dd>{formatVisitorCount(activePoint.period.visitors)}</dd>
+            </div>
+            <div>
+              <dt>Visits</dt>
+              <dd>{formatVisitorCount(activePoint.period.visits)}</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
     </div>
   );
 }
