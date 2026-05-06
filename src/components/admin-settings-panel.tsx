@@ -1467,7 +1467,7 @@ export function AdminSettingsPanel() {
               <h2>Theme Management</h2>
             </div>
 
-            <p className="panel-description">Customize the built-in Light and Dark modes with a simpler accent setup.</p>
+            <p className="panel-description">Customize the Light and Dark mode accent colors.</p>
 
             <div className="theme-editor">
               <div className="theme-color-grid">
