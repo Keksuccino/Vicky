@@ -2647,61 +2647,144 @@ html[data-color-mode="light"] .page-copy-menu {
   font-size: 0.86rem;
 }
 
-.visitor-period-chart {
+.visitor-sparkline-grid {
   display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(4.7rem, 1fr);
-  gap: 0.48rem;
-  overflow-x: auto;
-  padding-bottom: 0.18rem;
+  gap: 0.58rem;
 }
 
-.visitor-period-bar {
+.visitor-sparkline-card {
+  --visitor-chart-line: #2f83e6;
+  --visitor-chart-line-rgb: 47 131 230;
+  position: relative;
+  min-width: 0;
+  min-height: 10.05rem;
+  border: 1px solid color-mix(in srgb, var(--visitor-chart-line) 20%, var(--border));
+  border-radius: var(--radius-sm);
+  background:
+    radial-gradient(
+      ellipse at 50% 100%,
+      rgb(var(--visitor-chart-line-rgb) / 0.19),
+      transparent 68%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--surface-elevated) 94%, var(--visitor-chart-line) 6%),
+      color-mix(in srgb, var(--surface-muted) 90%, var(--surface-elevated))
+    );
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.1),
+    0 14px 28px rgb(var(--visitor-chart-line-rgb) / 0.12);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(5.9rem, 1fr);
+  gap: 0.28rem 0.75rem;
+  overflow: hidden;
+  padding: 0.9rem 1rem 0.35rem;
+}
+
+.visitor-sparkline-card-visits {
+  --visitor-chart-line: #9b63d9;
+  --visitor-chart-line-rgb: 155 99 217;
+}
+
+html[data-color-mode="dark"] .visitor-sparkline-card,
+html[data-color-mode="custom"] .visitor-sparkline-card {
+  --visitor-chart-line: #55a6ff;
+  --visitor-chart-line-rgb: 85 166 255;
+  background:
+    radial-gradient(
+      ellipse at 50% 100%,
+      rgb(var(--visitor-chart-line-rgb) / 0.22),
+      transparent 66%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, #2a2d34 86%, var(--visitor-chart-line)), #24252b);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.07),
+    0 16px 32px rgb(0 0 0 / 0.24);
+}
+
+html[data-color-mode="dark"] .visitor-sparkline-card-visits,
+html[data-color-mode="custom"] .visitor-sparkline-card-visits {
+  --visitor-chart-line: #b77aff;
+  --visitor-chart-line-rgb: 183 122 255;
+}
+
+.visitor-sparkline-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.22);
+  pointer-events: none;
+}
+
+.visitor-sparkline-meta {
+  position: relative;
+  z-index: 1;
   min-width: 0;
   display: grid;
-  grid-template-rows: 7.4rem auto auto;
-  gap: 0.35rem;
-  align-items: end;
+  gap: 0.18rem;
 }
 
-.visitor-bar-track {
-  width: 100%;
-  height: 7.4rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted);
-  display: flex;
-  align-items: flex-end;
-  overflow: hidden;
-}
-
-.visitor-bar-fill {
-  width: 100%;
-  height: var(--visitor-bar-size, 0%);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--accent) 72%, white),
-    color-mix(in srgb, var(--accent-surface) 82%, var(--accent))
-  );
-  border-radius: 8px 8px 0 0;
-}
-
-.visitor-period-bar-current .visitor-bar-track {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 16%, transparent);
-}
-
-.visitor-period-label {
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-  text-align: center;
+.visitor-sparkline-meta strong {
+  color: var(--text-primary);
+  font-size: clamp(1.65rem, 4vw, 2.18rem);
+  font-weight: 850;
+  letter-spacing: 0;
+  line-height: 1;
   overflow-wrap: anywhere;
 }
 
-.visitor-period-bar strong {
-  color: var(--text-primary);
-  font-size: 0.9rem;
-  text-align: center;
+.visitor-sparkline-meta span {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+  font-weight: 750;
+}
+
+.visitor-sparkline-range {
+  position: relative;
+  z-index: 1;
+  justify-self: end;
+  align-self: start;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.visitor-sparkline {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  align-self: end;
+  width: calc(100% + 1.2rem);
+  height: 5.9rem;
+  margin: -0.1rem -0.6rem -0.28rem;
+  overflow: visible;
+}
+
+.visitor-sparkline-area {
+  opacity: 1;
+}
+
+.visitor-sparkline-glow,
+.visitor-sparkline-line {
+  fill: none;
+  stroke: var(--visitor-chart-line);
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.visitor-sparkline-glow {
+  opacity: 0.24;
+  stroke-width: 8;
+}
+
+.visitor-sparkline-line {
+  filter: drop-shadow(0 0 0.34rem rgb(var(--visitor-chart-line-rgb) / 0.62));
+  stroke-width: 2.3;
 }
 
 .visitor-page-list {

@@ -72,6 +72,7 @@ export interface VisitorStatsStore {
   salt: string;
   updatedAt: string;
   allTime: VisitorStatsBucket;
+  allTimeDaily: Record<string, VisitorStatsBucket>;
   daily: Record<string, VisitorStatsBucket>;
   weekly: Record<string, VisitorStatsBucket>;
   monthly: Record<string, VisitorStatsBucket>;
@@ -132,7 +133,7 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 5;
+  version: 6;
   settings: AppSettings;
   moderators: ModeratorAccount[];
   visitorStats: VisitorStatsStore;

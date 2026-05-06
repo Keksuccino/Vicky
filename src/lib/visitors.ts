@@ -195,6 +195,7 @@ export const recordVisitorInStats = (
   const keys = getPeriodKeys(visitedAt);
   const changed = [
     upsertVisitor(stats.allTime, page, visitorId, timestamp),
+    upsertVisitor(ensurePeriodBucket(stats.allTimeDaily, keys.daily), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.daily, keys.daily), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.weekly, keys.weekly), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.monthly, keys.monthly), page, visitorId, timestamp),
@@ -302,6 +303,7 @@ export const createVisitorStatsSummary = (
   knownPages: VisitorPageIdentity[] = [],
 ): VisitorStatsSummary => {
   const keys = getPeriodKeys(now);
+  const allTimePeriods = summarizePeriods(stats.allTimeDaily, keys.daily, labelDay);
 
   return {
     updatedAt: stats.updatedAt,
@@ -311,15 +313,7 @@ export const createVisitorStatsSummary = (
         totalVisitors: bucketVisitorCount(stats.allTime),
         currentPeriodKey: "all-time",
         currentPeriodLabel: "All time",
-        periods: [
-          {
-            key: "all-time",
-            label: "All time",
-            visits: bucketVisitCount(stats.allTime),
-            visitors: bucketVisitorCount(stats.allTime),
-            current: true,
-          },
-        ],
+        periods: allTimePeriods,
         pages: summarizePages(stats.allTime, knownPages),
       },
       daily: summarizeScope(stats.daily, keys.daily, labelDay, knownPages),

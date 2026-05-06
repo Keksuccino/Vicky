@@ -1,6 +1,6 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -34,6 +34,7 @@ import type {
   DomainSslRuntimeStatus,
   ModeratorAccount,
   ThemeCustomization,
+  VisitorStatsPeriod,
   VisitorStatsScope,
   VisitorStatsSummary,
 } from "@/components/types";
@@ -309,6 +310,151 @@ const formatVisitorStatsTimestamp = (value: string): string => {
   return parsed.toLocaleString();
 };
 
+type VisitorSparklineMetric = "visitors" | "visits";
+
+type VisitorSparklinePoint = {
+  key: string;
+  label: string;
+  value: number;
+  x: number;
+  y: number;
+};
+
+const VISITOR_SPARKLINE_WIDTH = 240;
+const VISITOR_SPARKLINE_HEIGHT = 84;
+const VISITOR_SPARKLINE_PADDING_X = 5;
+const VISITOR_SPARKLINE_PADDING_Y = 7;
+
+const formatSparklineCoordinate = (value: number): string => value.toFixed(2).replace(/\.?0+$/, "");
+
+const getVisitorSparklineValue = (period: VisitorStatsPeriod, metric: VisitorSparklineMetric): number =>
+  metric === "visitors" ? period.visitors : period.visits;
+
+const formatVisitorTrendRange = (periods: VisitorStatsPeriod[]): string => {
+  const first = periods[0];
+  const last = periods.at(-1);
+
+  if (!first || !last) {
+    return "No activity";
+  }
+
+  return first.key === last.key ? first.label : `${first.label} - ${last.label}`;
+};
+
+const createVisitorSparklinePoints = (
+  periods: VisitorStatsPeriod[],
+  metric: VisitorSparklineMetric,
+): VisitorSparklinePoint[] => {
+  if (periods.length === 0) {
+    return [];
+  }
+
+  const chartWidth = VISITOR_SPARKLINE_WIDTH - VISITOR_SPARKLINE_PADDING_X * 2;
+  const chartHeight = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y * 2;
+  const sourcePeriods = periods.length === 1 ? [periods[0], periods[0]] : periods;
+  const sourceValues = periods.map((period) => getVisitorSparklineValue(period, metric));
+  const minValue = Math.min(...sourceValues);
+  const maxValue = Math.max(...sourceValues);
+  const range = maxValue - minValue;
+
+  return sourcePeriods.map((period, index) => {
+    const value = getVisitorSparklineValue(period, metric);
+    const normalized = range > 0 ? (value - minValue) / range : maxValue > 0 ? 0.56 : 0;
+    const x =
+      VISITOR_SPARKLINE_PADDING_X +
+      (sourcePeriods.length === 1 ? chartWidth : (index / (sourcePeriods.length - 1)) * chartWidth);
+    const y = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y - normalized * chartHeight;
+
+    return {
+      key: `${period.key}-${index}`,
+      label: period.label,
+      value,
+      x,
+      y,
+    };
+  });
+};
+
+const createVisitorSparklinePath = (points: VisitorSparklinePoint[]): string => {
+  const firstPoint = points[0];
+  if (!firstPoint) {
+    return "";
+  }
+
+  const move = `M ${formatSparklineCoordinate(firstPoint.x)} ${formatSparklineCoordinate(firstPoint.y)}`;
+  const segments = points.slice(1).map((point, index) => {
+    const previous = points[index];
+    const controlX = previous.x + (point.x - previous.x) / 2;
+
+    return [
+      "C",
+      formatSparklineCoordinate(controlX),
+      formatSparklineCoordinate(previous.y),
+      formatSparklineCoordinate(controlX),
+      formatSparklineCoordinate(point.y),
+      formatSparklineCoordinate(point.x),
+      formatSparklineCoordinate(point.y),
+    ].join(" ");
+  });
+
+  return [move, ...segments].join(" ");
+};
+
+type VisitorSparklineCardProps = {
+  label: string;
+  metric: VisitorSparklineMetric;
+  periods: VisitorStatsPeriod[];
+  value: number;
+};
+
+function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklineCardProps) {
+  const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
+  const gradientId = `visitor-sparkline-fill-${chartId}`;
+  const points = createVisitorSparklinePoints(periods, metric);
+  const firstPoint = points[0];
+  const lastPoint = points[points.length - 1];
+  const linePath = createVisitorSparklinePath(points);
+  const baselineY = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y;
+  const areaPath =
+    firstPoint && lastPoint && linePath
+      ? `${linePath} L ${formatSparklineCoordinate(lastPoint.x)} ${formatSparklineCoordinate(
+          baselineY,
+        )} L ${formatSparklineCoordinate(firstPoint.x)} ${formatSparklineCoordinate(baselineY)} Z`
+      : "";
+  const rangeLabel = formatVisitorTrendRange(periods);
+
+  return (
+    <div className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
+      <div className="visitor-sparkline-meta">
+        <strong>{formatVisitorCount(value)}</strong>
+        <span>{label}</span>
+      </div>
+      <span className="visitor-sparkline-range">{rangeLabel}</span>
+      <svg
+        className="visitor-sparkline"
+        role="img"
+        aria-label={`${label}: ${formatVisitorCount(value)}. Trend range: ${rangeLabel}.`}
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${VISITOR_SPARKLINE_WIDTH} ${VISITOR_SPARKLINE_HEIGHT}`}
+      >
+        <defs>
+          <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--visitor-chart-line)" stopOpacity="0.34" />
+            <stop offset="100%" stopColor="var(--visitor-chart-line)" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+        {areaPath ? <path className="visitor-sparkline-area" d={areaPath} fill={`url(#${gradientId})`} /> : null}
+        {linePath ? (
+          <>
+            <path className="visitor-sparkline-glow" d={linePath} />
+            <path className="visitor-sparkline-line" d={linePath} />
+          </>
+        ) : null}
+      </svg>
+    </div>
+  );
+}
+
 type VisitorStatsCardProps = {
   activeScope: VisitorStatsScope;
   error: string | null;
@@ -327,10 +473,10 @@ function VisitorStatsCard({
   onScopeChange,
 }: VisitorStatsCardProps) {
   const scopeStats = stats?.scopes[activeScope] ?? null;
-  const maxPeriodVisits = Math.max(1, ...(scopeStats?.periods.map((period) => period.visits) ?? [0]));
   const maxPageVisits = Math.max(1, ...(scopeStats?.pages.map((page) => page.visits) ?? [0]));
   const pagesWithVisitors = scopeStats?.pages.filter((page) => page.visitors > 0).length ?? 0;
   const totalLabel = activeScope === "allTime" ? "Unique visitors" : `${scopeStats?.currentPeriodLabel ?? "Current"} visitors`;
+  const trendPeriods = scopeStats?.periods ?? [];
 
   return (
     <section className="panel-card panel-card-visitors">
@@ -389,24 +535,17 @@ function VisitorStatsCard({
 
             <div className="visitor-chart-wrap">
               <div className="visitor-section-heading">
-                <h3>{activeScope === "allTime" ? "All-time visits" : "Visit trend"}</h3>
-                <span>{scopeStats.currentPeriodLabel}</span>
+                <h3>{activeScope === "allTime" ? "All-time trend" : "Trend"}</h3>
+                <span>{formatVisitorTrendRange(trendPeriods)}</span>
               </div>
-              <div className="visitor-period-chart" aria-label="Visitor chart">
-                {scopeStats.periods.map((period) => {
-                  const size = Math.max(6, (period.visits / maxPeriodVisits) * 100);
-                  const style = { "--visitor-bar-size": `${size}%` } as CSSProperties;
-
-                  return (
-                    <div className={`visitor-period-bar${period.current ? " visitor-period-bar-current" : ""}`} key={period.key}>
-                      <div className="visitor-bar-track" aria-hidden="true">
-                        <span className="visitor-bar-fill" style={style} />
-                      </div>
-                      <span className="visitor-period-label">{period.label}</span>
-                      <strong title={formatVisitorLabel(period.visitors)}>{formatVisitorCount(period.visits)}</strong>
-                    </div>
-                  );
-                })}
+              <div className="visitor-sparkline-grid">
+                <VisitorSparklineCard
+                  label="Unique visitors"
+                  metric="visitors"
+                  periods={trendPeriods}
+                  value={scopeStats.totalVisitors}
+                />
+                <VisitorSparklineCard label="Visits" metric="visits" periods={trendPeriods} value={scopeStats.totalVisits} />
               </div>
             </div>
 

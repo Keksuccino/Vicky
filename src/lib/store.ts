@@ -270,6 +270,7 @@ const normalizeVisitorStats = (value: unknown): VisitorStatsStore => {
     salt: normalizeString(source.salt, defaults.salt),
     updatedAt: normalizeTimestamp(source.updatedAt),
     allTime: normalizeVisitorStatsBucket(source.allTime),
+    allTimeDaily: normalizeVisitorStatsBucketMap(source.allTimeDaily),
     daily: normalizeVisitorStatsBucketMap(source.daily),
     weekly: normalizeVisitorStatsBucketMap(source.weekly),
     monthly: normalizeVisitorStatsBucketMap(source.monthly),
