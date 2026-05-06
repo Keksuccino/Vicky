@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -322,12 +323,22 @@ type VisitorSparklinePoint = {
   y: number;
 };
 
+type VisitorSparklineTooltipPosition = {
+  left: number;
+  top: number;
+};
+
 const VISITOR_SPARKLINE_WIDTH = 240;
 const VISITOR_SPARKLINE_HEIGHT = 84;
 const VISITOR_SPARKLINE_PADDING_X = 5;
 const VISITOR_SPARKLINE_PADDING_Y = 7;
+const VISITOR_SPARKLINE_TOOLTIP_GAP = 10;
+const VISITOR_SPARKLINE_TOOLTIP_MARGIN_X = 14;
+const VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y = 8;
 
 const formatSparklineCoordinate = (value: number): string => value.toFixed(2).replace(/\.?0+$/, "");
+
+const clampNumber = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
 
 const getVisitorSparklineValue = (period: VisitorStatsPeriod, metric: VisitorSparklineMetric): number =>
   metric === "visitors" ? period.visitors : period.visits;
@@ -415,7 +426,9 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
   const gradientId = `visitor-sparkline-fill-${chartId}`;
   const tooltipId = `visitor-sparkline-tooltip-${chartId}`;
   const chartStageRef = useRef<HTMLDivElement>(null);
+  const tooltipRef = useRef<HTMLDivElement>(null);
   const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
+  const [tooltipPosition, setTooltipPosition] = useState<VisitorSparklineTooltipPosition | null>(null);
   const points = createVisitorSparklinePoints(periods, metric);
   const activePoint = activePointIndex === null ? null : points[activePointIndex] ?? null;
   const firstPoint = points[0];
@@ -435,16 +448,81 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         "--visitor-active-y": `${(activePoint.y / VISITOR_SPARKLINE_HEIGHT) * 100}%`,
       } as CSSProperties)
     : undefined;
-  const activePointClassName = activePoint
-    ? [
-        "visitor-sparkline-tooltip",
-        activePoint.x < VISITOR_SPARKLINE_WIDTH * 0.22 ? "visitor-sparkline-tooltip-start" : "",
-        activePoint.x > VISITOR_SPARKLINE_WIDTH * 0.78 ? "visitor-sparkline-tooltip-end" : "",
-        activePoint.y < VISITOR_SPARKLINE_HEIGHT * 0.34 ? "visitor-sparkline-tooltip-below" : "",
-      ]
-        .filter(Boolean)
-        .join(" ")
-    : "";
+  const tooltipStyle = activePoint
+    ? ({
+        left: tooltipPosition ? `${tooltipPosition.left}px` : 0,
+        top: tooltipPosition ? `${tooltipPosition.top}px` : 0,
+        visibility: tooltipPosition ? "visible" : "hidden",
+      } as CSSProperties)
+    : undefined;
+
+  useLayoutEffect(() => {
+    if (!activePoint) {
+      setTooltipPosition(null);
+      return undefined;
+    }
+
+    const updateTooltipPosition = () => {
+      const chartStage = chartStageRef.current;
+      const tooltip = tooltipRef.current;
+
+      if (!chartStage || !tooltip) {
+        return;
+      }
+
+      const stageBounds = chartStage.getBoundingClientRect();
+      const tooltipBounds = tooltip.getBoundingClientRect();
+
+      if (stageBounds.width <= 0 || stageBounds.height <= 0 || tooltipBounds.width <= 0 || tooltipBounds.height <= 0) {
+        return;
+      }
+
+      const pointX = (activePoint.x / VISITOR_SPARKLINE_WIDTH) * stageBounds.width;
+      const pointY = (activePoint.y / VISITOR_SPARKLINE_HEIGHT) * stageBounds.height;
+      const maxLeft = Math.max(
+        VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
+        stageBounds.width - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
+      );
+      const maxTop = Math.max(
+        VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
+        stageBounds.height - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
+      );
+      const preferredLeft = pointX - tooltipBounds.width / 2;
+      const aboveTop = pointY - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_GAP;
+      const belowTop = pointY + VISITOR_SPARKLINE_TOOLTIP_GAP;
+      const hasRoomAbove = aboveTop >= VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y;
+      const hasRoomBelow =
+        belowTop + tooltipBounds.height <= stageBounds.height - VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y;
+      const preferredTop = hasRoomAbove || !hasRoomBelow ? aboveTop : belowTop;
+      const nextPosition = {
+        left: Math.round(clampNumber(preferredLeft, VISITOR_SPARKLINE_TOOLTIP_MARGIN_X, maxLeft)),
+        top: Math.round(clampNumber(preferredTop, VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y, maxTop)),
+      };
+
+      setTooltipPosition((currentPosition) =>
+        currentPosition?.left === nextPosition.left && currentPosition.top === nextPosition.top
+          ? currentPosition
+          : nextPosition,
+      );
+    };
+
+    setTooltipPosition(null);
+    updateTooltipPosition();
+
+    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateTooltipPosition);
+
+    if (resizeObserver && chartStageRef.current && tooltipRef.current) {
+      resizeObserver.observe(chartStageRef.current);
+      resizeObserver.observe(tooltipRef.current);
+    }
+
+    window.addEventListener("resize", updateTooltipPosition);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", updateTooltipPosition);
+    };
+  }, [activePoint?.key, activePoint?.x, activePoint?.y]);
 
   const activateNearestPoint = useCallback(
     (clientX: number) => {
@@ -570,7 +648,13 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         {activePoint && activePointStyle ? (
           <>
             <span className="visitor-sparkline-active-dot" style={activePointStyle} aria-hidden="true" />
-            <div id={tooltipId} className={activePointClassName} role="tooltip" style={activePointStyle}>
+            <div
+              ref={tooltipRef}
+              id={tooltipId}
+              className="visitor-sparkline-tooltip"
+              role="tooltip"
+              style={tooltipStyle}
+            >
               <strong>{activePoint.label}</strong>
               <dl>
                 <div>

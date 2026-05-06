@@ -2800,14 +2800,12 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
 .visitor-sparkline-tooltip {
   --visitor-tooltip-bg: color-mix(in srgb, var(--surface-elevated) 95%, var(--visitor-chart-line) 5%);
-  --visitor-tooltip-x: -50%;
-  --visitor-tooltip-y: calc(-100% - 0.78rem);
   position: absolute;
   z-index: 3;
-  left: var(--visitor-active-x);
-  top: var(--visitor-active-y);
+  box-sizing: border-box;
+  width: 9.6rem;
   min-width: 8.4rem;
-  max-width: min(13.5rem, calc(100% - 1rem));
+  max-width: calc(100% - 1rem);
   border: 1px solid color-mix(in srgb, var(--visitor-chart-line) 30%, var(--border));
   border-radius: 8px;
   background: var(--visitor-tooltip-bg);
@@ -2817,52 +2815,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   color: var(--text-primary);
   padding: 0.54rem 0.64rem 0.58rem;
   pointer-events: none;
-  transform: translate(var(--visitor-tooltip-x), var(--visitor-tooltip-y));
-}
-
-.visitor-sparkline-tooltip::after {
-  content: "";
-  position: absolute;
-  bottom: -0.36rem;
-  left: 50%;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-right: 1px solid color-mix(in srgb, var(--visitor-chart-line) 30%, var(--border));
-  border-bottom: 1px solid color-mix(in srgb, var(--visitor-chart-line) 30%, var(--border));
-  background: var(--visitor-tooltip-bg);
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.visitor-sparkline-tooltip-start {
-  --visitor-tooltip-x: 0.4rem;
-}
-
-.visitor-sparkline-tooltip-start::after {
-  left: 0.78rem;
-  transform: rotate(45deg);
-}
-
-.visitor-sparkline-tooltip-end {
-  --visitor-tooltip-x: calc(-100% - 0.4rem);
-}
-
-.visitor-sparkline-tooltip-end::after {
-  right: 0.78rem;
-  left: auto;
-  transform: rotate(45deg);
-}
-
-.visitor-sparkline-tooltip-below {
-  --visitor-tooltip-y: 0.78rem;
-}
-
-.visitor-sparkline-tooltip-below::after {
-  top: -0.36rem;
-  bottom: auto;
-  border-top: 1px solid color-mix(in srgb, var(--visitor-chart-line) 30%, var(--border));
-  border-left: 1px solid color-mix(in srgb, var(--visitor-chart-line) 30%, var(--border));
-  border-right: 0;
-  border-bottom: 0;
 }
 
 .visitor-sparkline-tooltip strong {
