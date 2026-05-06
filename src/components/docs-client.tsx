@@ -592,12 +592,11 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const sidebarToggleButton = (
     <button
       type="button"
-      className="mobile-sidebar-button ui-tooltip"
+      className="mobile-sidebar-button"
       onClick={() => setSidebarOpen((prev) => !prev)}
       aria-expanded={sidebarOpen}
       aria-controls="docs-sidebar-panel"
       aria-label={sidebarOpen ? "Close navigation" : "Browse docs"}
-      data-ui-tooltip={sidebarOpen ? "Close navigation" : "Browse docs"}
     >
       <span className="mobile-sidebar-button-surface" aria-hidden="true" />
       <MaterialIcon name={sidebarOpen ? "close" : "menu"} />
