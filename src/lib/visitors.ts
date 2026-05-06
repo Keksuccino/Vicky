@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import type { NextRequest } from "next/server";
 
@@ -7,22 +7,15 @@ import { updateStore } from "@/lib/store";
 import type {
   GitHubDocPage,
   VisitorPageIdentity,
-  VisitorStatsBucket,
   VisitorStatsPageSummary,
   VisitorStatsPeriodSummary,
   VisitorStatsScopeSummary,
   VisitorStatsStore,
   VisitorStatsSummary,
+  VisitorStatsVisit,
 } from "@/lib/types";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const VISITOR_STATS_RETENTION = {
-  hourly: 72,
-  daily: 90,
-  weekly: 104,
-  monthly: 60,
-  yearly: 10,
-} as const;
 
 const normalizeStatsSlug = (value: string): string =>
   value
@@ -111,83 +104,93 @@ const labelWeek = (key: string): string => {
   return match ? `Week ${Number(match[2])}, ${match[1]}` : key;
 };
 
-const createEmptyBucket = (): VisitorStatsBucket => ({
+type VisitorStatsAggregatePage = VisitorPageIdentity & {
+  visits: number;
+  visitorIds: Set<string>;
+  updatedAt: string;
+};
+
+type VisitorStatsAggregateBucket = {
+  visits: number;
+  visitorIds: Set<string>;
+  pages: Map<string, VisitorStatsAggregatePage>;
+};
+
+type VisitorStatsAggregateBuckets = Map<string, VisitorStatsAggregateBucket>;
+
+const createAggregateBucket = (): VisitorStatsAggregateBucket => ({
   visits: 0,
-  visitorIds: [],
-  pages: {},
+  visitorIds: new Set(),
+  pages: new Map(),
 });
 
-const bucketVisitCount = (bucket: VisitorStatsBucket | undefined): number => bucket?.visits ?? 0;
+const bucketVisitCount = (bucket: VisitorStatsAggregateBucket | undefined): number => bucket?.visits ?? 0;
 
-const bucketVisitorCount = (bucket: VisitorStatsBucket | undefined): number => bucket?.visitorIds.length ?? 0;
+const bucketVisitorCount = (bucket: VisitorStatsAggregateBucket | undefined): number => bucket?.visitorIds.size ?? 0;
 
-const upsertVisitor = (
-  bucket: VisitorStatsBucket,
-  page: VisitorPageIdentity,
-  visitorId: string,
-  timestamp: string,
-): boolean => {
-  let changed = false;
-
+const addVisitToBucket = (bucket: VisitorStatsAggregateBucket, visit: VisitorStatsVisit): void => {
   bucket.visits += 1;
-  changed = true;
+  bucket.visitorIds.add(visit.visitorId);
 
-  if (!bucket.visitorIds.includes(visitorId)) {
-    bucket.visitorIds.push(visitorId);
-  }
-
-  const existingPage = bucket.pages[page.slug];
+  const existingPage = bucket.pages.get(visit.slug);
   if (!existingPage) {
-    bucket.pages[page.slug] = {
-      ...page,
+    bucket.pages.set(visit.slug, {
+      path: visit.path,
+      slug: visit.slug,
+      title: visit.title,
       visits: 1,
-      visitorIds: [visitorId],
-      updatedAt: timestamp,
-    };
-    return true;
+      visitorIds: new Set([visit.visitorId]),
+      updatedAt: visit.visitedAt,
+    });
+    return;
   }
 
   existingPage.visits += 1;
-  existingPage.updatedAt = timestamp;
+  existingPage.visitorIds.add(visit.visitorId);
 
-  if (existingPage.title !== page.title || existingPage.path !== page.path) {
-    existingPage.title = page.title;
-    existingPage.path = page.path;
+  if (visit.visitedAt >= existingPage.updatedAt) {
+    existingPage.path = visit.path;
+    existingPage.title = visit.title;
+    existingPage.updatedAt = visit.visitedAt;
   }
-
-  if (!existingPage.visitorIds.includes(visitorId)) {
-    existingPage.visitorIds.push(visitorId);
-  }
-
-  return changed;
 };
 
-const ensurePeriodBucket = (buckets: Record<string, VisitorStatsBucket>, key: string): VisitorStatsBucket => {
-  buckets[key] ??= createEmptyBucket();
-  return buckets[key];
-};
+const aggregateVisits = (
+  visits: VisitorStatsVisit[],
+  keyForVisit: (visit: VisitorStatsVisit) => string,
+): VisitorStatsAggregateBuckets => {
+  const buckets: VisitorStatsAggregateBuckets = new Map();
 
-const prunePeriodBuckets = (
-  buckets: Record<string, VisitorStatsBucket>,
-  currentKey: string,
-  maxBuckets: number,
-): boolean => {
-  const removableKeys = Object.keys(buckets)
-    .filter((key) => key !== currentKey)
-    .sort((left, right) => right.localeCompare(left));
-  let changed = false;
-
-  while (removableKeys.length >= maxBuckets) {
-    const key = removableKeys.pop();
-    if (!key) {
-      break;
-    }
-
-    delete buckets[key];
-    changed = true;
+  for (const visit of visits) {
+    const key = keyForVisit(visit);
+    const bucket = buckets.get(key) ?? createAggregateBucket();
+    buckets.set(key, bucket);
+    addVisitToBucket(bucket, visit);
   }
 
-  return changed;
+  return buckets;
+};
+
+const aggregateAllVisits = (visits: VisitorStatsVisit[]): VisitorStatsAggregateBucket => {
+  const bucket = createAggregateBucket();
+
+  for (const visit of visits) {
+    addVisitToBucket(bucket, visit);
+  }
+
+  return bucket;
+};
+
+const getVisitDate = (visit: VisitorStatsVisit): Date => new Date(visit.visitedAt);
+
+const normalizeVisitPage = (page: VisitorPageIdentity): VisitorPageIdentity => {
+  const slug = normalizeStatsSlug(page.slug || page.path);
+
+  return {
+    path: statsPathFromSlug(slug),
+    slug,
+    title: page.title.trim() || prettyTitleFromSlug(slug),
+  };
 };
 
 export const recordVisitorInStats = (
@@ -196,32 +199,22 @@ export const recordVisitorInStats = (
   visitorId: string,
   visitedAt = new Date(),
 ): boolean => {
-  if (!page.slug || !visitorId) {
+  const normalizedPage = normalizeVisitPage(page);
+  const normalizedVisitorId = visitorId.trim();
+  if (!normalizedPage.slug || !normalizedVisitorId) {
     return false;
   }
 
   const timestamp = visitedAt.toISOString();
-  const keys = getPeriodKeys(visitedAt);
-  const changed = [
-    upsertVisitor(stats.allTime, page, visitorId, timestamp),
-    upsertVisitor(ensurePeriodBucket(stats.allTimeDaily, keys.daily), page, visitorId, timestamp),
-    upsertVisitor(ensurePeriodBucket(stats.hourly, keys.hourly), page, visitorId, timestamp),
-    upsertVisitor(ensurePeriodBucket(stats.daily, keys.daily), page, visitorId, timestamp),
-    upsertVisitor(ensurePeriodBucket(stats.weekly, keys.weekly), page, visitorId, timestamp),
-    upsertVisitor(ensurePeriodBucket(stats.monthly, keys.monthly), page, visitorId, timestamp),
-    upsertVisitor(ensurePeriodBucket(stats.yearly, keys.yearly), page, visitorId, timestamp),
-    prunePeriodBuckets(stats.hourly, keys.hourly, VISITOR_STATS_RETENTION.hourly),
-    prunePeriodBuckets(stats.daily, keys.daily, VISITOR_STATS_RETENTION.daily),
-    prunePeriodBuckets(stats.weekly, keys.weekly, VISITOR_STATS_RETENTION.weekly),
-    prunePeriodBuckets(stats.monthly, keys.monthly, VISITOR_STATS_RETENTION.monthly),
-    prunePeriodBuckets(stats.yearly, keys.yearly, VISITOR_STATS_RETENTION.yearly),
-  ].some(Boolean);
+  stats.visits.push({
+    id: randomUUID(),
+    ...normalizedPage,
+    visitorId: normalizedVisitorId,
+    visitedAt: timestamp,
+  });
+  stats.updatedAt = timestamp;
 
-  if (changed) {
-    stats.updatedAt = timestamp;
-  }
-
-  return changed;
+  return true;
 };
 
 export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPage): Promise<void> => {
@@ -238,7 +231,7 @@ export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPa
 };
 
 const summarizePages = (
-  bucket: VisitorStatsBucket | undefined,
+  bucket: VisitorStatsAggregateBucket | undefined,
   knownPages: VisitorPageIdentity[] = [],
 ): VisitorStatsPageSummary[] => {
   const pages = new Map<string, VisitorStatsPageSummary>();
@@ -258,13 +251,13 @@ const summarizePages = (
     });
   }
 
-  for (const page of Object.values(bucket?.pages ?? {})) {
+  for (const page of bucket?.pages.values() ?? []) {
     pages.set(page.slug, {
       path: page.path,
       slug: page.slug,
       title: page.title,
       visits: page.visits,
-      visitors: page.visitorIds.length,
+      visitors: page.visitorIds.size,
     });
   }
 
@@ -273,25 +266,25 @@ const summarizePages = (
 };
 
 const summarizePeriods = (
-  buckets: Record<string, VisitorStatsBucket>,
+  buckets: VisitorStatsAggregateBuckets,
   currentKey: string,
   labelForKey: (key: string) => string,
 ): VisitorStatsPeriodSummary[] => {
-  const periodKeys = new Set([...Object.keys(buckets), currentKey]);
+  const periodKeys = new Set([...buckets.keys(), currentKey]);
 
   return [...periodKeys]
     .sort((left, right) => left.localeCompare(right))
     .map((key) => ({
       key,
       label: labelForKey(key),
-      visits: bucketVisitCount(buckets[key]),
-      visitors: bucketVisitorCount(buckets[key]),
+      visits: bucketVisitCount(buckets.get(key)),
+      visitors: bucketVisitorCount(buckets.get(key)),
       current: key === currentKey,
     }));
 };
 
 const summarizeCurrentDayHours = (
-  buckets: Record<string, VisitorStatsBucket>,
+  buckets: VisitorStatsAggregateBuckets,
   now: Date,
 ): VisitorStatsPeriodSummary[] => {
   const dayKey = formatDayKey(now);
@@ -304,20 +297,20 @@ const summarizeCurrentDayHours = (
     return {
       key,
       label: labelHour(key),
-      visits: bucketVisitCount(buckets[key]),
-      visitors: bucketVisitorCount(buckets[key]),
+      visits: bucketVisitCount(buckets.get(key)),
+      visitors: bucketVisitorCount(buckets.get(key)),
       current: key === currentKey,
     };
   });
 };
 
 const summarizeScope = (
-  buckets: Record<string, VisitorStatsBucket>,
+  buckets: VisitorStatsAggregateBuckets,
   currentKey: string,
   labelForKey: (key: string) => string,
   knownPages: VisitorPageIdentity[],
 ): VisitorStatsScopeSummary => {
-  const currentBucket = buckets[currentKey];
+  const currentBucket = buckets.get(currentKey);
 
   return {
     totalVisits: bucketVisitCount(currentBucket),
@@ -330,13 +323,13 @@ const summarizeScope = (
 };
 
 const summarizeDailyScope = (
-  dailyBuckets: Record<string, VisitorStatsBucket>,
-  hourlyBuckets: Record<string, VisitorStatsBucket>,
+  dailyBuckets: VisitorStatsAggregateBuckets,
+  hourlyBuckets: VisitorStatsAggregateBuckets,
   currentDayKey: string,
   now: Date,
   knownPages: VisitorPageIdentity[],
 ): VisitorStatsScopeSummary => {
-  const currentBucket = dailyBuckets[currentDayKey];
+  const currentBucket = dailyBuckets.get(currentDayKey);
 
   return {
     totalVisits: bucketVisitCount(currentBucket),
@@ -354,23 +347,29 @@ export const createVisitorStatsSummary = (
   knownPages: VisitorPageIdentity[] = [],
 ): VisitorStatsSummary => {
   const keys = getPeriodKeys(now);
-  const allTimePeriods = summarizePeriods(stats.allTimeDaily, keys.daily, labelDay);
+  const allTimeBucket = aggregateAllVisits(stats.visits);
+  const hourlyBuckets = aggregateVisits(stats.visits, (visit) => formatHourKey(getVisitDate(visit)));
+  const dailyBuckets = aggregateVisits(stats.visits, (visit) => formatDayKey(getVisitDate(visit)));
+  const weeklyBuckets = aggregateVisits(stats.visits, (visit) => formatIsoWeekKey(getVisitDate(visit)));
+  const monthlyBuckets = aggregateVisits(stats.visits, (visit) => formatMonthKey(getVisitDate(visit)));
+  const yearlyBuckets = aggregateVisits(stats.visits, (visit) => formatYearKey(getVisitDate(visit)));
+  const allTimePeriods = summarizePeriods(dailyBuckets, keys.daily, labelDay);
 
   return {
     updatedAt: stats.updatedAt,
     scopes: {
       allTime: {
-        totalVisits: bucketVisitCount(stats.allTime),
-        totalVisitors: bucketVisitorCount(stats.allTime),
+        totalVisits: bucketVisitCount(allTimeBucket),
+        totalVisitors: bucketVisitorCount(allTimeBucket),
         currentPeriodKey: "all-time",
         currentPeriodLabel: "All time",
         periods: allTimePeriods,
-        pages: summarizePages(stats.allTime, knownPages),
+        pages: summarizePages(allTimeBucket, knownPages),
       },
-      daily: summarizeDailyScope(stats.daily, stats.hourly, keys.daily, now, knownPages),
-      weekly: summarizeScope(stats.weekly, keys.weekly, labelWeek, knownPages),
-      monthly: summarizeScope(stats.monthly, keys.monthly, labelMonth, knownPages),
-      yearly: summarizeScope(stats.yearly, keys.yearly, (key) => key, knownPages),
+      daily: summarizeDailyScope(dailyBuckets, hourlyBuckets, keys.daily, now, knownPages),
+      weekly: summarizeScope(weeklyBuckets, keys.weekly, labelWeek, knownPages),
+      monthly: summarizeScope(monthlyBuckets, keys.monthly, labelMonth, knownPages),
+      yearly: summarizeScope(yearlyBuckets, keys.yearly, (key) => key, knownPages),
     },
   };
 };

@@ -17,6 +17,14 @@ describe("visitor stats", () => {
     expect(
       recordVisitorInStats(stats, { path: "/guide", slug: "guide", title: "Guide" }, "visitor-a", visitedAt),
     ).toBe(true);
+    expect(stats.visits).toHaveLength(3);
+    expect(stats.visits[0]).toMatchObject({
+      path: "/home",
+      slug: "home",
+      title: "Home",
+      visitorId: "visitor-a",
+      visitedAt: "2026-05-05T10:00:00.000Z",
+    });
 
     const summary = createVisitorStatsSummary(stats, visitedAt, [
       { path: "/home", slug: "home", title: "Home" },
@@ -53,7 +61,7 @@ describe("visitor stats", () => {
     ]);
   });
 
-  it("prunes old period buckets while preserving all-time stats", () => {
+  it("derives all ranges from raw visit timestamps", () => {
     const stats = DEFAULT_VISITOR_STATS();
 
     for (let index = 0; index < 95; index += 1) {
@@ -61,21 +69,15 @@ describe("visitor stats", () => {
       recordVisitorInStats(stats, { path: "/home", slug: "home", title: "Home" }, `visitor-${index}`, visitedAt);
     }
 
-    expect(Object.keys(stats.daily)).toHaveLength(90);
-    expect(stats.daily["2026-01-01"]).toBeUndefined();
-    expect(stats.daily["2026-04-05"]).toBeDefined();
-    expect(Object.keys(stats.hourly)).toHaveLength(72);
-    expect(stats.hourly["2026-01-01T10"]).toBeUndefined();
-    expect(stats.hourly["2026-04-05T10"]).toBeDefined();
-    expect(Object.keys(stats.allTimeDaily)).toHaveLength(95);
-    expect(stats.allTimeDaily["2026-01-01"]).toBeDefined();
-    expect(stats.allTimeDaily["2026-04-05"]).toBeDefined();
-    expect(stats.allTime.visits).toBe(95);
-    expect(stats.allTime.visitorIds).toHaveLength(95);
+    expect(stats.visits).toHaveLength(95);
 
     const summary = createVisitorStatsSummary(stats, new Date("2026-04-05T10:00:00.000Z"));
+    expect(summary.scopes.allTime.totalVisits).toBe(95);
+    expect(summary.scopes.allTime.totalVisitors).toBe(95);
     expect(summary.scopes.allTime.periods).toHaveLength(95);
     expect(summary.scopes.allTime.periods[0]).toMatchObject({ key: "2026-01-01", visits: 1, visitors: 1 });
+    expect(summary.scopes.daily.totalVisits).toBe(1);
+    expect(summary.scopes.daily.totalVisitors).toBe(1);
     expect(summary.scopes.daily.periods).toHaveLength(11);
     expect(summary.scopes.daily.periods.at(-1)).toMatchObject({ key: "2026-04-05T10", visits: 1, visitors: 1 });
   });

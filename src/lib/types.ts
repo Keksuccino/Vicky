@@ -53,31 +53,19 @@ export interface ModeratorAccount {
 
 export type VisitorStatsScope = "allTime" | "daily" | "weekly" | "monthly" | "yearly";
 
-export interface VisitorStatsPageBucket {
+export interface VisitorStatsVisit {
+  id: string;
   path: string;
   slug: string;
   title: string;
-  visits: number;
-  visitorIds: string[];
-  updatedAt: string;
-}
-
-export interface VisitorStatsBucket {
-  visits: number;
-  visitorIds: string[];
-  pages: Record<string, VisitorStatsPageBucket>;
+  visitorId: string;
+  visitedAt: string;
 }
 
 export interface VisitorStatsStore {
   salt: string;
   updatedAt: string;
-  allTime: VisitorStatsBucket;
-  allTimeDaily: Record<string, VisitorStatsBucket>;
-  hourly: Record<string, VisitorStatsBucket>;
-  daily: Record<string, VisitorStatsBucket>;
-  weekly: Record<string, VisitorStatsBucket>;
-  monthly: Record<string, VisitorStatsBucket>;
-  yearly: Record<string, VisitorStatsBucket>;
+  visits: VisitorStatsVisit[];
 }
 
 export interface VisitorStatsPeriodSummary {
@@ -134,7 +122,7 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 7;
+  version: 8;
   settings: AppSettings;
   moderators: ModeratorAccount[];
   visitorStats: VisitorStatsStore;

@@ -5,28 +5,16 @@ import { DOCS_CACHE_TTL_MS } from "@/lib/cache";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { DEFAULT_START_PAGE } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
-import type { AppSettings, DocsStore, VisitorStatsBucket, VisitorStatsStore } from "@/lib/types";
+import type { AppSettings, DocsStore, VisitorStatsStore } from "@/lib/types";
 
-export const STORE_VERSION = 7 as const;
+export const STORE_VERSION = 8 as const;
 
 const now = (): string => new Date().toISOString();
-
-export const DEFAULT_VISITOR_STATS_BUCKET = (): VisitorStatsBucket => ({
-  visits: 0,
-  visitorIds: [],
-  pages: {},
-});
 
 export const DEFAULT_VISITOR_STATS = (): VisitorStatsStore => ({
   salt: randomUUID(),
   updatedAt: now(),
-  allTime: DEFAULT_VISITOR_STATS_BUCKET(),
-  allTimeDaily: {},
-  hourly: {},
-  daily: {},
-  weekly: {},
-  monthly: {},
-  yearly: {},
+  visits: [],
 });
 
 export const DEFAULT_SETTINGS = (): AppSettings => ({

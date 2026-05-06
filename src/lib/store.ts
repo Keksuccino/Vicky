@@ -20,9 +20,8 @@ import type {
   AppSettings,
   DocsStore,
   ModeratorAccount,
-  VisitorStatsBucket,
-  VisitorStatsPageBucket,
   VisitorStatsStore,
+  VisitorStatsVisit,
 } from "@/lib/types";
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
@@ -133,41 +132,13 @@ const normalizeModerators = (value: unknown): ModeratorAccount[] => {
     });
 };
 
-const normalizeVisitorId = (value: unknown): string | null => {
+const normalizeVisitorStatsVisitorId = (value: unknown): string | null => {
   if (typeof value !== "string") {
     return null;
   }
 
   const trimmed = value.trim();
   return trimmed || null;
-};
-
-const normalizeVisitorIds = (value: unknown): string[] => {
-  const seen = new Set<string>();
-  const ids: string[] = [];
-
-  for (const entry of Array.isArray(value) ? value : []) {
-    const id = normalizeVisitorId(entry);
-    if (!id || seen.has(id)) {
-      continue;
-    }
-
-    seen.add(id);
-    ids.push(id);
-  }
-
-  return ids;
-};
-
-const normalizeNonNegativeInteger = (value: unknown, fallback = 0): number => {
-  const numericValue =
-    typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
-
-  if (!Number.isFinite(numericValue) || numericValue < 0) {
-    return fallback;
-  }
-
-  return Math.round(numericValue);
 };
 
 const normalizeVisitorStatsSlug = (value: unknown, fallback = ""): string => {
@@ -193,89 +164,49 @@ const prettyVisitorStatsTitle = (slug: string): string => {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const normalizeVisitorStatsPageBucket = (
+const normalizeVisitorStatsVisit = (
   value: unknown,
-  fallbackKey: string,
-): VisitorStatsPageBucket | null => {
+  seenVisitIds: Set<string>,
+): VisitorStatsVisit | null => {
   const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const slug = normalizeVisitorStatsSlug(source.slug, fallbackKey);
+  const visitorId = normalizeVisitorStatsVisitorId(source.visitorId);
+  const slug = normalizeVisitorStatsSlug(source.slug, normalizeTrimmedString(source.path));
+  const visitedAt = normalizeTimestamp(source.visitedAt);
 
-  if (!slug) {
+  if (!visitorId || !slug) {
     return null;
   }
 
+  let id = normalizeTrimmedString(source.id);
+  if (!id || seenVisitIds.has(id)) {
+    id = randomUUID();
+  }
+
+  seenVisitIds.add(id);
+
   return {
+    id,
     path: visitorStatsPathFromSlug(slug),
     slug,
     title: normalizeString(source.title, prettyVisitorStatsTitle(slug)),
-    visits: Math.max(normalizeNonNegativeInteger(source.visits, 0), normalizeVisitorIds(source.visitorIds).length),
-    visitorIds: normalizeVisitorIds(source.visitorIds),
-    updatedAt: normalizeTimestamp(source.updatedAt),
+    visitorId,
+    visitedAt,
   };
-};
-
-const normalizeVisitorStatsBucket = (value: unknown): VisitorStatsBucket => {
-  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const visitorIds = normalizeVisitorIds(source.visitorIds);
-  const visitorIdSet = new Set(visitorIds);
-  const pages: Record<string, VisitorStatsPageBucket> = {};
-  let pageVisits = 0;
-  const pagesSource =
-    typeof source.pages === "object" && source.pages !== null ? (source.pages as Record<string, unknown>) : {};
-
-  for (const [key, entry] of Object.entries(pagesSource)) {
-    const page = normalizeVisitorStatsPageBucket(entry, key);
-    if (!page || pages[page.slug]) {
-      continue;
-    }
-
-    pages[page.slug] = page;
-    pageVisits += page.visits;
-    for (const visitorId of page.visitorIds) {
-      if (!visitorIdSet.has(visitorId)) {
-        visitorIdSet.add(visitorId);
-        visitorIds.push(visitorId);
-      }
-    }
-  }
-
-  return {
-    visits: Math.max(normalizeNonNegativeInteger(source.visits, 0), pageVisits, visitorIds.length),
-    visitorIds,
-    pages,
-  };
-};
-
-const normalizeVisitorStatsBucketMap = (value: unknown): Record<string, VisitorStatsBucket> => {
-  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const buckets: Record<string, VisitorStatsBucket> = {};
-
-  for (const [key, entry] of Object.entries(source)) {
-    const normalizedKey = key.trim();
-    if (!normalizedKey) {
-      continue;
-    }
-
-    buckets[normalizedKey] = normalizeVisitorStatsBucket(entry);
-  }
-
-  return buckets;
 };
 
 const normalizeVisitorStats = (value: unknown): VisitorStatsStore => {
   const defaults = DEFAULT_VISITOR_STATS();
   const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  const seenVisitIds = new Set<string>();
+  const visits = (Array.isArray(source.visits) ? source.visits : [])
+    .map((entry) => normalizeVisitorStatsVisit(entry, seenVisitIds))
+    .filter((entry): entry is VisitorStatsVisit => Boolean(entry))
+    .sort((left, right) => left.visitedAt.localeCompare(right.visitedAt) || left.id.localeCompare(right.id));
 
   return {
     salt: normalizeString(source.salt, defaults.salt),
     updatedAt: normalizeTimestamp(source.updatedAt),
-    allTime: normalizeVisitorStatsBucket(source.allTime),
-    allTimeDaily: normalizeVisitorStatsBucketMap(source.allTimeDaily),
-    hourly: normalizeVisitorStatsBucketMap(source.hourly),
-    daily: normalizeVisitorStatsBucketMap(source.daily),
-    weekly: normalizeVisitorStatsBucketMap(source.weekly),
-    monthly: normalizeVisitorStatsBucketMap(source.monthly),
-    yearly: normalizeVisitorStatsBucketMap(source.yearly),
+    visits,
   };
 };
 
