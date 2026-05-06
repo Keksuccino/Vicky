@@ -728,22 +728,22 @@ function VisitorStatsCard({
     <section className="panel-card panel-card-visitors">
       <div className="panel-header">
         <div>
-          <h2>Visitor Stats</h2>
+          <h2>Analytics</h2>
           <p className="panel-description">Docs visits and unique visitors, grouped by hashed IP.</p>
         </div>
         <button
           type="button"
           className="btn btn-secondary visitor-refresh-button"
           disabled={loading}
-          aria-label={loading ? "Refreshing visitor stats" : "Refresh visitor stats"}
-          title={loading ? "Refreshing visitor stats" : "Refresh visitor stats"}
+          aria-label={loading ? "Refreshing analytics" : "Refresh analytics"}
+          title={loading ? "Refreshing analytics" : "Refresh analytics"}
           onClick={onRefresh}
         >
           <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
         </button>
       </div>
 
-      <div className="visitor-tabs" role="tablist" aria-label="Visitor stats range">
+      <div className="visitor-tabs" role="tablist" aria-label="Analytics range">
         {VISITOR_STATS_TABS.map((tab) => (
           <button
             key={tab.scope}
@@ -763,7 +763,7 @@ function VisitorStatsCard({
 
       <div className="visitor-stats-scroll">
         {!stats || !scopeStats ? (
-          <p className="muted-caption">{loading ? "Loading visitor stats..." : "No visitor stats recorded yet."}</p>
+          <p className="muted-caption">{loading ? "Loading analytics..." : "No analytics recorded yet."}</p>
         ) : (
           <>
             <div className="visitor-chart-wrap">
