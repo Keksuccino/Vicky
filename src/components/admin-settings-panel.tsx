@@ -1477,7 +1477,7 @@ export function AdminSettingsPanel() {
             </div>
 
             <p className="panel-description">
-              Create Moderator accounts. Moderators do not have access to the admin panel.
+              Create Moderator accounts. Moderators only have access to the editor, not the admin panel.
             </p>
 
             <form
