@@ -203,4 +203,5 @@ export interface SaveGitHubDocResult {
   path: string;
   slug: string;
   commitSha: string;
+  page: GitHubDocPage;
 }

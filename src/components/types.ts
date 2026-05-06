@@ -86,6 +86,12 @@ export type VisitorStatsSummary = {
   scopes: Record<VisitorStatsScope, VisitorStatsScopeData>;
 };
 
+export type DocsRefreshResult = {
+  pageCount: number;
+  fetchedAt: string;
+  expiresAt: string;
+};
+
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
@@ -96,7 +102,7 @@ export type AdminSettings = {
   docsIconPng16Url: string;
   docsIconPng32Url: string;
   docsIconPng180Url: string;
-  docsCacheTtlSeconds: number;
+  docsRefreshIntervalMinutes: number;
   customDomain: string;
   letsEncryptEmail: string;
   githubOwner: string;

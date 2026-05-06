@@ -205,13 +205,13 @@ const mapWithConcurrency = async <T, R>(
 };
 
 const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<SearchableDoc[]> => {
+  const tree = await listMarkdownDocsTree(config);
   const cacheKey = `${toRuntimeConfigCacheKey(config)}|search-corpus`;
   const cached = docsSearchCorpusCache.get(cacheKey);
   if (cached) {
     return cached as SearchableDoc[];
   }
 
-  const tree = await listMarkdownDocsTree(config);
   if (tree.length === 0) {
     docsSearchCorpusCache.set(cacheKey, []);
     return [];

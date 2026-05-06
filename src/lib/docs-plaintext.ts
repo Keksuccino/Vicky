@@ -40,13 +40,13 @@ export const renderPlaintextDocsExport = (origin: string, docs: GitHubPlaintextD
 
 export const getPlaintextDocsExport = async (config: GitHubRuntimeConfig, origin: string): Promise<string> => {
   const cacheKey = plaintextDocsCacheKey(config, origin);
+  const docs = await listGitHubDocsForPlaintextExport(config);
   const cached = aiPlaintextDocsCache.get(cacheKey);
 
   if (cached) {
     return cached;
   }
 
-  const docs = await listGitHubDocsForPlaintextExport(config, { bypassCache: true });
   const rendered = renderPlaintextDocsExport(origin, docs);
   aiPlaintextDocsCache.set(cacheKey, rendered);
   return rendered;

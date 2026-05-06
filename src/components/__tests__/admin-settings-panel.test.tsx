@@ -20,6 +20,7 @@ const fetchAdminSettingsMock = vi.fn();
 const fetchAdminVisitorStatsMock = vi.fn();
 const getCurrentUserMock = vi.fn();
 const logoutMock = vi.fn();
+const refreshAdminDocsCacheMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
 const testAdminConnectionMock = vi.fn();
 const updateAdminModeratorMock = vi.fn();
@@ -44,6 +45,7 @@ vi.mock("@/components/api", () => ({
   formatApiError: (error: unknown) => (error instanceof Error ? error.message : "Something went wrong. Please try again."),
   getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),
   logout: (...args: unknown[]) => logoutMock(...args),
+  refreshAdminDocsCache: (...args: unknown[]) => refreshAdminDocsCacheMock(...args),
   saveAdminSettings: (...args: unknown[]) => saveAdminSettingsMock(...args),
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
   updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
@@ -74,7 +76,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
-  docsCacheTtlSeconds: 30,
+  docsRefreshIntervalMinutes: 60,
   customDomain: "",
   letsEncryptEmail: "",
   githubOwner: "Keksuccino",
@@ -175,6 +177,11 @@ describe("AdminSettingsPanel", () => {
     });
     deleteAdminModeratorMock.mockResolvedValue(undefined);
     logoutMock.mockResolvedValue(undefined);
+    refreshAdminDocsCacheMock.mockResolvedValue({
+      pageCount: 1,
+      fetchedAt: "2026-03-10T12:00:00.000Z",
+      expiresAt: "2026-03-10T13:00:00.000Z",
+    });
     testAdminConnectionMock.mockResolvedValue("ok");
   });
 

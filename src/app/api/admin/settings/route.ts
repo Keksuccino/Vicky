@@ -106,6 +106,7 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
     const body = await parseJsonBody<unknown>(request);
     const patch = settingsPatchSchema.parse(body);
+    let shouldClearDocsCache = false;
 
     const updatedStore = await updateStore(async (store) => {
       if (patch.siteTitle !== undefined) {
@@ -149,6 +150,9 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
       }
 
       if (patch.docsCacheTtlMs !== undefined) {
+        if (store.settings.docsCacheTtlMs !== patch.docsCacheTtlMs) {
+          shouldClearDocsCache = true;
+        }
         store.settings.docsCacheTtlMs = patch.docsCacheTtlMs;
       }
 
@@ -198,22 +202,39 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.github) {
         if (patch.github.owner !== undefined) {
-          store.settings.github.owner = patch.github.owner.trim();
+          const nextOwner = patch.github.owner.trim();
+          if (store.settings.github.owner !== nextOwner) {
+            shouldClearDocsCache = true;
+          }
+          store.settings.github.owner = nextOwner;
         }
 
         if (patch.github.repo !== undefined) {
-          store.settings.github.repo = patch.github.repo.trim();
+          const nextRepo = patch.github.repo.trim();
+          if (store.settings.github.repo !== nextRepo) {
+            shouldClearDocsCache = true;
+          }
+          store.settings.github.repo = nextRepo;
         }
 
         if (patch.github.branch !== undefined) {
-          store.settings.github.branch = patch.github.branch.trim() || "main";
+          const nextBranch = patch.github.branch.trim() || "main";
+          if (store.settings.github.branch !== nextBranch) {
+            shouldClearDocsCache = true;
+          }
+          store.settings.github.branch = nextBranch;
         }
 
         if (patch.github.docsPath !== undefined) {
-          store.settings.github.docsPath = patch.github.docsPath.trim() || "docs";
+          const nextDocsPath = patch.github.docsPath.trim() || "docs";
+          if (store.settings.github.docsPath !== nextDocsPath) {
+            shouldClearDocsCache = true;
+          }
+          store.settings.github.docsPath = nextDocsPath;
         }
 
         if (patch.github.token !== undefined) {
+          shouldClearDocsCache = true;
           store.settings.github.tokenEncrypted = patch.github.token.trim()
             ? encryptSecret(patch.github.token.trim())
             : null;
@@ -279,7 +300,9 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
     });
 
     setDocsCacheTtlMs(updatedStore.settings.docsCacheTtlMs);
-    clearGitHubDocsCache();
+    if (shouldClearDocsCache) {
+      clearGitHubDocsCache();
+    }
 
     return NextResponse.json({
       settings: getPublicSettings(updatedStore.settings),

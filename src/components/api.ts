@@ -3,6 +3,7 @@ import {
   type AiChatReply,
   type AuthUser,
   type DocPage,
+  type DocsRefreshResult,
   type DocSearchResult,
   type DocTreeNode,
   type DomainSslCertificateState,
@@ -55,9 +56,9 @@ export type PublicSiteSettings = {
   themeCustomCss: string;
 };
 
-const DEFAULT_DOCS_CACHE_TTL_SECONDS = 30;
-const MIN_DOCS_CACHE_TTL_SECONDS = 1;
-const MAX_DOCS_CACHE_TTL_SECONDS = 86_400;
+const DEFAULT_DOCS_REFRESH_INTERVAL_MINUTES = 60;
+const MIN_DOCS_REFRESH_INTERVAL_MINUTES = 1;
+const MAX_DOCS_REFRESH_INTERVAL_MINUTES = 1_440;
 const DOMAIN_SSL_CERTIFICATE_STATES: DomainSslCertificateState[] = [
   "missing",
   "valid",
@@ -77,7 +78,7 @@ const DEFAULT_SETTINGS: AdminSettings = {
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
-  docsCacheTtlSeconds: DEFAULT_DOCS_CACHE_TTL_SECONDS,
+  docsRefreshIntervalMinutes: DEFAULT_DOCS_REFRESH_INTERVAL_MINUTES,
   customDomain: "",
   letsEncryptEmail: "",
   githubOwner: "",
@@ -138,12 +139,12 @@ function clampInteger(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-function msToSeconds(value: number): number {
-  return clampInteger(value / 1000, MIN_DOCS_CACHE_TTL_SECONDS, MAX_DOCS_CACHE_TTL_SECONDS);
+function msToMinutes(value: number): number {
+  return clampInteger(value / 60_000, MIN_DOCS_REFRESH_INTERVAL_MINUTES, MAX_DOCS_REFRESH_INTERVAL_MINUTES);
 }
 
-function secondsToMs(value: number): number {
-  return clampInteger(value, MIN_DOCS_CACHE_TTL_SECONDS, MAX_DOCS_CACHE_TTL_SECONDS) * 1000;
+function minutesToMs(value: number): number {
+  return clampInteger(value, MIN_DOCS_REFRESH_INTERVAL_MINUTES, MAX_DOCS_REFRESH_INTERVAL_MINUTES) * 60_000;
 }
 
 function toAbsoluteDocPath(value: string): string {
@@ -432,7 +433,7 @@ function normalizeSettings(source: unknown): AdminSettings {
   const domain = asRecord(payload.domain);
   const aiChat = asRecord(payload.aiChat);
   const theme = asRecord(payload.theme);
-  const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_CACHE_TTL_SECONDS * 1000);
+  const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_REFRESH_INTERVAL_MINUTES * 60_000);
 
   return {
     siteTitle: asString(payload.siteTitle, DEFAULT_SETTINGS.siteTitle),
@@ -444,7 +445,7 @@ function normalizeSettings(source: unknown): AdminSettings {
     docsIconPng16Url: asString(docsIcon.png16Url, DEFAULT_SETTINGS.docsIconPng16Url),
     docsIconPng32Url: asString(docsIcon.png32Url, DEFAULT_SETTINGS.docsIconPng32Url),
     docsIconPng180Url: asString(docsIcon.png180Url, DEFAULT_SETTINGS.docsIconPng180Url),
-    docsCacheTtlSeconds: msToSeconds(docsCacheTtlMs),
+    docsRefreshIntervalMinutes: msToMinutes(docsCacheTtlMs),
     customDomain: asString(domain.customDomain, DEFAULT_SETTINGS.customDomain),
     letsEncryptEmail: asString(domain.letsEncryptEmail, DEFAULT_SETTINGS.letsEncryptEmail),
     githubOwner: asString(github.owner, DEFAULT_SETTINGS.githubOwner),
@@ -584,6 +585,16 @@ function normalizeVisitorStatsSummary(source: unknown): VisitorStatsSummary {
       monthly: normalizeVisitorStatsScopeData(scopes.monthly, "This month"),
       yearly: normalizeVisitorStatsScopeData(scopes.yearly, "This year"),
     },
+  };
+}
+
+function normalizeDocsRefreshResult(source: unknown): DocsRefreshResult {
+  const payload = asRecord(asRecord(source).refresh ?? source);
+
+  return {
+    pageCount: Math.max(0, Math.round(asNumber(payload.pageCount, 0))),
+    fetchedAt: asString(payload.fetchedAt).trim() || new Date().toISOString(),
+    expiresAt: asString(payload.expiresAt).trim() || new Date().toISOString(),
   };
 }
 
@@ -785,7 +796,7 @@ export async function saveAdminSettings(
       png32Url: settings.docsIconPng32Url,
       png180Url: settings.docsIconPng180Url,
     },
-    docsCacheTtlMs: secondsToMs(settings.docsCacheTtlSeconds),
+    docsCacheTtlMs: minutesToMs(settings.docsRefreshIntervalMinutes),
     domain: {
       customDomain: settings.customDomain.trim(),
       letsEncryptEmail: settings.letsEncryptEmail.trim(),
@@ -834,6 +845,14 @@ export async function saveAdminSettings(
   });
 
   return normalizeSettings(response);
+}
+
+export async function refreshAdminDocsCache(): Promise<DocsRefreshResult> {
+  const response = await requestJson<unknown>("/api/admin/docs/refresh", {
+    method: "POST",
+  });
+
+  return normalizeDocsRefreshResult(response);
 }
 
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {

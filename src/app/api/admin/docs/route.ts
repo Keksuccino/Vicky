@@ -67,13 +67,10 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     const config = resolveRuntimeConfig(store.settings.github);
 
     const saved = await saveGitHubDoc(config, payload);
-    const page = await loadGitHubDoc(config, {
-      path: saved.path,
-    });
 
     return NextResponse.json({
       saved,
-      page,
+      page: saved.page,
     });
   } catch (error: unknown) {
     return errorResponse(error);

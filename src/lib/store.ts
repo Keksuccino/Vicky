@@ -66,6 +66,18 @@ const normalizeTimestamp = (value: unknown): string => {
   return Number.isNaN(Date.parse(trimmed)) ? now() : trimmed;
 };
 
+const normalizeStoredDocsRefreshIntervalMs = (value: unknown, fallback: number): number => {
+  const normalized = normalizeDocsCacheTtlMs(value, fallback);
+  const numericValue =
+    typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
+
+  if (Number.isFinite(numericValue) && numericValue > 0 && numericValue < 60_000) {
+    return fallback;
+  }
+
+  return normalized;
+};
+
 const normalizeModeratorUsername = (value: unknown): string => {
   if (typeof value !== "string") {
     return "";
@@ -360,7 +372,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
       png32Url: normalizeString(sourceDocsIcon.png32Url, defaults.docsIcon.png32Url),
       png180Url: normalizeString(sourceDocsIcon.png180Url, defaults.docsIcon.png180Url),
     },
-    docsCacheTtlMs: normalizeDocsCacheTtlMs(source.docsCacheTtlMs, defaults.docsCacheTtlMs),
+    docsCacheTtlMs: normalizeStoredDocsRefreshIntervalMs(source.docsCacheTtlMs, defaults.docsCacheTtlMs),
     domain: {
       customDomain: normalizeCustomDomain(sourceDomain.customDomain) || defaults.domain.customDomain,
       letsEncryptEmail: normalizeLetsEncryptEmail(sourceDomain.letsEncryptEmail) || defaults.domain.letsEncryptEmail,

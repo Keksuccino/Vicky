@@ -12,6 +12,7 @@ import {
   fetchAdminVisitorStats,
   formatApiError,
   getCurrentUser,
+  refreshAdminDocsCache,
   saveAdminSettings,
   testAdminConnection,
   updateAdminModerator,
@@ -61,7 +62,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   docsIconPng16Url: "",
   docsIconPng32Url: "",
   docsIconPng180Url: "",
-  docsCacheTtlSeconds: 30,
+  docsRefreshIntervalMinutes: 60,
   customDomain: "",
   letsEncryptEmail: "",
   githubOwner: "",
@@ -484,6 +485,9 @@ export function AdminSettingsPanel() {
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
   const [connectionError, setConnectionError] = useState<string | null>(null);
+  const [refreshingDocs, setRefreshingDocs] = useState(false);
+  const [docsRefreshMessage, setDocsRefreshMessage] = useState<string | null>(null);
+  const [docsRefreshError, setDocsRefreshError] = useState<string | null>(null);
 
   const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
@@ -744,6 +748,24 @@ export function AdminSettingsPanel() {
     }
   }, [createSaveSnapshot, getLatestSaveSnapshot, refreshSslStatus, setThemeSettings]);
 
+  const refreshDocsCache = useCallback(async () => {
+    setRefreshingDocs(true);
+    setDocsRefreshMessage(null);
+    setDocsRefreshError(null);
+
+    try {
+      await persistLatestSettings();
+      const result = await refreshAdminDocsCache();
+      setDocsRefreshMessage(
+        `Fetched ${formatVisitorCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
+      );
+    } catch (error) {
+      setDocsRefreshError(formatApiError(error));
+    } finally {
+      setRefreshingDocs(false);
+    }
+  }, [persistLatestSettings]);
+
   useEffect(() => {
     latestSettingsRef.current = settings;
   }, [settings]);
@@ -862,29 +884,29 @@ export function AdminSettingsPanel() {
           </div>
 
           <p className="panel-description">
-            Configure repository connectivity, write credentials, and docs cache behavior.
+            Configure repository connectivity, write credentials, and docs refresh behavior.
           </p>
 
           <div className="form-grid">
-            <label className="field-row" htmlFor="docs-cache-ttl-seconds">
-              <span className="field-label">Docs cache TTL (seconds)</span>
+            <label className="field-row" htmlFor="docs-refresh-interval-minutes">
+              <span className="field-label">Docs refresh interval (minutes)</span>
               <input
-                id="docs-cache-ttl-seconds"
+                id="docs-refresh-interval-minutes"
                 className="input"
                 type="number"
                 min={1}
-                max={86400}
+                max={1440}
                 step={1}
-                value={settings.docsCacheTtlSeconds}
+                value={settings.docsRefreshIntervalMinutes}
                 onChange={(event) => {
                   const parsed = Number.parseInt(event.target.value, 10);
-                  const normalized = Number.isFinite(parsed) ? Math.min(86400, Math.max(1, parsed)) : 1;
-                  setSettings((prev) => ({ ...prev, docsCacheTtlSeconds: normalized }));
+                  const normalized = Number.isFinite(parsed) ? Math.min(1440, Math.max(1, parsed)) : 1;
+                  setSettings((prev) => ({ ...prev, docsRefreshIntervalMinutes: normalized }));
                 }}
                 required
               />
               <span className="field-hint">
-                Allowed range: 1-86400. Lower values refresh docs faster; higher values reduce GitHub API calls.
+                Allowed range: 1-1440. Vicky fetches the full docs set once per interval instead of loading pages from GitHub on demand.
               </span>
             </label>
 
@@ -978,6 +1000,11 @@ export function AdminSettingsPanel() {
             </div>
 
             <div className="action-row">
+              <button type="button" className="btn btn-primary" disabled={refreshingDocs} onClick={refreshDocsCache}>
+                <MaterialIcon name={refreshingDocs ? "sync" : "cloud_sync"} />
+                <span>{refreshingDocs ? "Fetching..." : "Fetch pages now"}</span>
+              </button>
+
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1005,6 +1032,8 @@ export function AdminSettingsPanel() {
 
           {connectionMessage ? <p className="success-text">{connectionMessage}</p> : null}
           {connectionError ? <p className="error-text">{connectionError}</p> : null}
+          {docsRefreshMessage ? <p className="success-text">{docsRefreshMessage}</p> : null}
+          {docsRefreshError ? <p className="error-text">{docsRefreshError}</p> : null}
           </section>
 
           <section className="panel-card panel-card-moderators">
