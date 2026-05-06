@@ -31,6 +31,21 @@ describe("visitor stats", () => {
     ]);
     expect(summary.scopes.daily.totalVisits).toBe(3);
     expect(summary.scopes.daily.totalVisitors).toBe(1);
+    expect(summary.scopes.daily.periods).toHaveLength(11);
+    expect(summary.scopes.daily.periods[0]).toEqual({
+      key: "2026-05-05T00",
+      label: "00:00",
+      visits: 0,
+      visitors: 0,
+      current: false,
+    });
+    expect(summary.scopes.daily.periods.at(-1)).toEqual({
+      key: "2026-05-05T10",
+      label: "10:00",
+      visits: 3,
+      visitors: 1,
+      current: true,
+    });
     expect(summary.scopes.allTime.pages).toEqual([
       { path: "/home", slug: "home", title: "Home", visits: 2, visitors: 1 },
       { path: "/guide", slug: "guide", title: "Guide", visits: 1, visitors: 1 },
@@ -49,6 +64,9 @@ describe("visitor stats", () => {
     expect(Object.keys(stats.daily)).toHaveLength(90);
     expect(stats.daily["2026-01-01"]).toBeUndefined();
     expect(stats.daily["2026-04-05"]).toBeDefined();
+    expect(Object.keys(stats.hourly)).toHaveLength(72);
+    expect(stats.hourly["2026-01-01T10"]).toBeUndefined();
+    expect(stats.hourly["2026-04-05T10"]).toBeDefined();
     expect(Object.keys(stats.allTimeDaily)).toHaveLength(95);
     expect(stats.allTimeDaily["2026-01-01"]).toBeDefined();
     expect(stats.allTimeDaily["2026-04-05"]).toBeDefined();
@@ -58,5 +76,7 @@ describe("visitor stats", () => {
     const summary = createVisitorStatsSummary(stats, new Date("2026-04-05T10:00:00.000Z"));
     expect(summary.scopes.allTime.periods).toHaveLength(95);
     expect(summary.scopes.allTime.periods[0]).toMatchObject({ key: "2026-01-01", visits: 1, visitors: 1 });
+    expect(summary.scopes.daily.periods).toHaveLength(11);
+    expect(summary.scopes.daily.periods.at(-1)).toMatchObject({ key: "2026-04-05T10", visits: 1, visitors: 1 });
   });
 });

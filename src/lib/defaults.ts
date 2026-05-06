@@ -7,7 +7,7 @@ import { DEFAULT_START_PAGE } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 import type { AppSettings, DocsStore, VisitorStatsBucket, VisitorStatsStore } from "@/lib/types";
 
-export const STORE_VERSION = 6 as const;
+export const STORE_VERSION = 7 as const;
 
 const now = (): string => new Date().toISOString();
 
@@ -22,6 +22,7 @@ export const DEFAULT_VISITOR_STATS = (): VisitorStatsStore => ({
   updatedAt: now(),
   allTime: DEFAULT_VISITOR_STATS_BUCKET(),
   allTimeDaily: {},
+  hourly: {},
   daily: {},
   weekly: {},
   monthly: {},

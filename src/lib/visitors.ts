@@ -17,6 +17,7 @@ import type {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const VISITOR_STATS_RETENTION = {
+  hourly: 72,
   daily: 90,
   weekly: 104,
   monthly: 60,
@@ -60,6 +61,8 @@ const hashVisitorIp = (ipAddress: string, salt: string): string =>
 
 const formatDayKey = (date: Date): string => date.toISOString().slice(0, 10);
 
+const formatHourKey = (date: Date): string => date.toISOString().slice(0, 13);
+
 const formatMonthKey = (date: Date): string => date.toISOString().slice(0, 7);
 
 const formatYearKey = (date: Date): string => String(date.getUTCFullYear());
@@ -77,6 +80,7 @@ const formatIsoWeekKey = (date: Date): string => {
 };
 
 const getPeriodKeys = (date: Date) => ({
+  hourly: formatHourKey(date),
   daily: formatDayKey(date),
   weekly: formatIsoWeekKey(date),
   monthly: formatMonthKey(date),
@@ -88,6 +92,11 @@ const labelDay = (key: string): string => {
   return Number.isNaN(parsed.valueOf())
     ? key
     : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(parsed);
+};
+
+const labelHour = (key: string): string => {
+  const match = /^\d{4}-\d{2}-\d{2}T(\d{2})$/.exec(key);
+  return match ? `${match[1]}:00` : key;
 };
 
 const labelMonth = (key: string): string => {
@@ -196,10 +205,12 @@ export const recordVisitorInStats = (
   const changed = [
     upsertVisitor(stats.allTime, page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.allTimeDaily, keys.daily), page, visitorId, timestamp),
+    upsertVisitor(ensurePeriodBucket(stats.hourly, keys.hourly), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.daily, keys.daily), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.weekly, keys.weekly), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.monthly, keys.monthly), page, visitorId, timestamp),
     upsertVisitor(ensurePeriodBucket(stats.yearly, keys.yearly), page, visitorId, timestamp),
+    prunePeriodBuckets(stats.hourly, keys.hourly, VISITOR_STATS_RETENTION.hourly),
     prunePeriodBuckets(stats.daily, keys.daily, VISITOR_STATS_RETENTION.daily),
     prunePeriodBuckets(stats.weekly, keys.weekly, VISITOR_STATS_RETENTION.weekly),
     prunePeriodBuckets(stats.monthly, keys.monthly, VISITOR_STATS_RETENTION.monthly),
@@ -279,6 +290,27 @@ const summarizePeriods = (
     }));
 };
 
+const summarizeCurrentDayHours = (
+  buckets: Record<string, VisitorStatsBucket>,
+  now: Date,
+): VisitorStatsPeriodSummary[] => {
+  const dayKey = formatDayKey(now);
+  const currentHour = now.getUTCHours();
+  const currentKey = formatHourKey(now);
+
+  return Array.from({ length: currentHour + 1 }, (_, hour) => {
+    const key = `${dayKey}T${String(hour).padStart(2, "0")}`;
+
+    return {
+      key,
+      label: labelHour(key),
+      visits: bucketVisitCount(buckets[key]),
+      visitors: bucketVisitorCount(buckets[key]),
+      current: key === currentKey,
+    };
+  });
+};
+
 const summarizeScope = (
   buckets: Record<string, VisitorStatsBucket>,
   currentKey: string,
@@ -293,6 +325,25 @@ const summarizeScope = (
     currentPeriodKey: currentKey,
     currentPeriodLabel: labelForKey(currentKey),
     periods: summarizePeriods(buckets, currentKey, labelForKey),
+    pages: summarizePages(currentBucket, knownPages),
+  };
+};
+
+const summarizeDailyScope = (
+  dailyBuckets: Record<string, VisitorStatsBucket>,
+  hourlyBuckets: Record<string, VisitorStatsBucket>,
+  currentDayKey: string,
+  now: Date,
+  knownPages: VisitorPageIdentity[],
+): VisitorStatsScopeSummary => {
+  const currentBucket = dailyBuckets[currentDayKey];
+
+  return {
+    totalVisits: bucketVisitCount(currentBucket),
+    totalVisitors: bucketVisitorCount(currentBucket),
+    currentPeriodKey: currentDayKey,
+    currentPeriodLabel: labelDay(currentDayKey),
+    periods: summarizeCurrentDayHours(hourlyBuckets, now),
     pages: summarizePages(currentBucket, knownPages),
   };
 };
@@ -316,7 +367,7 @@ export const createVisitorStatsSummary = (
         periods: allTimePeriods,
         pages: summarizePages(stats.allTime, knownPages),
       },
-      daily: summarizeScope(stats.daily, keys.daily, labelDay, knownPages),
+      daily: summarizeDailyScope(stats.daily, stats.hourly, keys.daily, now, knownPages),
       weekly: summarizeScope(stats.weekly, keys.weekly, labelWeek, knownPages),
       monthly: summarizeScope(stats.monthly, keys.monthly, labelMonth, knownPages),
       yearly: summarizeScope(stats.yearly, keys.yearly, (key) => key, knownPages),

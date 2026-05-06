@@ -271,6 +271,7 @@ const normalizeVisitorStats = (value: unknown): VisitorStatsStore => {
     updatedAt: normalizeTimestamp(source.updatedAt),
     allTime: normalizeVisitorStatsBucket(source.allTime),
     allTimeDaily: normalizeVisitorStatsBucketMap(source.allTimeDaily),
+    hourly: normalizeVisitorStatsBucketMap(source.hourly),
     daily: normalizeVisitorStatsBucketMap(source.daily),
     weekly: normalizeVisitorStatsBucketMap(source.weekly),
     monthly: normalizeVisitorStatsBucketMap(source.monthly),
