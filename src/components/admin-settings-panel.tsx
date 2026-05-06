@@ -63,6 +63,13 @@ const VISITOR_STATS_TABS: Array<{ icon: string; label: string; scope: VisitorSta
   { icon: "calendar_month", label: "Month", scope: "monthly" },
   { icon: "event_available", label: "Year", scope: "yearly" },
 ];
+const VISITOR_STATS_TREND_LABELS: Record<VisitorStatsScope, string> = {
+  allTime: "All-time trend",
+  daily: "Trend of the last 24 hours",
+  weekly: "Trend of the last 7 days",
+  monthly: "Trend of the last 30 days",
+  yearly: "Trend of the last 365 days",
+};
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -768,7 +775,7 @@ function VisitorStatsCard({
           <>
             <div className="visitor-chart-wrap">
               <div className="visitor-section-heading">
-                <h3>{activeScope === "allTime" ? "All-time trend" : "Trend"}</h3>
+                <h3>{VISITOR_STATS_TREND_LABELS[activeScope]}</h3>
               </div>
               <div className="visitor-sparkline-grid">
                 <VisitorSparklineCard
