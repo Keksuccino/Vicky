@@ -2593,35 +2593,6 @@ html[data-color-mode="light"] .page-copy-menu {
   padding-right: 0.15rem;
 }
 
-.visitor-summary-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0.58rem;
-}
-
-.visitor-summary-tile {
-  min-width: 0;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-muted) 76%, var(--surface-elevated));
-  padding: 0.72rem;
-  display: grid;
-  gap: 0.28rem;
-}
-
-.visitor-summary-tile span {
-  color: var(--text-secondary);
-  font-size: 0.83rem;
-  overflow-wrap: anywhere;
-}
-
-.visitor-summary-tile strong {
-  color: var(--text-primary);
-  font-size: 1.18rem;
-  line-height: 1.2;
-  overflow-wrap: anywhere;
-}
-
 .visitor-chart-wrap,
 .visitor-page-section {
   display: grid;
@@ -4048,10 +4019,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
   .visitor-tabs {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .visitor-summary-grid {
-    grid-template-columns: 1fr;
   }
 
   .card-grid {

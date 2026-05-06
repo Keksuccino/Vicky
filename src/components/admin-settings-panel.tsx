@@ -301,15 +301,6 @@ const formatVisitorCount = (value: number): string => visitorNumberFormatter.for
 
 const formatVisitorLabel = (value: number): string => `${formatVisitorCount(value)} visitor${value === 1 ? "" : "s"}`;
 
-const formatVisitorStatsTimestamp = (value: string): string => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.valueOf()) || parsed.getTime() === 0) {
-    return "Never";
-  }
-
-  return parsed.toLocaleString();
-};
-
 type VisitorSparklineMetric = "visitors" | "visits";
 
 type VisitorSparklinePoint = {
@@ -474,8 +465,6 @@ function VisitorStatsCard({
 }: VisitorStatsCardProps) {
   const scopeStats = stats?.scopes[activeScope] ?? null;
   const maxPageVisits = Math.max(1, ...(scopeStats?.pages.map((page) => page.visits) ?? [0]));
-  const pagesWithVisitors = scopeStats?.pages.filter((page) => page.visitors > 0).length ?? 0;
-  const totalLabel = activeScope === "allTime" ? "Unique visitors" : `${scopeStats?.currentPeriodLabel ?? "Current"} visitors`;
   const trendPeriods = scopeStats?.periods ?? [];
 
   return (
@@ -514,25 +503,6 @@ function VisitorStatsCard({
           <p className="muted-caption">{loading ? "Loading visitor stats..." : "No visitor stats recorded yet."}</p>
         ) : (
           <>
-            <div className="visitor-summary-grid">
-              <div className="visitor-summary-tile">
-                <span>{totalLabel}</span>
-                <strong>{formatVisitorCount(scopeStats.totalVisitors)}</strong>
-              </div>
-              <div className="visitor-summary-tile">
-                <span>Visits</span>
-                <strong>{formatVisitorCount(scopeStats.totalVisits)}</strong>
-              </div>
-              <div className="visitor-summary-tile">
-                <span>Pages with visitors</span>
-                <strong>{formatVisitorCount(pagesWithVisitors)}</strong>
-              </div>
-              <div className="visitor-summary-tile">
-                <span>Updated</span>
-                <strong>{formatVisitorStatsTimestamp(stats.updatedAt)}</strong>
-              </div>
-            </div>
-
             <div className="visitor-chart-wrap">
               <div className="visitor-section-heading">
                 <h3>{activeScope === "allTime" ? "All-time trend" : "Trend"}</h3>
