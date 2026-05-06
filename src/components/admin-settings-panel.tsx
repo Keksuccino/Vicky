@@ -1,6 +1,16 @@
 "use client";
 
-import { type CSSProperties, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  type KeyboardEvent,
+  type PointerEvent,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -306,6 +316,7 @@ type VisitorSparklineMetric = "visitors" | "visits";
 type VisitorSparklinePoint = {
   key: string;
   label: string;
+  period: VisitorStatsPeriod;
   value: number;
   x: number;
   y: number;
@@ -359,6 +370,7 @@ const createVisitorSparklinePoints = (
     return {
       key: `${period.key}-${index}`,
       label: period.label,
+      period,
       value,
       x,
       y,
@@ -401,7 +413,11 @@ type VisitorSparklineCardProps = {
 function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklineCardProps) {
   const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
   const gradientId = `visitor-sparkline-fill-${chartId}`;
+  const tooltipId = `visitor-sparkline-tooltip-${chartId}`;
+  const chartStageRef = useRef<HTMLDivElement>(null);
+  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
   const points = createVisitorSparklinePoints(periods, metric);
+  const activePoint = activePointIndex === null ? null : points[activePointIndex] ?? null;
   const firstPoint = points[0];
   const lastPoint = points[points.length - 1];
   const linePath = createVisitorSparklinePath(points);
@@ -413,6 +429,95 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         )} L ${formatSparklineCoordinate(firstPoint.x)} ${formatSparklineCoordinate(baselineY)} Z`
       : "";
   const rangeLabel = formatVisitorTrendRange(periods);
+  const activePointStyle = activePoint
+    ? ({
+        "--visitor-active-x": `${(activePoint.x / VISITOR_SPARKLINE_WIDTH) * 100}%`,
+        "--visitor-active-y": `${(activePoint.y / VISITOR_SPARKLINE_HEIGHT) * 100}%`,
+      } as CSSProperties)
+    : undefined;
+  const activePointClassName = activePoint
+    ? [
+        "visitor-sparkline-tooltip",
+        activePoint.x < VISITOR_SPARKLINE_WIDTH * 0.22 ? "visitor-sparkline-tooltip-start" : "",
+        activePoint.x > VISITOR_SPARKLINE_WIDTH * 0.78 ? "visitor-sparkline-tooltip-end" : "",
+        activePoint.y < VISITOR_SPARKLINE_HEIGHT * 0.34 ? "visitor-sparkline-tooltip-below" : "",
+      ]
+        .filter(Boolean)
+        .join(" ")
+    : "";
+
+  const activateNearestPoint = useCallback(
+    (clientX: number) => {
+      const chartStage = chartStageRef.current;
+
+      if (!chartStage || points.length === 0) {
+        return;
+      }
+
+      const bounds = chartStage.getBoundingClientRect();
+
+      if (bounds.width <= 0) {
+        return;
+      }
+
+      const chartX = ((clientX - bounds.left) / bounds.width) * VISITOR_SPARKLINE_WIDTH;
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+
+      points.forEach((point, index) => {
+        const distance = Math.abs(point.x - chartX);
+
+        if (distance < nearestDistance) {
+          nearestIndex = index;
+          nearestDistance = distance;
+        }
+      });
+
+      setActivePointIndex((currentIndex) => (currentIndex === nearestIndex ? currentIndex : nearestIndex));
+    },
+    [points],
+  );
+
+  const handlePointerMove = useCallback(
+    (event: PointerEvent<HTMLDivElement>) => {
+      activateNearestPoint(event.clientX);
+    },
+    [activateNearestPoint],
+  );
+
+  const handlePointFocus = useCallback(() => {
+    if (points.length === 0) {
+      return;
+    }
+
+    setActivePointIndex((currentIndex) => currentIndex ?? points.length - 1);
+  }, [points.length]);
+
+  const handlePointKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (points.length === 0) {
+        return;
+      }
+
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        const direction = event.key === "ArrowRight" ? 1 : -1;
+
+        event.preventDefault();
+        setActivePointIndex((currentIndex) => {
+          if (currentIndex === null) {
+            return direction > 0 ? 0 : points.length - 1;
+          }
+
+          return Math.max(0, Math.min(points.length - 1, currentIndex + direction));
+        });
+      }
+
+      if (event.key === "Escape") {
+        setActivePointIndex(null);
+      }
+    },
+    [points.length],
+  );
 
   return (
     <div className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
@@ -421,27 +526,66 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         <span>{label}</span>
       </div>
       <span className="visitor-sparkline-range">{rangeLabel}</span>
-      <svg
-        className="visitor-sparkline"
-        role="img"
-        aria-label={`${label}: ${formatVisitorCount(value)}. Trend range: ${rangeLabel}.`}
-        preserveAspectRatio="none"
-        viewBox={`0 0 ${VISITOR_SPARKLINE_WIDTH} ${VISITOR_SPARKLINE_HEIGHT}`}
+      <div
+        ref={chartStageRef}
+        className="visitor-sparkline-stage"
+        tabIndex={points.length > 0 ? 0 : -1}
+        aria-describedby={activePoint ? tooltipId : undefined}
+        onBlur={() => setActivePointIndex(null)}
+        onFocus={handlePointFocus}
+        onKeyDown={handlePointKeyDown}
+        onPointerLeave={() => setActivePointIndex(null)}
+        onPointerMove={handlePointerMove}
       >
-        <defs>
-          <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="var(--visitor-chart-line)" stopOpacity="0.34" />
-            <stop offset="100%" stopColor="var(--visitor-chart-line)" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
-        {areaPath ? <path className="visitor-sparkline-area" d={areaPath} fill={`url(#${gradientId})`} /> : null}
-        {linePath ? (
+        <svg
+          className="visitor-sparkline"
+          role="img"
+          aria-label={`${label}: ${formatVisitorCount(value)}. Trend range: ${rangeLabel}.`}
+          preserveAspectRatio="none"
+          viewBox={`0 0 ${VISITOR_SPARKLINE_WIDTH} ${VISITOR_SPARKLINE_HEIGHT}`}
+        >
+          <defs>
+            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
+              <stop offset="0%" stopColor="var(--visitor-chart-line)" stopOpacity="0.34" />
+              <stop offset="100%" stopColor="var(--visitor-chart-line)" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
+          {areaPath ? <path className="visitor-sparkline-area" d={areaPath} fill={`url(#${gradientId})`} /> : null}
+          {linePath ? (
+            <>
+              {activePoint ? (
+                <line
+                  className="visitor-sparkline-guide"
+                  x1={activePoint.x}
+                  x2={activePoint.x}
+                  y1={VISITOR_SPARKLINE_PADDING_Y}
+                  y2={baselineY}
+                />
+              ) : null}
+              <path className="visitor-sparkline-glow" d={linePath} />
+              <path className="visitor-sparkline-line" d={linePath} />
+            </>
+          ) : null}
+        </svg>
+        {activePoint && activePointStyle ? (
           <>
-            <path className="visitor-sparkline-glow" d={linePath} />
-            <path className="visitor-sparkline-line" d={linePath} />
+            <span className="visitor-sparkline-active-dot" style={activePointStyle} aria-hidden="true" />
+            <div id={tooltipId} className={activePointClassName} role="tooltip" style={activePointStyle}>
+              <strong>{activePoint.label}</strong>
+              <dl>
+                <div>
+                  <dt>Visitors</dt>
+                  <dd>{formatVisitorCount(activePoint.period.visitors)}</dd>
+                </div>
+                <div>
+                  <dt>Visits</dt>
+                  <dd>{formatVisitorCount(activePoint.period.visits)}</dd>
+                </div>
+              </dl>
+            </div>
           </>
         ) : null}
-      </svg>
+      </div>
     </div>
   );
 }
