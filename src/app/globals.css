@@ -28,7 +28,6 @@
   --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 86%, var(--surface-elevated));
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, #7c8ead);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 58%, #687ea4);
-  --sidebar-scrollbar-shadow: rgba(30, 58, 96, 0.2);
   --mobile-fab-bg: rgba(39, 132, 215, 0.24);
   --mobile-fab-bg-hover: rgba(22, 123, 214, 0.34);
   --mobile-fab-bg-active: rgba(14, 116, 206, 0.42);
@@ -84,7 +83,6 @@ html[data-color-mode="custom"] {
   --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 78%, #2d2d2d);
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 46%, #8c8c8c);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 62%, #b0b0b0);
-  --sidebar-scrollbar-shadow: rgba(0, 0, 0, 0.48);
   --mobile-fab-bg: rgba(175, 224, 238, 0.22);
   --mobile-fab-bg-hover: rgba(175, 224, 238, 0.33);
   --mobile-fab-bg-active: rgba(175, 224, 238, 0.4);
@@ -161,7 +159,6 @@ body {
   background-clip: padding-box;
   min-width: 2.4rem;
   min-height: 2.4rem;
-  box-shadow: 0 4px 12px var(--sidebar-scrollbar-shadow);
 }
 
 *:not(html):not(body)::-webkit-scrollbar-thumb:hover {
@@ -3737,7 +3734,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   --accent-soft: color-mix(in srgb, var(--accent-contrast) 16%, transparent);
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent-contrast) 34%, transparent);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent-contrast) 46%, transparent);
-  --sidebar-scrollbar-shadow: color-mix(in srgb, black 24%, transparent);
 }
 
 .docs-ai-chat-image-grid {
