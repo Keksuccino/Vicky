@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_VISITOR_STATS } from "@/lib/defaults";
 import { createVisitorStatsSummary, recordVisitorInStats } from "@/lib/visitors";
 
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
 describe("visitor stats", () => {
   it("counts visits while keeping unique visitors deduped per scope and page", () => {
     const stats = DEFAULT_VISITOR_STATS();
@@ -122,5 +124,28 @@ describe("visitor stats", () => {
     expect(summary.scopes.yearly.periods).toHaveLength(365);
     expect(summary.scopes.yearly.periods[0]).toMatchObject({ key: "2025-04-06", visits: 0, visitors: 0 });
     expect(summary.scopes.yearly.periods.at(-1)).toMatchObject({ key: "2026-04-05", visits: 1, visitors: 1 });
+  });
+
+  it("limits all-time chart periods to 150 evenly spaced points", () => {
+    const stats = DEFAULT_VISITOR_STATS();
+
+    for (let index = 0; index < 300; index += 1) {
+      const visitedAt = new Date(Date.UTC(2026, 0, index + 1, 10));
+      recordVisitorInStats(stats, { path: "/home", slug: "home", title: "Home" }, `visitor-${index}`, visitedAt);
+    }
+
+    const summary = createVisitorStatsSummary(stats, new Date(Date.UTC(2026, 0, 300, 10)));
+    const allTimePeriods = summary.scopes.allTime.periods;
+    const dayNumbers = allTimePeriods.map((period) => Date.parse(`${period.key}T00:00:00.000Z`) / MS_PER_DAY);
+    const dayGaps = dayNumbers.slice(1).map((dayNumber, index) => dayNumber - dayNumbers[index]);
+
+    expect(summary.scopes.allTime.totalVisits).toBe(300);
+    expect(summary.scopes.allTime.totalVisitors).toBe(300);
+    expect(allTimePeriods).toHaveLength(150);
+    expect(allTimePeriods[0]).toMatchObject({ key: "2026-01-01", visits: 1, visitors: 1 });
+    expect(allTimePeriods[1]).toMatchObject({ key: "2026-01-03", visits: 1, visitors: 1 });
+    expect(allTimePeriods.at(-1)).toMatchObject({ key: "2026-10-27", visits: 1, visitors: 1 });
+    expect(Math.min(...dayGaps)).toBe(2);
+    expect(Math.max(...dayGaps)).toBe(3);
   });
 });

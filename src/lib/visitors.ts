@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const ALL_TIME_CHART_PERIOD_LIMIT = 150;
 
 const normalizeStatsSlug = (value: string): string =>
   value
@@ -329,6 +330,22 @@ const summarizePeriods = (
     }));
 };
 
+const downsamplePeriods = (
+  periods: VisitorStatsPeriodSummary[],
+  maxPoints: number,
+): VisitorStatsPeriodSummary[] => {
+  if (periods.length <= maxPoints) {
+    return periods;
+  }
+
+  const lastIndex = periods.length - 1;
+
+  return Array.from({ length: maxPoints }, (_, index) => {
+    const periodIndex = Math.round((index / (maxPoints - 1)) * lastIndex);
+    return periods[periodIndex];
+  });
+};
+
 const summarizeFixedPeriods = (
   buckets: VisitorStatsAggregateBuckets,
   periodKeys: string[],
@@ -394,7 +411,10 @@ export const createVisitorStatsSummary = (
   const allTimeBucket = aggregateAllVisits(stats.visits);
   const hourlyBuckets = aggregateVisits(stats.visits, (visit) => formatHourKey(getVisitDate(visit)));
   const dailyBuckets = aggregateVisits(stats.visits, (visit) => formatDayKey(getVisitDate(visit)));
-  const allTimePeriods = summarizePeriods(dailyBuckets, keys.daily, labelDay);
+  const allTimePeriods = downsamplePeriods(
+    summarizePeriods(dailyBuckets, keys.daily, labelDay),
+    ALL_TIME_CHART_PERIOD_LIMIT,
+  );
 
   return {
     updatedAt: stats.updatedAt,
