@@ -15,6 +15,8 @@ import {
 import { useRouter } from "next/navigation";
 
 import {
+  clearAdminGitHubToken,
+  clearAdminOpenRouterApiKey,
   createAdminModerator,
   deleteAdminModerator,
   fetchAdminDomainSslStatus,
@@ -843,6 +845,8 @@ const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "
   }
 };
 
+type ClearSecretTarget = "githubToken" | "openRouterApiKey";
+
 const formatStatusTimestamp = (value: string): string => {
   const parsed = new Date(value);
 
@@ -862,9 +866,8 @@ export function AdminSettingsPanel() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const [, setSettingsSaving] = useState(false);
-  const [clearTokenOnSave, setClearTokenOnSave] = useState(false);
-  const [clearOpenRouterApiKeyOnSave, setClearOpenRouterApiKeyOnSave] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
+  const [clearingSecret, setClearingSecret] = useState<ClearSecretTarget | null>(null);
   const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_DOMAIN_FIELD_ERRORS);
   const [aiChatFieldErrors, setAiChatFieldErrors] = useState<AiChatFieldErrors>(EMPTY_AI_CHAT_FIELD_ERRORS);
 
@@ -900,8 +903,6 @@ export function AdminSettingsPanel() {
   const autoSaveInFlightRef = useRef(false);
   const autoSaveQueuedRef = useRef(false);
   const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
-  const latestClearTokenRef = useRef(false);
-  const latestClearOpenRouterApiKeyRef = useRef(false);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
@@ -1033,24 +1034,14 @@ export function AdminSettingsPanel() {
   );
 
   const createSaveSnapshot = useCallback(
-    (draft: AdminSettings, clearToken: boolean, clearOpenRouterApiKey: boolean): string =>
+    (draft: AdminSettings): string =>
       JSON.stringify({
         settings: draft,
-        clearToken: clearToken && !draft.githubToken.trim(),
-        clearOpenRouterApiKey: clearOpenRouterApiKey && !draft.openRouterApiKey.trim(),
       }),
     [],
   );
 
-  const getLatestSaveSnapshot = useCallback(
-    (): string =>
-      createSaveSnapshot(
-        latestSettingsRef.current,
-        latestClearTokenRef.current,
-        latestClearOpenRouterApiKeyRef.current,
-      ),
-    [createSaveSnapshot],
-  );
+  const getLatestSaveSnapshot = useCallback((): string => createSaveSnapshot(latestSettingsRef.current), [createSaveSnapshot]);
 
   const persistLatestSettings = useCallback(async () => {
     if (!autoSaveReadyRef.current) {
@@ -1063,9 +1054,7 @@ export function AdminSettingsPanel() {
     }
 
     const draft = latestSettingsRef.current;
-    const clearToken = latestClearTokenRef.current;
-    const clearOpenRouterApiKey = latestClearOpenRouterApiKeyRef.current;
-    const snapshot = createSaveSnapshot(draft, clearToken, clearOpenRouterApiKey);
+    const snapshot = createSaveSnapshot(draft);
 
     if (snapshot === lastSavedSnapshotRef.current) {
       return;
@@ -1089,18 +1078,15 @@ export function AdminSettingsPanel() {
       const shouldRefreshSslStatus =
         draft.customDomain !== lastSavedDomainRef.current.customDomain ||
         draft.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
-      const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft), {
-        clearToken,
-        clearOpenRouterApiKey,
-      });
+      const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft));
       const nextSettings: AdminSettings = {
         ...saved,
-        githubToken: clearToken ? "" : draft.githubToken,
-        openRouterApiKey: clearOpenRouterApiKey ? "" : draft.openRouterApiKey,
+        githubToken: draft.githubToken,
+        openRouterApiKey: draft.openRouterApiKey,
       };
       const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
 
-      lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings, false, false);
+      lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings);
       lastSavedDomainRef.current = {
         customDomain: nextSettings.customDomain,
         letsEncryptEmail: nextSettings.letsEncryptEmail,
@@ -1108,14 +1094,10 @@ export function AdminSettingsPanel() {
 
       if (!hasNewerLocalChanges) {
         latestSettingsRef.current = nextSettings;
-        latestClearTokenRef.current = false;
-        latestClearOpenRouterApiKeyRef.current = false;
         setSettings(nextSettings);
         setThemeSettings(themeCustomizationFromSettings(saved));
         setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(saved));
-        setClearTokenOnSave(false);
-        setClearOpenRouterApiKeyOnSave(false);
       }
 
       if (shouldRefreshSslStatus) {
@@ -1133,6 +1115,78 @@ export function AdminSettingsPanel() {
       }
     }
   }, [createSaveSnapshot, getLatestSaveSnapshot, refreshSslStatus, setThemeSettings]);
+
+  const clearSavedSecret = useCallback(
+    async (target: ClearSecretTarget) => {
+      if (!autoSaveReadyRef.current || autoSaveInFlightRef.current) {
+        return;
+      }
+
+      const currentSettings = latestSettingsRef.current;
+      const hasSecret =
+        target === "githubToken"
+          ? Boolean(currentSettings.githubToken.trim() || currentSettings.tokenConfigured)
+          : Boolean(currentSettings.openRouterApiKey.trim() || currentSettings.openRouterApiKeyConfigured);
+
+      if (!hasSecret) {
+        return;
+      }
+
+      const snapshot = getLatestSaveSnapshot();
+      autoSaveInFlightRef.current = true;
+      setSettingsSaving(true);
+      setClearingSecret(target);
+      setSaveError(null);
+
+      try {
+        const saved =
+          target === "githubToken" ? await clearAdminGitHubToken() : await clearAdminOpenRouterApiKey();
+        const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
+        const latestSettings = latestSettingsRef.current;
+        const nextSettings: AdminSettings = hasNewerLocalChanges
+          ? {
+              ...latestSettings,
+              githubToken: target === "githubToken" ? "" : latestSettings.githubToken,
+              tokenConfigured: target === "githubToken" ? saved.tokenConfigured : latestSettings.tokenConfigured,
+              openRouterApiKey: target === "openRouterApiKey" ? "" : latestSettings.openRouterApiKey,
+              aiChatEnabled: target === "openRouterApiKey" ? saved.aiChatEnabled : latestSettings.aiChatEnabled,
+              openRouterApiKeyConfigured:
+                target === "openRouterApiKey" ? saved.openRouterApiKeyConfigured : latestSettings.openRouterApiKeyConfigured,
+            }
+          : {
+              ...saved,
+              githubToken: target === "githubToken" ? "" : latestSettings.githubToken,
+              openRouterApiKey: target === "openRouterApiKey" ? "" : latestSettings.openRouterApiKey,
+            };
+
+        latestSettingsRef.current = nextSettings;
+        setSettings(nextSettings);
+
+        if (!hasNewerLocalChanges) {
+          lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings);
+          lastSavedDomainRef.current = {
+            customDomain: nextSettings.customDomain,
+            letsEncryptEmail: nextSettings.letsEncryptEmail,
+          };
+          setThemeSettings(themeCustomizationFromSettings(nextSettings));
+          setDomainFieldErrors(validateDomainFields(nextSettings.customDomain, nextSettings.letsEncryptEmail));
+          setAiChatFieldErrors(validateAiChatFields(nextSettings));
+        }
+      } catch (error) {
+        setSaveError(formatApiError(error));
+      } finally {
+        autoSaveInFlightRef.current = false;
+        setSettingsSaving(false);
+        setClearingSecret(null);
+
+        if (autoSaveQueuedRef.current) {
+          autoSaveQueuedRef.current = false;
+          void persistLatestSettings();
+        }
+      }
+    },
+    [createSaveSnapshot, getLatestSaveSnapshot, persistLatestSettings, setThemeSettings],
+  );
 
   const refreshDocsCache = useCallback(async () => {
     setRefreshingDocs(true);
@@ -1157,20 +1211,12 @@ export function AdminSettingsPanel() {
   }, [settings]);
 
   useEffect(() => {
-    latestClearTokenRef.current = clearTokenOnSave;
-  }, [clearTokenOnSave]);
-
-  useEffect(() => {
-    latestClearOpenRouterApiKeyRef.current = clearOpenRouterApiKeyOnSave;
-  }, [clearOpenRouterApiKeyOnSave]);
-
-  useEffect(() => {
     if (!autoSaveReadyRef.current) {
       return;
     }
 
     void persistLatestSettings();
-  }, [clearOpenRouterApiKeyOnSave, clearTokenOnSave, persistLatestSettings, settings]);
+  }, [persistLatestSettings, settings]);
 
   useEffect(() => {
     let isActive = true;
@@ -1203,9 +1249,7 @@ export function AdminSettingsPanel() {
         }
 
         latestSettingsRef.current = loadedSettings;
-        latestClearTokenRef.current = false;
-        latestClearOpenRouterApiKeyRef.current = false;
-        lastSavedSnapshotRef.current = createSaveSnapshot(loadedSettings, false, false);
+        lastSavedSnapshotRef.current = createSaveSnapshot(loadedSettings);
         lastSavedDomainRef.current = {
           customDomain: loadedSettings.customDomain,
           letsEncryptEmail: loadedSettings.letsEncryptEmail,
@@ -1219,8 +1263,6 @@ export function AdminSettingsPanel() {
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(loadedSettings));
-        setClearTokenOnSave(false);
-        setClearOpenRouterApiKeyOnSave(false);
         autoSaveReadyRef.current = true;
         await refreshSslStatus();
       } catch (error) {
@@ -1296,36 +1338,43 @@ export function AdminSettingsPanel() {
               </span>
             </label>
 
-            <label className="field-row" htmlFor="github-token">
-              <span className="field-label">GitHub token</span>
-              <input
-                id="github-token"
-                className="input"
-                type="password"
-                autoComplete="off"
-                value={settings.githubToken}
-                onChange={(event) => {
-                  setSettings((prev) => ({ ...prev, githubToken: event.target.value }));
-                  setClearTokenOnSave(false);
-                }}
-                placeholder={
-                  settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "github_pat_... or ghp_..."
-                }
-              />
+            <div className="field-row">
+              <label className="field-label" htmlFor="github-token">
+                GitHub token
+              </label>
+              <div className="secret-input-row">
+                <input
+                  id="github-token"
+                  className="input"
+                  type="password"
+                  autoComplete="off"
+                  value={settings.githubToken}
+                  onChange={(event) => {
+                    setSettings((prev) => ({ ...prev, githubToken: event.target.value }));
+                  }}
+                  placeholder={
+                    settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "github_pat_... or ghp_..."
+                  }
+                />
+                <button
+                  type="button"
+                  className="btn btn-ghost secret-clear-button"
+                  disabled={
+                    settingsSaving ||
+                    clearingSecret !== null ||
+                    (!settings.githubToken.trim() && !settings.tokenConfigured)
+                  }
+                  onClick={() => {
+                    void clearSavedSecret("githubToken");
+                  }}
+                >
+                  {clearingSecret === "githubToken" ? "Clearing..." : "Clear"}
+                </button>
+              </div>
               <span className="field-hint">
                 Use a PAT for this repo. Minimum permissions: Contents (read/write) and Metadata (read-only).
               </span>
-              {settings.tokenConfigured ? (
-                <label className="checkbox-row">
-                  <input
-                    type="checkbox"
-                    checked={clearTokenOnSave}
-                    onChange={(event) => setClearTokenOnSave(event.target.checked)}
-                  />
-                  <span>Clear currently saved token on next save</span>
-                </label>
-              ) : null}
-            </label>
+            </div>
 
             <div className="field-inline">
               <label className="field-row" htmlFor="repo-owner">
@@ -2106,38 +2155,45 @@ export function AdminSettingsPanel() {
                 {aiChatFieldErrors.openRouterModel ? <span className="error-text">{aiChatFieldErrors.openRouterModel}</span> : null}
               </div>
 
-              <label className="field-row" htmlFor="openrouter-api-key">
-                <span className="field-label">OpenRouter API key</span>
-                <input
-                  id="openrouter-api-key"
-                  className="input"
-                  type="password"
-                  autoComplete="off"
-                  value={settings.openRouterApiKey}
-                  onChange={(event) => {
-                    setSettings((prev) => ({ ...prev, openRouterApiKey: event.target.value }));
-                    setClearOpenRouterApiKeyOnSave(false);
-                  }}
-                  placeholder={
-                    settings.openRouterApiKeyConfigured
-                      ? "Saved OpenRouter key configured (leave blank to keep)"
-                      : "sk-or-v1-..."
-                  }
-                />
+              <div className="field-row">
+                <label className="field-label" htmlFor="openrouter-api-key">
+                  OpenRouter API key
+                </label>
+                <div className="secret-input-row">
+                  <input
+                    id="openrouter-api-key"
+                    className="input"
+                    type="password"
+                    autoComplete="off"
+                    value={settings.openRouterApiKey}
+                    onChange={(event) => {
+                      setSettings((prev) => ({ ...prev, openRouterApiKey: event.target.value }));
+                    }}
+                    placeholder={
+                      settings.openRouterApiKeyConfigured
+                        ? "Saved OpenRouter key configured (leave blank to keep)"
+                        : "sk-or-v1-..."
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost secret-clear-button"
+                    disabled={
+                      settingsSaving ||
+                      clearingSecret !== null ||
+                      (!settings.openRouterApiKey.trim() && !settings.openRouterApiKeyConfigured)
+                    }
+                    onClick={() => {
+                      void clearSavedSecret("openRouterApiKey");
+                    }}
+                  >
+                    {clearingSecret === "openRouterApiKey" ? "Clearing..." : "Clear"}
+                  </button>
+                </div>
                 <span className="field-hint">
                   Stored encrypted in the local app settings file. Leave blank to keep the existing saved key.
                 </span>
-                {settings.openRouterApiKeyConfigured ? (
-                  <label className="checkbox-row">
-                    <input
-                      type="checkbox"
-                      checked={clearOpenRouterApiKeyOnSave}
-                      onChange={(event) => setClearOpenRouterApiKeyOnSave(event.target.checked)}
-                    />
-                    <span>Clear currently saved OpenRouter API key on next save</span>
-                  </label>
-                ) : null}
-              </label>
+              </div>
 
               <div className="field-row">
                 <label className="field-label" htmlFor="ai-chat-system-prompt">

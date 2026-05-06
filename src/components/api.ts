@@ -788,10 +788,7 @@ export async function fetchAdminVisitorStats(): Promise<VisitorStatsSummary> {
   return normalizeVisitorStatsSummary(response);
 }
 
-export async function saveAdminSettings(
-  settings: AdminSettings,
-  options?: { clearToken?: boolean; clearOpenRouterApiKey?: boolean },
-): Promise<AdminSettings> {
+export async function saveAdminSettings(settings: AdminSettings): Promise<AdminSettings> {
   const payload: Record<string, unknown> = {
     siteTitle: settings.siteTitle,
     siteDescription: settings.siteDescription,
@@ -838,20 +835,34 @@ export async function saveAdminSettings(
   const github = payload.github as Record<string, unknown>;
   if (settings.githubToken.trim()) {
     github.token = settings.githubToken.trim();
-  } else if (options?.clearToken) {
-    github.token = "";
   }
 
   const aiChat = payload.aiChat as Record<string, unknown>;
   if (settings.openRouterApiKey.trim()) {
     aiChat.openRouterApiKey = settings.openRouterApiKey.trim();
-  } else if (options?.clearOpenRouterApiKey) {
-    aiChat.openRouterApiKey = "";
   }
 
   const response = await requestJson<unknown>("/api/admin/settings", {
     method: "PATCH",
     body: JSON.stringify(payload),
+  });
+
+  return normalizeSettings(response);
+}
+
+export async function clearAdminGitHubToken(): Promise<AdminSettings> {
+  const response = await requestJson<unknown>("/api/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ github: { token: "" } }),
+  });
+
+  return normalizeSettings(response);
+}
+
+export async function clearAdminOpenRouterApiKey(): Promise<AdminSettings> {
+  const response = await requestJson<unknown>("/api/admin/settings", {
+    method: "PATCH",
+    body: JSON.stringify({ aiChat: { enabled: false, openRouterApiKey: "" } }),
   });
 
   return normalizeSettings(response);

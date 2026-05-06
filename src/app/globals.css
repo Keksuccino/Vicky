@@ -2036,6 +2036,23 @@ html[data-color-mode="light"] .page-copy-menu {
   min-height: 2.75rem;
 }
 
+.secret-input-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.45rem;
+}
+
+.secret-input-row > .input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.secret-clear-button {
+  flex: 0 0 auto;
+  min-height: 2.75rem;
+  padding-inline: 0.82rem;
+}
+
 .password-input-row {
   display: flex;
   align-items: stretch;
