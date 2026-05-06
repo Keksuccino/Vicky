@@ -2653,9 +2653,6 @@ html[data-color-mode="light"] .page-copy-menu {
       color-mix(in srgb, var(--surface-elevated) 94%, var(--visitor-chart-line) 6%),
       color-mix(in srgb, var(--surface-muted) 90%, var(--surface-elevated))
     );
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.1),
-    0 14px 28px rgb(var(--visitor-chart-line-rgb) / 0.12);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto minmax(5.9rem, 1fr);
@@ -2680,24 +2677,12 @@ html[data-color-mode="custom"] .visitor-sparkline-card {
       transparent 66%
     ),
     linear-gradient(180deg, color-mix(in srgb, #2a2d34 86%, var(--visitor-chart-line)), #24252b);
-  box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.07),
-    0 16px 32px rgb(0 0 0 / 0.24);
 }
 
 html[data-color-mode="dark"] .visitor-sparkline-card-visits,
 html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   --visitor-chart-line: #b77aff;
   --visitor-chart-line-rgb: 183 122 255;
-}
-
-.visitor-sparkline-card::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 -1px 0 rgb(0 0 0 / 0.22);
-  pointer-events: none;
 }
 
 .visitor-sparkline-meta {
