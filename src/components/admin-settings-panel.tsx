@@ -506,7 +506,6 @@ function VisitorStatsCard({
             <div className="visitor-chart-wrap">
               <div className="visitor-section-heading">
                 <h3>{activeScope === "allTime" ? "All-time trend" : "Trend"}</h3>
-                <span>{formatVisitorTrendRange(trendPeriods)}</span>
               </div>
               <div className="visitor-sparkline-grid">
                 <VisitorSparklineCard
