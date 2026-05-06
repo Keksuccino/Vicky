@@ -906,7 +906,7 @@ export function AdminSettingsPanel() {
                 required
               />
               <span className="field-hint">
-                Allowed range: 1-1440. Vicky fetches the full docs set once per interval instead of loading pages from GitHub on demand.
+                Allowed range: 1-1440. Vicky fetches the full docs set once per interval.
               </span>
             </label>
 
