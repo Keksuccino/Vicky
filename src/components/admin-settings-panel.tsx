@@ -1477,7 +1477,7 @@ export function AdminSettingsPanel() {
             </div>
 
             <p className="panel-description">
-              Create editor-only users. The built-in <code>admin</code> account stays fixed.
+              Create additional editor-only accounts without access to the admin panel.
             </p>
 
             <form
