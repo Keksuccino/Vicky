@@ -39,10 +39,10 @@ describe("visitor stats", () => {
     ]);
     expect(summary.scopes.daily.totalVisits).toBe(3);
     expect(summary.scopes.daily.totalVisitors).toBe(1);
-    expect(summary.scopes.daily.periods).toHaveLength(11);
+    expect(summary.scopes.daily.periods).toHaveLength(24);
     expect(summary.scopes.daily.periods[0]).toEqual({
-      key: "2026-05-05T00",
-      label: "00:00",
+      key: "2026-05-04T11",
+      label: "11:00",
       visits: 0,
       visitors: 0,
       current: false,
@@ -50,6 +50,23 @@ describe("visitor stats", () => {
     expect(summary.scopes.daily.periods.at(-1)).toEqual({
       key: "2026-05-05T10",
       label: "10:00",
+      visits: 3,
+      visitors: 1,
+      current: true,
+    });
+    expect(summary.scopes.weekly.totalVisits).toBe(3);
+    expect(summary.scopes.weekly.totalVisitors).toBe(1);
+    expect(summary.scopes.weekly.periods).toHaveLength(7);
+    expect(summary.scopes.weekly.periods[0]).toEqual({
+      key: "2026-04-29",
+      label: "Apr 29",
+      visits: 0,
+      visitors: 0,
+      current: false,
+    });
+    expect(summary.scopes.weekly.periods.at(-1)).toEqual({
+      key: "2026-05-05",
+      label: "May 5",
       visits: 3,
       visitors: 1,
       current: true,
@@ -78,7 +95,12 @@ describe("visitor stats", () => {
     expect(summary.scopes.allTime.periods[0]).toMatchObject({ key: "2026-01-01", visits: 1, visitors: 1 });
     expect(summary.scopes.daily.totalVisits).toBe(1);
     expect(summary.scopes.daily.totalVisitors).toBe(1);
-    expect(summary.scopes.daily.periods).toHaveLength(11);
+    expect(summary.scopes.daily.periods).toHaveLength(24);
     expect(summary.scopes.daily.periods.at(-1)).toMatchObject({ key: "2026-04-05T10", visits: 1, visitors: 1 });
+    expect(summary.scopes.weekly.totalVisits).toBe(7);
+    expect(summary.scopes.weekly.totalVisitors).toBe(7);
+    expect(summary.scopes.weekly.periods).toHaveLength(7);
+    expect(summary.scopes.weekly.periods[0]).toMatchObject({ key: "2026-03-30", visits: 1, visitors: 1 });
+    expect(summary.scopes.weekly.periods.at(-1)).toMatchObject({ key: "2026-04-05", visits: 1, visitors: 1 });
   });
 });

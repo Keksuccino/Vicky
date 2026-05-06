@@ -60,22 +60,9 @@ const formatMonthKey = (date: Date): string => date.toISOString().slice(0, 7);
 
 const formatYearKey = (date: Date): string => String(date.getUTCFullYear());
 
-const formatIsoWeekKey = (date: Date): string => {
-  const utcDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-  const day = utcDate.getUTCDay() || 7;
-  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - day);
-
-  const year = utcDate.getUTCFullYear();
-  const yearStart = new Date(Date.UTC(year, 0, 1));
-  const week = Math.ceil(((utcDate.getTime() - yearStart.getTime()) / MS_PER_DAY + 1) / 7);
-
-  return `${year}-W${String(week).padStart(2, "0")}`;
-};
-
 const getPeriodKeys = (date: Date) => ({
   hourly: formatHourKey(date),
   daily: formatDayKey(date),
-  weekly: formatIsoWeekKey(date),
   monthly: formatMonthKey(date),
   yearly: formatYearKey(date),
 });
@@ -97,11 +84,6 @@ const labelMonth = (key: string): string => {
   return Number.isNaN(parsed.valueOf())
     ? key
     : new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(parsed);
-};
-
-const labelWeek = (key: string): string => {
-  const match = /^(\d{4})-W(\d{2})$/.exec(key);
-  return match ? `Week ${Number(match[2])}, ${match[1]}` : key;
 };
 
 type VisitorStatsAggregatePage = VisitorPageIdentity & {
@@ -155,6 +137,46 @@ const addVisitToBucket = (bucket: VisitorStatsAggregateBucket, visit: VisitorSta
   }
 };
 
+const mergeBucketInto = (
+  target: VisitorStatsAggregateBucket,
+  source: VisitorStatsAggregateBucket | undefined,
+): void => {
+  if (!source) {
+    return;
+  }
+
+  target.visits += source.visits;
+  for (const visitorId of source.visitorIds) {
+    target.visitorIds.add(visitorId);
+  }
+
+  for (const page of source.pages.values()) {
+    const existingPage = target.pages.get(page.slug);
+    if (!existingPage) {
+      target.pages.set(page.slug, {
+        path: page.path,
+        slug: page.slug,
+        title: page.title,
+        visits: page.visits,
+        visitorIds: new Set(page.visitorIds),
+        updatedAt: page.updatedAt,
+      });
+      continue;
+    }
+
+    existingPage.visits += page.visits;
+    for (const visitorId of page.visitorIds) {
+      existingPage.visitorIds.add(visitorId);
+    }
+
+    if (page.updatedAt >= existingPage.updatedAt) {
+      existingPage.path = page.path;
+      existingPage.title = page.title;
+      existingPage.updatedAt = page.updatedAt;
+    }
+  }
+};
+
 const aggregateVisits = (
   visits: VisitorStatsVisit[],
   keyForVisit: (visit: VisitorStatsVisit) => string,
@@ -181,7 +203,44 @@ const aggregateAllVisits = (visits: VisitorStatsVisit[]): VisitorStatsAggregateB
   return bucket;
 };
 
+const mergeBucketsForKeys = (
+  buckets: VisitorStatsAggregateBuckets,
+  keys: string[],
+): VisitorStatsAggregateBucket => {
+  const bucket = createAggregateBucket();
+
+  for (const key of keys) {
+    mergeBucketInto(bucket, buckets.get(key));
+  }
+
+  return bucket;
+};
+
 const getVisitDate = (visit: VisitorStatsVisit): Date => new Date(visit.visitedAt);
+
+const getUtcHourStart = (date: Date): Date =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours()));
+
+const getUtcDayStart = (date: Date): Date =>
+  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+const getRecentHourKeys = (now: Date, count: number): string[] => {
+  const currentHourStart = getUtcHourStart(now).getTime();
+
+  return Array.from({ length: count }, (_, index) => {
+    const offset = count - index - 1;
+    return formatHourKey(new Date(currentHourStart - offset * 60 * 60 * 1000));
+  });
+};
+
+const getRecentDayKeys = (now: Date, count: number): string[] => {
+  const currentDayStart = getUtcDayStart(now).getTime();
+
+  return Array.from({ length: count }, (_, index) => {
+    const offset = count - index - 1;
+    return formatDayKey(new Date(currentDayStart - offset * MS_PER_DAY));
+  });
+};
 
 const normalizeVisitPage = (page: VisitorPageIdentity): VisitorPageIdentity => {
   const slug = normalizeStatsSlug(page.slug || page.path);
@@ -283,25 +342,19 @@ const summarizePeriods = (
     }));
 };
 
-const summarizeCurrentDayHours = (
+const summarizeFixedPeriods = (
   buckets: VisitorStatsAggregateBuckets,
-  now: Date,
+  periodKeys: string[],
+  currentKey: string,
+  labelForKey: (key: string) => string,
 ): VisitorStatsPeriodSummary[] => {
-  const dayKey = formatDayKey(now);
-  const currentHour = now.getUTCHours();
-  const currentKey = formatHourKey(now);
-
-  return Array.from({ length: currentHour + 1 }, (_, hour) => {
-    const key = `${dayKey}T${String(hour).padStart(2, "0")}`;
-
-    return {
-      key,
-      label: labelHour(key),
-      visits: bucketVisitCount(buckets.get(key)),
-      visitors: bucketVisitorCount(buckets.get(key)),
-      current: key === currentKey,
-    };
-  });
+  return periodKeys.map((key) => ({
+    key,
+    label: labelForKey(key),
+    visits: bucketVisitCount(buckets.get(key)),
+    visitors: bucketVisitorCount(buckets.get(key)),
+    current: key === currentKey,
+  }));
 };
 
 const summarizeScope = (
@@ -322,21 +375,40 @@ const summarizeScope = (
   };
 };
 
-const summarizeDailyScope = (
-  dailyBuckets: VisitorStatsAggregateBuckets,
+const summarizeRecentHoursScope = (
   hourlyBuckets: VisitorStatsAggregateBuckets,
-  currentDayKey: string,
   now: Date,
   knownPages: VisitorPageIdentity[],
 ): VisitorStatsScopeSummary => {
-  const currentBucket = dailyBuckets.get(currentDayKey);
+  const periodKeys = getRecentHourKeys(now, 24);
+  const currentKey = formatHourKey(now);
+  const currentBucket = mergeBucketsForKeys(hourlyBuckets, periodKeys);
 
   return {
     totalVisits: bucketVisitCount(currentBucket),
     totalVisitors: bucketVisitorCount(currentBucket),
-    currentPeriodKey: currentDayKey,
-    currentPeriodLabel: labelDay(currentDayKey),
-    periods: summarizeCurrentDayHours(hourlyBuckets, now),
+    currentPeriodKey: "last-24-hours",
+    currentPeriodLabel: "Last 24 hours",
+    periods: summarizeFixedPeriods(hourlyBuckets, periodKeys, currentKey, labelHour),
+    pages: summarizePages(currentBucket, knownPages),
+  };
+};
+
+const summarizeRecentDaysScope = (
+  dailyBuckets: VisitorStatsAggregateBuckets,
+  now: Date,
+  knownPages: VisitorPageIdentity[],
+): VisitorStatsScopeSummary => {
+  const periodKeys = getRecentDayKeys(now, 7);
+  const currentKey = formatDayKey(now);
+  const currentBucket = mergeBucketsForKeys(dailyBuckets, periodKeys);
+
+  return {
+    totalVisits: bucketVisitCount(currentBucket),
+    totalVisitors: bucketVisitorCount(currentBucket),
+    currentPeriodKey: "last-7-days",
+    currentPeriodLabel: "Last 7 days",
+    periods: summarizeFixedPeriods(dailyBuckets, periodKeys, currentKey, labelDay),
     pages: summarizePages(currentBucket, knownPages),
   };
 };
@@ -350,7 +422,6 @@ export const createVisitorStatsSummary = (
   const allTimeBucket = aggregateAllVisits(stats.visits);
   const hourlyBuckets = aggregateVisits(stats.visits, (visit) => formatHourKey(getVisitDate(visit)));
   const dailyBuckets = aggregateVisits(stats.visits, (visit) => formatDayKey(getVisitDate(visit)));
-  const weeklyBuckets = aggregateVisits(stats.visits, (visit) => formatIsoWeekKey(getVisitDate(visit)));
   const monthlyBuckets = aggregateVisits(stats.visits, (visit) => formatMonthKey(getVisitDate(visit)));
   const yearlyBuckets = aggregateVisits(stats.visits, (visit) => formatYearKey(getVisitDate(visit)));
   const allTimePeriods = summarizePeriods(dailyBuckets, keys.daily, labelDay);
@@ -366,8 +437,8 @@ export const createVisitorStatsSummary = (
         periods: allTimePeriods,
         pages: summarizePages(allTimeBucket, knownPages),
       },
-      daily: summarizeDailyScope(dailyBuckets, hourlyBuckets, keys.daily, now, knownPages),
-      weekly: summarizeScope(weeklyBuckets, keys.weekly, labelWeek, knownPages),
+      daily: summarizeRecentHoursScope(hourlyBuckets, now, knownPages),
+      weekly: summarizeRecentDaysScope(dailyBuckets, now, knownPages),
       monthly: summarizeScope(monthlyBuckets, keys.monthly, labelMonth, knownPages),
       yearly: summarizeScope(yearlyBuckets, keys.yearly, (key) => key, knownPages),
     },
