@@ -71,6 +71,16 @@ describe("visitor stats", () => {
       visitors: 1,
       current: true,
     });
+    expect(summary.scopes.monthly.totalVisits).toBe(3);
+    expect(summary.scopes.monthly.totalVisitors).toBe(1);
+    expect(summary.scopes.monthly.periods).toHaveLength(30);
+    expect(summary.scopes.monthly.periods[0]).toMatchObject({ key: "2026-04-06", visits: 0, visitors: 0 });
+    expect(summary.scopes.monthly.periods.at(-1)).toMatchObject({ key: "2026-05-05", visits: 3, visitors: 1 });
+    expect(summary.scopes.yearly.totalVisits).toBe(3);
+    expect(summary.scopes.yearly.totalVisitors).toBe(1);
+    expect(summary.scopes.yearly.periods).toHaveLength(365);
+    expect(summary.scopes.yearly.periods[0]).toMatchObject({ key: "2025-05-06", visits: 0, visitors: 0 });
+    expect(summary.scopes.yearly.periods.at(-1)).toMatchObject({ key: "2026-05-05", visits: 3, visitors: 1 });
     expect(summary.scopes.allTime.pages).toEqual([
       { path: "/home", slug: "home", title: "Home", visits: 2, visitors: 1 },
       { path: "/guide", slug: "guide", title: "Guide", visits: 1, visitors: 1 },
@@ -102,5 +112,15 @@ describe("visitor stats", () => {
     expect(summary.scopes.weekly.periods).toHaveLength(7);
     expect(summary.scopes.weekly.periods[0]).toMatchObject({ key: "2026-03-30", visits: 1, visitors: 1 });
     expect(summary.scopes.weekly.periods.at(-1)).toMatchObject({ key: "2026-04-05", visits: 1, visitors: 1 });
+    expect(summary.scopes.monthly.totalVisits).toBe(30);
+    expect(summary.scopes.monthly.totalVisitors).toBe(30);
+    expect(summary.scopes.monthly.periods).toHaveLength(30);
+    expect(summary.scopes.monthly.periods[0]).toMatchObject({ key: "2026-03-07", visits: 1, visitors: 1 });
+    expect(summary.scopes.monthly.periods.at(-1)).toMatchObject({ key: "2026-04-05", visits: 1, visitors: 1 });
+    expect(summary.scopes.yearly.totalVisits).toBe(95);
+    expect(summary.scopes.yearly.totalVisitors).toBe(95);
+    expect(summary.scopes.yearly.periods).toHaveLength(365);
+    expect(summary.scopes.yearly.periods[0]).toMatchObject({ key: "2025-04-06", visits: 0, visitors: 0 });
+    expect(summary.scopes.yearly.periods.at(-1)).toMatchObject({ key: "2026-04-05", visits: 1, visitors: 1 });
   });
 });

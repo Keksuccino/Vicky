@@ -56,15 +56,9 @@ const formatDayKey = (date: Date): string => date.toISOString().slice(0, 10);
 
 const formatHourKey = (date: Date): string => date.toISOString().slice(0, 13);
 
-const formatMonthKey = (date: Date): string => date.toISOString().slice(0, 7);
-
-const formatYearKey = (date: Date): string => String(date.getUTCFullYear());
-
 const getPeriodKeys = (date: Date) => ({
   hourly: formatHourKey(date),
   daily: formatDayKey(date),
-  monthly: formatMonthKey(date),
-  yearly: formatYearKey(date),
 });
 
 const labelDay = (key: string): string => {
@@ -77,13 +71,6 @@ const labelDay = (key: string): string => {
 const labelHour = (key: string): string => {
   const match = /^\d{4}-\d{2}-\d{2}T(\d{2})$/.exec(key);
   return match ? `${match[1]}:00` : key;
-};
-
-const labelMonth = (key: string): string => {
-  const parsed = new Date(`${key}-01T00:00:00.000Z`);
-  return Number.isNaN(parsed.valueOf())
-    ? key
-    : new Intl.DateTimeFormat("en", { month: "short", year: "numeric", timeZone: "UTC" }).format(parsed);
 };
 
 type VisitorStatsAggregatePage = VisitorPageIdentity & {
@@ -357,24 +344,6 @@ const summarizeFixedPeriods = (
   }));
 };
 
-const summarizeScope = (
-  buckets: VisitorStatsAggregateBuckets,
-  currentKey: string,
-  labelForKey: (key: string) => string,
-  knownPages: VisitorPageIdentity[],
-): VisitorStatsScopeSummary => {
-  const currentBucket = buckets.get(currentKey);
-
-  return {
-    totalVisits: bucketVisitCount(currentBucket),
-    totalVisitors: bucketVisitorCount(currentBucket),
-    currentPeriodKey: currentKey,
-    currentPeriodLabel: labelForKey(currentKey),
-    periods: summarizePeriods(buckets, currentKey, labelForKey),
-    pages: summarizePages(currentBucket, knownPages),
-  };
-};
-
 const summarizeRecentHoursScope = (
   hourlyBuckets: VisitorStatsAggregateBuckets,
   now: Date,
@@ -397,17 +366,20 @@ const summarizeRecentHoursScope = (
 const summarizeRecentDaysScope = (
   dailyBuckets: VisitorStatsAggregateBuckets,
   now: Date,
+  dayCount: number,
+  currentPeriodKey: string,
+  currentPeriodLabel: string,
   knownPages: VisitorPageIdentity[],
 ): VisitorStatsScopeSummary => {
-  const periodKeys = getRecentDayKeys(now, 7);
+  const periodKeys = getRecentDayKeys(now, dayCount);
   const currentKey = formatDayKey(now);
   const currentBucket = mergeBucketsForKeys(dailyBuckets, periodKeys);
 
   return {
     totalVisits: bucketVisitCount(currentBucket),
     totalVisitors: bucketVisitorCount(currentBucket),
-    currentPeriodKey: "last-7-days",
-    currentPeriodLabel: "Last 7 days",
+    currentPeriodKey,
+    currentPeriodLabel,
     periods: summarizeFixedPeriods(dailyBuckets, periodKeys, currentKey, labelDay),
     pages: summarizePages(currentBucket, knownPages),
   };
@@ -422,8 +394,6 @@ export const createVisitorStatsSummary = (
   const allTimeBucket = aggregateAllVisits(stats.visits);
   const hourlyBuckets = aggregateVisits(stats.visits, (visit) => formatHourKey(getVisitDate(visit)));
   const dailyBuckets = aggregateVisits(stats.visits, (visit) => formatDayKey(getVisitDate(visit)));
-  const monthlyBuckets = aggregateVisits(stats.visits, (visit) => formatMonthKey(getVisitDate(visit)));
-  const yearlyBuckets = aggregateVisits(stats.visits, (visit) => formatYearKey(getVisitDate(visit)));
   const allTimePeriods = summarizePeriods(dailyBuckets, keys.daily, labelDay);
 
   return {
@@ -438,9 +408,9 @@ export const createVisitorStatsSummary = (
         pages: summarizePages(allTimeBucket, knownPages),
       },
       daily: summarizeRecentHoursScope(hourlyBuckets, now, knownPages),
-      weekly: summarizeRecentDaysScope(dailyBuckets, now, knownPages),
-      monthly: summarizeScope(monthlyBuckets, keys.monthly, labelMonth, knownPages),
-      yearly: summarizeScope(yearlyBuckets, keys.yearly, (key) => key, knownPages),
+      weekly: summarizeRecentDaysScope(dailyBuckets, now, 7, "last-7-days", "Last 7 days", knownPages),
+      monthly: summarizeRecentDaysScope(dailyBuckets, now, 30, "last-30-days", "Last 30 days", knownPages),
+      yearly: summarizeRecentDaysScope(dailyBuckets, now, 365, "last-365-days", "Last 365 days", knownPages),
     },
   };
 };
