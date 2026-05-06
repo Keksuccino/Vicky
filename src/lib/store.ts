@@ -1,5 +1,4 @@
-import { readFileSync } from "node:fs";
-import { mkdir, open, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -29,12 +28,15 @@ import type {
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
 const STORE_LOCK_PATH = `${STORE_PATH}.lock`;
-const STORE_LOCK_RETRY_MS = 25;
-const STORE_LOCK_STALE_MS = 300_000;
+const STORE_LOCK_RETRY_MS = 250;
+const STORE_LOCK_STALE_MS = 15_000;
+const STORE_READ_CACHE_TTL_MS = 1_000;
 
 const now = (): string => new Date().toISOString();
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const cloneStore = (store: DocsStore): DocsStore => structuredClone(store);
 
 const normalizeString = (value: unknown, fallback: string): string => {
   if (typeof value !== "string") {
@@ -443,17 +445,68 @@ const writeStoreFile = async (store: DocsStore): Promise<void> => {
   await rename(tempPath, STORE_PATH);
 };
 
+const isProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error: unknown) {
+    const err = error as NodeJS.ErrnoException;
+    return err.code === "EPERM";
+  }
+};
+
+const readLockContent = async (): Promise<string | null> => {
+  try {
+    return await readFile(STORE_LOCK_PATH, "utf8");
+  } catch {
+    return null;
+  }
+};
+
+const readLockPid = async (): Promise<number | null> => {
+  const content = await readLockContent();
+  if (!content) {
+    return null;
+  }
+
+  try {
+    const rawPid = content.split(":")[0]?.trim();
+    const pid = rawPid ? Number.parseInt(rawPid, 10) : Number.NaN;
+    return Number.isInteger(pid) && pid > 0 ? pid : null;
+  } catch {
+    return null;
+  }
+};
+
+const shouldRemoveExistingLock = async (lockMtimeMs: number): Promise<boolean> => {
+  if (Date.now() - lockMtimeMs > STORE_LOCK_STALE_MS) {
+    return true;
+  }
+
+  const lockPid = await readLockPid();
+  return Boolean(lockPid && !isProcessAlive(lockPid));
+};
+
 const acquireStoreLock = async (): Promise<() => Promise<void>> => {
   await mkdir(path.dirname(STORE_LOCK_PATH), { recursive: true });
 
   for (;;) {
     try {
       const handle = await open(STORE_LOCK_PATH, "wx");
-      await handle.writeFile(`${process.pid}:${Date.now()}`, "utf8");
+      const lockContent = `${process.pid}:${Date.now()}:${randomUUID()}`;
+      try {
+        await handle.writeFile(lockContent, "utf8");
+      } catch (error) {
+        await handle.close().catch(() => undefined);
+        await rm(STORE_LOCK_PATH, { force: true }).catch(() => undefined);
+        throw error;
+      }
 
       return async () => {
         await handle.close();
-        await rm(STORE_LOCK_PATH, { force: true });
+        if ((await readLockContent()) === lockContent) {
+          await rm(STORE_LOCK_PATH, { force: true });
+        }
       };
     } catch (error: unknown) {
       const err = error as NodeJS.ErrnoException;
@@ -463,7 +516,7 @@ const acquireStoreLock = async (): Promise<() => Promise<void>> => {
 
       try {
         const lockStat = await stat(STORE_LOCK_PATH);
-        if (Date.now() - lockStat.mtimeMs > STORE_LOCK_STALE_MS) {
+        if (await shouldRemoveExistingLock(lockStat.mtimeMs)) {
           await rm(STORE_LOCK_PATH, { force: true });
           continue;
         }
@@ -488,20 +541,19 @@ const withStoreLock = async <T>(work: () => Promise<T>): Promise<T> => {
 
 const readStoreFile = async (): Promise<unknown> => {
   try {
-    const raw = readFileSync(STORE_PATH, "utf8");
+    const raw = await readFile(STORE_PATH, "utf8");
     return JSON.parse(raw) as unknown;
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
     if (err.code === "ENOENT") {
-      const defaults = DEFAULT_STORE();
-      await writeStoreFile(defaults);
-      return defaults;
+      return DEFAULT_STORE();
     }
     throw error;
   }
 };
 
 let mutationQueue: Promise<unknown> = Promise.resolve();
+let cachedStore: { store: DocsStore; expiresAtMs: number } | null = null;
 
 const enqueueMutation = <T>(work: () => Promise<T>): Promise<T> => {
   const result = mutationQueue.then(work, work);
@@ -515,26 +567,45 @@ const enqueueMutation = <T>(work: () => Promise<T>): Promise<T> => {
 
 export const getStorePath = (): string => STORE_PATH;
 
-const getStoreUnlocked = async (): Promise<DocsStore> => {
-  const raw = await readStoreFile();
-  const normalized = normalizeStore(raw);
-
-  const rawText = JSON.stringify(raw);
-  const normalizedText = JSON.stringify(normalized);
-
-  if (rawText !== normalizedText) {
-    await writeStoreFile(normalized);
+const getCachedStore = (): DocsStore | null => {
+  if (!cachedStore || cachedStore.expiresAtMs <= Date.now()) {
+    cachedStore = null;
+    return null;
   }
 
-  return normalized;
+  return cloneStore(cachedStore.store);
 };
 
-export const getStore = async (): Promise<DocsStore> => withStoreLock(getStoreUnlocked);
+const updateCachedStore = (store: DocsStore): void => {
+  cachedStore = {
+    store: cloneStore(store),
+    expiresAtMs: Date.now() + STORE_READ_CACHE_TTL_MS,
+  };
+};
+
+const readStoreFresh = async (): Promise<DocsStore> => {
+  const raw = await readStoreFile();
+  return normalizeStore(raw);
+};
+
+const getStoreUnlocked = async (): Promise<DocsStore> => {
+  const cached = getCachedStore();
+  if (cached) {
+    return cached;
+  }
+
+  const normalized = await readStoreFresh();
+  updateCachedStore(normalized);
+  return cloneStore(normalized);
+};
+
+export const getStore = async (): Promise<DocsStore> => getStoreUnlocked();
 
 const saveStoreUnlocked = async (store: DocsStore): Promise<DocsStore> => {
   const normalized = normalizeStore(store);
   await writeStoreFile(normalized);
-  return normalized;
+  updateCachedStore(normalized);
+  return cloneStore(normalized);
 };
 
 export const saveStore = async (store: DocsStore): Promise<DocsStore> => withStoreLock(() => saveStoreUnlocked(store));
@@ -545,12 +616,13 @@ export const updateStore = async (
 ): Promise<DocsStore> =>
   enqueueMutation(async () => {
     return withStoreLock(async () => {
-      const current = await getStoreUnlocked();
+      const current = await readStoreFresh();
       const next = structuredClone(current);
       const result = await mutator(next);
 
       if (result === false) {
-        return current;
+        updateCachedStore(current);
+        return cloneStore(current);
       }
 
       next.version = STORE_VERSION;

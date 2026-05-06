@@ -24,6 +24,7 @@ const LETS_ENCRYPT_STAGING = parseBoolean(process.env.LETS_ENCRYPT_STAGING);
 const SSL_STORE_WATCH_DEBOUNCE_MS = parsePositiveInteger(process.env.SSL_STORE_WATCH_DEBOUNCE_MS, 1500);
 const SSL_ISSUE_RETRY_BASE_MS = parsePositiveInteger(process.env.SSL_ISSUE_RETRY_BASE_MS, 15 * 60 * 1000);
 const SSL_ISSUE_RETRY_MAX_MS = parsePositiveInteger(process.env.SSL_ISSUE_RETRY_MAX_MS, 24 * 60 * 60 * 1000);
+const SERVER_CLOSE_GRACE_MS = parsePositiveInteger(process.env.SERVER_CLOSE_GRACE_MS, 5000);
 const SSL_STATUS_ENDPOINT_PATH = normalizeStatusEndpointPath(
   process.env.SSL_STATUS_ENDPOINT_PATH ?? "/.well-known/vicky/ssl-status",
 );
@@ -456,6 +457,14 @@ function setRetryDomain(domain) {
   certificateRetryState = createCertificateRetryState(domain);
 }
 
+function isScheduledCertificateCheck(reason) {
+  return reason === "startup" || reason === "periodic" || reason.startsWith("queued:startup") || reason.startsWith("queued:periodic");
+}
+
+function shouldRunHttpsRefresh(reason, domainSettingsChanged) {
+  return isScheduledCertificateCheck(reason) || domainSettingsChanged || !activeDomainState.enabled || !httpsServer;
+}
+
 async function listen(server, port, host) {
   await new Promise((resolve, reject) => {
     const onError = (error) => {
@@ -475,14 +484,53 @@ async function listen(server, port, host) {
 
 async function closeServer(server) {
   await new Promise((resolve, reject) => {
-    server.close((error) => {
+    let settled = false;
+    let forceCloseTimer = null;
+    let hardCloseTimer = null;
+
+    const settle = (error) => {
+      if (settled) {
+        return;
+      }
+
+      settled = true;
+      if (forceCloseTimer) {
+        clearTimeout(forceCloseTimer);
+      }
+      if (hardCloseTimer) {
+        clearTimeout(hardCloseTimer);
+      }
+
       if (error) {
         reject(error);
         return;
       }
 
       resolve();
+    };
+
+    forceCloseTimer = setTimeout(() => {
+      server.closeIdleConnections?.();
+      server.closeAllConnections?.();
+    }, SERVER_CLOSE_GRACE_MS);
+    forceCloseTimer.unref?.();
+
+    hardCloseTimer = setTimeout(() => {
+      warn(`Server did not close within ${SERVER_CLOSE_GRACE_MS}ms; continuing shutdown.`);
+      settle();
+    }, SERVER_CLOSE_GRACE_MS + 1000);
+    hardCloseTimer.unref?.();
+
+    server.close((error) => {
+      if (error) {
+        settle(error);
+        return;
+      }
+
+      settle();
     });
+
+    server.closeIdleConnections?.();
   });
 }
 
@@ -879,6 +927,16 @@ async function refreshDomainState(reason) {
       sslRuntimeState.lastRefreshErrorMessage = "";
       schedulePersistRuntimeStatus();
       log(`Automatic SSL check (${reason}) complete: SSL is disabled.`);
+      return;
+    }
+
+    if (!shouldRunHttpsRefresh(reason, domainSettingsChanged)) {
+      activeDomainState = desired;
+      sslRuntimeState.phase = "https-ready";
+      sslRuntimeState.lastRefreshSucceededAtMs = Date.now();
+      sslRuntimeState.lastRefreshErrorMessage = "";
+      schedulePersistRuntimeStatus();
+      log(`Automatic SSL check (${reason}) skipped: domain settings unchanged for ${activeDomainState.customDomain}.`);
       return;
     }
 
