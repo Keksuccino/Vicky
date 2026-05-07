@@ -2185,15 +2185,11 @@ html[data-color-mode="light"] .page-copy-menu {
   gap: 0.42rem;
 }
 
-.translation-language-remove {
-  min-height: 2.75rem;
-  white-space: nowrap;
-}
-
-.translation-language-request-tooltip {
+.translation-language-action-tooltip {
   display: inline-flex;
 }
 
+.translation-language-remove,
 .translation-language-request {
   width: 2.75rem;
   min-height: 2.75rem;

@@ -2445,24 +2445,29 @@ export function AdminSettingsPanel() {
                         </div>
 
                         <div className="translation-language-actions">
-                          <button
-                            type="button"
-                            className={`btn btn-ghost translation-language-remove${isDefaultLanguage ? "" : " danger"}`}
-                            disabled={isDefaultLanguage}
-                            onClick={() => {
-                              const nextLanguages = settings.autoTranslateLanguages.filter((_, entryIndex) => entryIndex !== index);
-                              setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
-                              setAutoTranslateFieldErrors((prev) => ({
-                                ...prev,
-                                languages: validateAutoTranslateLanguages(nextLanguages),
-                              }));
-                            }}
-                          >
-                            <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
-                            <span>{isDefaultLanguage ? "Fixed" : "Remove"}</span>
-                          </button>
                           <span
-                            className="translation-language-request-tooltip ui-tooltip"
+                            className="translation-language-action-tooltip ui-tooltip"
+                            data-ui-tooltip="Remove"
+                          >
+                            <button
+                              type="button"
+                              className={`btn btn-ghost translation-language-remove${isDefaultLanguage ? "" : " danger"}`}
+                              aria-label="Remove"
+                              disabled={isDefaultLanguage}
+                              onClick={() => {
+                                const nextLanguages = settings.autoTranslateLanguages.filter((_, entryIndex) => entryIndex !== index);
+                                setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                                setAutoTranslateFieldErrors((prev) => ({
+                                  ...prev,
+                                  languages: validateAutoTranslateLanguages(nextLanguages),
+                                }));
+                              }}
+                            >
+                              <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
+                            </button>
+                          </span>
+                          <span
+                            className="translation-language-action-tooltip ui-tooltip"
                             data-ui-tooltip="Request Translations for All Pages"
                           >
                             <button
