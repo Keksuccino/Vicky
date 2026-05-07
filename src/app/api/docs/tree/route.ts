@@ -9,8 +9,9 @@ import { translateGitHubDocTreeTitles } from "@/lib/auto-translate-server";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { decryptSecret } from "@/lib/encryption";
 import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
-import { ApiError, errorResponse } from "@/lib/http";
+import { errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
+import type { AutoTranslateLanguage, GitHubDocTreeItem } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,13 @@ const resolveRequestOrigin = (request: NextRequest): string => {
   return request.nextUrl.origin;
 };
 
+const warnAutoTranslateFallback = (language: AutoTranslateLanguage, error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(
+    `[auto-translate] Failed to translate docs sidebar titles to ${language.name} (${language.code}); serving source English titles. ${message}`,
+  );
+};
+
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const store = await getStore();
@@ -37,27 +45,36 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
     const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
+    const shouldTranslate = shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language);
+    const apiKeyEncrypted = store.settings.openRouter.apiKeyEncrypted;
+    const model = store.settings.autoTranslate.openRouterModel.trim();
 
-    if (
-      shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language) &&
-      (!store.settings.openRouter.apiKeyEncrypted || !store.settings.autoTranslate.openRouterModel.trim())
-    ) {
-      throw new ApiError(503, "Auto-translate is not fully configured.");
+    let items: GitHubDocTreeItem[] = sourceItems;
+
+    if (!shouldTranslate) {
+      return NextResponse.json({ items });
     }
 
-    const items = shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language)
-      ? await translateGitHubDocTreeTitles({
-          apiKey: decryptSecret(store.settings.openRouter.apiKeyEncrypted).trim(),
-          config,
-          items: sourceItems,
-          language,
-          model: store.settings.autoTranslate.openRouterModel,
-          origin: resolveRequestOrigin(request),
-          pages,
-          settings: store.settings.autoTranslate,
-          siteTitle: store.settings.siteTitle || "Vicky Docs",
-        })
-      : sourceItems;
+    if (!apiKeyEncrypted || !model) {
+      warnAutoTranslateFallback(language, new Error("Auto-translate is not fully configured."));
+      return NextResponse.json({ items });
+    }
+
+    try {
+      items = await translateGitHubDocTreeTitles({
+        apiKey: decryptSecret(apiKeyEncrypted).trim(),
+        config,
+        items: sourceItems,
+        language,
+        model,
+        origin: resolveRequestOrigin(request),
+        pages,
+        settings: store.settings.autoTranslate,
+        siteTitle: store.settings.siteTitle || "Vicky Docs",
+      });
+    } catch (translationError: unknown) {
+      warnAutoTranslateFallback(language, translationError);
+    }
 
     return NextResponse.json({ items });
   } catch (error: unknown) {

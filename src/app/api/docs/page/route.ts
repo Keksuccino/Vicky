@@ -9,9 +9,10 @@ import { translateGitHubDocPage } from "@/lib/auto-translate-server";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { decryptSecret } from "@/lib/encryption";
 import { loadGitHubDoc, resolveRuntimeConfig } from "@/lib/github";
-import { ApiError, badRequest, errorResponse } from "@/lib/http";
+import { badRequest, errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
 import { recordDocPageVisit } from "@/lib/visitors";
+import type { AutoTranslateLanguage } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +26,13 @@ const resolveRequestOrigin = (request: NextRequest): string => {
   }
 
   return request.nextUrl.origin;
+};
+
+const warnAutoTranslateFallback = (language: AutoTranslateLanguage, error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(
+    `[auto-translate] Failed to translate docs page to ${language.name} (${language.code}); serving source English page. ${message}`,
+  );
 };
 
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
@@ -53,28 +61,35 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       undefined;
     const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
     const shouldTranslate = shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language);
+    const apiKeyEncrypted = store.settings.openRouter.apiKeyEncrypted;
+    const model = store.settings.autoTranslate.openRouterModel.trim();
 
-    if (
-      shouldTranslate &&
-      (!store.settings.openRouter.apiKeyEncrypted || !store.settings.autoTranslate.openRouterModel.trim())
-    ) {
-      throw new ApiError(503, "Auto-translate is not fully configured.");
+    if (!shouldTranslate) {
+      return NextResponse.json({ page });
     }
 
-    const translatedPage = shouldTranslate
-      ? await translateGitHubDocPage({
-          apiKey: decryptSecret(store.settings.openRouter.apiKeyEncrypted).trim(),
-          config,
-          language,
-          model: store.settings.autoTranslate.openRouterModel,
-          origin: resolveRequestOrigin(request),
-          settings: store.settings.autoTranslate,
-          siteTitle: store.settings.siteTitle || "Vicky Docs",
-          sourcePage: page,
-        })
-      : page;
+    if (!apiKeyEncrypted || !model) {
+      warnAutoTranslateFallback(language, new Error("Auto-translate is not fully configured."));
+      return NextResponse.json({ page });
+    }
 
-    return NextResponse.json({ page: translatedPage });
+    try {
+      const translatedPage = await translateGitHubDocPage({
+        apiKey: decryptSecret(apiKeyEncrypted).trim(),
+        config,
+        language,
+        model,
+        origin: resolveRequestOrigin(request),
+        settings: store.settings.autoTranslate,
+        siteTitle: store.settings.siteTitle || "Vicky Docs",
+        sourcePage: page,
+      });
+
+      return NextResponse.json({ page: translatedPage });
+    } catch (translationError: unknown) {
+      warnAutoTranslateFallback(language, translationError);
+      return NextResponse.json({ page });
+    }
   } catch (error: unknown) {
     return errorResponse(error);
   }

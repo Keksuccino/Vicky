@@ -176,10 +176,14 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [pageCopied, setPageCopied] = useState(false);
   const [selectedLanguageCode, setSelectedLanguageCode] = useState(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
+  const [languageReady, setLanguageReady] = useState(false);
+  const treeLoadIdRef = useRef(0);
+  const pageLoadIdRef = useRef(0);
   const copyMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setSelectedLanguageCode(readSelectedLanguageCode());
+    setLanguageReady(true);
 
     const onLanguageChange = (event: Event) => {
       const languageCode =
@@ -189,6 +193,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       const normalized = normalizeAutoTranslateLanguageCode(languageCode) || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
 
       setSelectedLanguageCode((current) => (current === normalized ? current : normalized));
+      setLanguageReady(true);
     };
 
     window.addEventListener(AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT, onLanguageChange);
@@ -294,36 +299,59 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [initialPath]);
 
   const loadTree = useCallback(async () => {
+    const loadId = treeLoadIdRef.current + 1;
+    treeLoadIdRef.current = loadId;
     setTreeLoading(true);
     setTreeError(null);
     try {
       const nextTree = await fetchDocsTree(selectedLanguageCode);
+      if (treeLoadIdRef.current !== loadId) {
+        return;
+      }
       setTree(nextTree);
     } catch (error) {
+      if (treeLoadIdRef.current !== loadId) {
+        return;
+      }
       setTreeError(formatApiError(error));
     } finally {
-      setTreeLoading(false);
+      if (treeLoadIdRef.current === loadId) {
+        setTreeLoading(false);
+      }
     }
   }, [selectedLanguageCode]);
 
   const loadPage = useCallback(async (path: string) => {
+    const loadId = pageLoadIdRef.current + 1;
+    pageLoadIdRef.current = loadId;
     setPageLoading(true);
     setPageError(null);
 
     try {
       const nextPage = await fetchDocPage(path, selectedLanguageCode);
+      if (pageLoadIdRef.current !== loadId) {
+        return;
+      }
       setPage(nextPage);
     } catch (error) {
+      if (pageLoadIdRef.current !== loadId) {
+        return;
+      }
       setPage(null);
       setPageError(formatApiError(error));
     } finally {
-      setPageLoading(false);
+      if (pageLoadIdRef.current === loadId) {
+        setPageLoading(false);
+      }
     }
   }, [selectedLanguageCode]);
 
   useEffect(() => {
+    if (!languageReady) {
+      return;
+    }
     void loadTree();
-  }, [loadTree]);
+  }, [languageReady, loadTree]);
 
   useEffect(() => {
     if (!treeLoading && currentPath === "/") {
@@ -336,11 +364,11 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [tree, treeLoading, currentPath, router]);
 
   useEffect(() => {
-    if (!currentPath) {
+    if (!languageReady || !currentPath) {
       return;
     }
     void loadPage(currentPath);
-  }, [currentPath, loadPage]);
+  }, [languageReady, currentPath, loadPage]);
 
   useEffect(() => {
     lastInitialHashScrollKeyRef.current = null;

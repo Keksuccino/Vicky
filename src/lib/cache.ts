@@ -43,6 +43,10 @@ export class TtlCache<K, V> {
     return entry.value;
   }
 
+  peek(key: K): V | undefined {
+    return this.entries.get(key)?.value;
+  }
+
   set(key: K, value: V): void {
     this.entries.set(key, {
       value,

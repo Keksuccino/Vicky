@@ -19,6 +19,22 @@ describe("TtlCache", () => {
     vi.useRealTimers();
   });
 
+  it("can peek at an expired value without treating it as a cache hit", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+
+    const cache = new TtlCache<string, string>(1000);
+    cache.set("x", "value");
+
+    vi.advanceTimersByTime(1001);
+
+    expect(cache.peek("x")).toBe("value");
+    expect(cache.get("x")).toBeUndefined();
+    expect(cache.peek("x")).toBeUndefined();
+
+    vi.useRealTimers();
+  });
+
   it("deletes entries by predicate", () => {
     const cache = new TtlCache<string, number>(10_000);
 

@@ -98,6 +98,56 @@ type GitHubDocsSnapshot = {
   pages: GitHubDocPage[];
 };
 
+const translatedDocsPageCachePrefix = (config: GitHubRuntimeConfig): string =>
+  `${toRuntimeConfigCacheKey(config)}|auto-translate|page|`;
+
+const translatedDocsTitleCachePrefix = (config: GitHubRuntimeConfig): string =>
+  `${toRuntimeConfigCacheKey(config)}|auto-translate|titles|`;
+
+const titleSourceSignature = (items: GitHubDocTreeItem[]): string =>
+  JSON.stringify(items.map((item) => ({ slug: item.slug, path: item.path, name: item.name })));
+
+const pruneTranslatedDocsCacheForSnapshotChange = (
+  config: GitHubRuntimeConfig,
+  previous: GitHubDocsSnapshot,
+  next: GitHubDocsSnapshot,
+): void => {
+  const nextPagesBySlug = new Map(next.pages.map((page) => [page.slug, page]));
+  const pageCachePrefix = translatedDocsPageCachePrefix(config);
+  const stalePageSlugs = new Set<string>();
+
+  for (const previousPage of previous.pages) {
+    const nextPage = nextPagesBySlug.get(previousPage.slug);
+    if (nextPage && nextPage.sha === previousPage.sha) {
+      continue;
+    }
+
+    stalePageSlugs.add(previousPage.slug);
+  }
+
+  if (stalePageSlugs.size > 0) {
+    const stalePageSlugPrefixes = Array.from(stalePageSlugs, (slug) => `${slug}|`);
+    translatedDocsPageCache.deleteWhere((key) => {
+      if (!key.startsWith(pageCachePrefix)) {
+        return false;
+      }
+
+      const cacheEntryKey = key.slice(pageCachePrefix.length);
+      if (!/^[a-f0-9]{32}\|/.test(cacheEntryKey)) {
+        return false;
+      }
+
+      const sourceCacheKey = cacheEntryKey.slice(33);
+      return stalePageSlugPrefixes.some((slugPrefix) => sourceCacheKey.startsWith(slugPrefix));
+    });
+  }
+
+  if (titleSourceSignature(previous.tree) !== titleSourceSignature(next.tree)) {
+    const titleCachePrefix = translatedDocsTitleCachePrefix(config);
+    translatedDocsTitleCache.deleteWhere((key) => key.startsWith(titleCachePrefix));
+  }
+};
+
 const docsSnapshotLoads = new Map<string, Promise<GitHubDocsSnapshot>>();
 
 const createOctokit = (config: GitHubRuntimeConfig): Octokit =>
@@ -268,10 +318,21 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
 };
 
-const clearDerivedGitHubDocsCache = (config: GitHubRuntimeConfig): void => {
+const clearDerivedGitHubDocsCache = (
+  config: GitHubRuntimeConfig,
+  snapshots?: { previous?: GitHubDocsSnapshot; next?: GitHubDocsSnapshot },
+): void => {
   const prefix = `${toRuntimeConfigCacheKey(config)}|`;
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
+
+  if (snapshots?.previous && snapshots.next) {
+    pruneTranslatedDocsCacheForSnapshotChange(config, snapshots.previous, snapshots.next);
+    return;
+  }
+
+  translatedDocsPageCache.deleteWhere((key) => key.startsWith(translatedDocsPageCachePrefix(config)));
+  translatedDocsTitleCache.deleteWhere((key) => key.startsWith(translatedDocsTitleCachePrefix(config)));
 };
 
 export const testGitHubConnection = async (
@@ -519,6 +580,7 @@ const loadGitHubDocsSnapshot = async (
   options?: { bypassCache?: boolean },
 ): Promise<GitHubDocsSnapshot> => {
   const cacheKey = snapshotCacheKey(config);
+  const previousSnapshot = docsSnapshotCache.peek(cacheKey) as GitHubDocsSnapshot | undefined;
   const cached = options?.bypassCache ? undefined : docsSnapshotCache.get(cacheKey);
 
   if (cached) {
@@ -533,7 +595,7 @@ const loadGitHubDocsSnapshot = async (
   const loadPromise = loadFreshGitHubDocsSnapshot(config)
     .then((snapshot) => {
       docsSnapshotCache.set(cacheKey, snapshot);
-      clearDerivedGitHubDocsCache(config);
+      clearDerivedGitHubDocsCache(config, { previous: previousSnapshot, next: snapshot });
       return snapshot;
     })
     .finally(() => {
@@ -582,14 +644,15 @@ const upsertGitHubDocPageInSnapshotCache = (config: GitHubRuntimeConfig, page: G
   pages.push(page);
   pages.sort((left, right) => left.path.localeCompare(right.path));
   const updatedAtMs = Date.now();
-
-  docsSnapshotCache.set(cacheKey, {
+  const nextSnapshot = {
     ...cached,
     expiresAt: new Date(updatedAtMs + docsSnapshotCache.getTtlMs()).toISOString(),
     tree: sortTreeItems(pages.map((entry) => treeItemFromPage(entry))),
     pages,
-  });
-  clearDerivedGitHubDocsCache(config);
+  };
+
+  docsSnapshotCache.set(cacheKey, nextSnapshot);
+  clearDerivedGitHubDocsCache(config, { previous: cached, next: nextSnapshot });
 };
 
 export const refreshGitHubDocsCache = async (
