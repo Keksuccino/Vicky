@@ -291,6 +291,7 @@ function normalizePage(source: unknown, fallbackPath = "/"): DocPage {
     content: asString(payload.content),
     markdown: asString(payload.markdown) || asString(payload.content),
     headings: normalizeHeadings(payload.headings),
+    sourceHeadings: normalizeHeadings(payload.sourceHeadings),
     includeInPlaintextExport: asBoolean(payload.includeInPlaintextExport, true),
     updatedAt: asString(payload.updatedAt || payload.lastUpdatedAt).trim() || undefined,
     updatedBy: asString(payload.updatedBy || payload.lastUpdatedBy).trim() || undefined,

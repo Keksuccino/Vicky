@@ -24,7 +24,7 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
-import type { DocPage, DocSearchResult, DocTreeNode } from "@/components/types";
+import type { DocPage, DocSearchResult, DocTreeNode, MarkdownHeading } from "@/components/types";
 
 type DocsClientProps = {
   initialPath: string;
@@ -89,6 +89,49 @@ function getHeadingTextForMatch(element: HTMLElement): string {
   const clone = element.cloneNode(true) as HTMLElement;
   clone.querySelectorAll(".heading-anchor").forEach((node) => node.remove());
   return normalizeComparableText(clone.textContent ?? "");
+}
+
+function findElementById(targetId: string): HTMLElement | null {
+  const candidateIds = [targetId, `user-content-${targetId}`];
+
+  for (const candidateId of candidateIds) {
+    const candidate = document.getElementById(candidateId);
+    if (candidate) {
+      return candidate;
+    }
+  }
+
+  const escaped = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(targetId) : targetId;
+  const found =
+    document.querySelector<HTMLElement>(`#${escaped}`) ||
+    document.querySelector<HTMLElement>(`[id="${escaped}"]`) ||
+    document.querySelector<HTMLElement>(`[id="user-content-${escaped}"]`);
+  if (found) {
+    return found;
+  }
+
+  const normalizedTarget = targetId.toLowerCase();
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>("[id]")).find(
+      (element) =>
+        element.id.toLowerCase() === normalizedTarget || element.id.toLowerCase() === `user-content-${normalizedTarget}`,
+    ) ?? null
+  );
+}
+
+function findHeadingElement(heading: MarkdownHeading): HTMLElement | null {
+  const byId = findElementById(heading.slug);
+  if (byId) {
+    return byId;
+  }
+
+  const expectedText = normalizeComparableText(heading.text);
+  return (
+    Array.from(document.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")).find((headingElement) => {
+      const headingText = getHeadingTextForMatch(headingElement);
+      return headingText === expectedText || headingText.startsWith(expectedText);
+    }) ?? null
+  );
 }
 
 function scrollToElement(element: HTMLElement): void {
@@ -236,52 +279,22 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       return false;
     }
 
-    const candidateIds = [targetId, `user-content-${targetId}`];
-    let targetElement: HTMLElement | null = null;
-
-    for (const candidateId of candidateIds) {
-      const candidate = document.getElementById(candidateId);
-      if (candidate) {
-        targetElement = candidate;
-        break;
-      }
-    }
-
-    if (!targetElement) {
-      const escaped = typeof CSS !== "undefined" && typeof CSS.escape === "function" ? CSS.escape(targetId) : targetId;
-      const found =
-        document.querySelector<HTMLElement>(`#${escaped}`) ||
-        document.querySelector<HTMLElement>(`[id="${escaped}"]`) ||
-        document.querySelector<HTMLElement>(`[id="user-content-${escaped}"]`);
-      if (found) {
-        targetElement = found;
-      }
-    }
-
-    if (!targetElement) {
-      const normalizedTarget = targetId.toLowerCase();
-      const fallback = Array.from(document.querySelectorAll<HTMLElement>("[id]")).find(
-        (element) =>
-          element.id.toLowerCase() === normalizedTarget || element.id.toLowerCase() === `user-content-${normalizedTarget}`,
-      );
-      if (fallback) {
-        targetElement = fallback;
-      }
-    }
+    let targetElement = findElementById(targetId);
 
     if (!targetElement && page?.headings.length) {
       const headingMatch = page.headings.find((heading) => normalizeComparableText(heading.slug) === normalizeComparableText(targetId));
       if (headingMatch) {
-        const expectedText = normalizeComparableText(headingMatch.text);
-        const byText = Array.from(document.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")).find(
-          (headingElement) => {
-            const headingText = getHeadingTextForMatch(headingElement);
-            return headingText === expectedText || headingText.startsWith(expectedText);
-          },
-        );
-        if (byText) {
-          targetElement = byText;
-        }
+        targetElement = findHeadingElement(headingMatch);
+      }
+    }
+
+    if (!targetElement && page?.sourceHeadings?.length && page.headings.length) {
+      const sourceHeadingIndex = page.sourceHeadings.findIndex(
+        (heading) => normalizeComparableText(heading.slug) === normalizeComparableText(targetId),
+      );
+      const translatedHeading = sourceHeadingIndex >= 0 ? page.headings[sourceHeadingIndex] : null;
+      if (translatedHeading) {
+        targetElement = findHeadingElement(translatedHeading);
       }
     }
 
@@ -292,7 +305,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     scrollToElement(targetElement);
 
     return true;
-  }, [page?.headings]);
+  }, [page?.headings, page?.sourceHeadings]);
 
   useEffect(() => {
     setCurrentPath(normalizePath(initialPath));

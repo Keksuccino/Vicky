@@ -36,6 +36,7 @@ export type DocPage = {
   content: string;
   markdown: string;
   headings: MarkdownHeading[];
+  sourceHeadings?: MarkdownHeading[];
   includeInPlaintextExport: boolean;
   updatedAt?: string;
   updatedBy?: string;

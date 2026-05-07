@@ -85,7 +85,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
         sourcePage: page,
       });
 
-      return NextResponse.json({ page: translatedPage });
+      return NextResponse.json({ page: { ...translatedPage, sourceHeadings: page.headings } });
     } catch (translationError: unknown) {
       warnAutoTranslateFallback(language, translationError);
       return NextResponse.json({ page });
