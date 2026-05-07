@@ -179,7 +179,7 @@ const buildTitleTranslationPrompt = (targetLanguageDisplayName: string, items: G
     page_display_name: item.name,
   }));
 
-  return `Please translate the following page titles to ${targetLanguageDisplayName}. Return only the translated JSON array, nothing else:
+  return `Please translate the following page titles to ${targetLanguageDisplayName}. Keep all page_slug values unchanged and untranslated. Return only the translated JSON array, nothing else:
 
 ${JSON.stringify(payload, null, 2)}`;
 };
