@@ -151,7 +151,6 @@ export const DEFAULT_AI_CHAT_SETTINGS = (): AiChatSettings => ({
   welcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   systemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
-  openRouterApiKeyEncrypted: null,
 });
 
 export const renderAiChatSystemPrompt = (

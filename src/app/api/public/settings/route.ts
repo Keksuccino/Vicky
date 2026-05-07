@@ -35,6 +35,10 @@ export const GET = async (): Promise<NextResponse> => {
           headerSubtitle: store.settings.aiChat.headerSubtitle,
           welcomeMessage: store.settings.aiChat.welcomeMessage,
         },
+        autoTranslate: {
+          enabled: store.settings.autoTranslate.enabled,
+          languages: store.settings.autoTranslate.languages,
+        },
         theme: {
           lightAccent: store.settings.theme.lightAccent,
           lightSurfaceAccent: store.settings.theme.lightSurfaceAccent,

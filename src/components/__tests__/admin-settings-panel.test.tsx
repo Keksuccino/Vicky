@@ -94,6 +94,12 @@ const INITIAL_SETTINGS: AdminSettings = {
   openRouterModel: "openai/gpt-5.1-codex-mini",
   openRouterApiKey: "",
   openRouterApiKeyConfigured: false,
+  autoTranslateEnabled: false,
+  autoTranslateOpenRouterModel: "openai/gpt-5.4-mini",
+  autoTranslateLanguages: [
+    { name: "English (US)", code: "en-US" },
+    { name: "German", code: "de" },
+  ],
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
   themeDarkAccent: "#5EBBE4",

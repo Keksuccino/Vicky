@@ -8,6 +8,11 @@ export type ThemeCustomization = {
   customCss: string;
 };
 
+export type AutoTranslateLanguage = {
+  name: string;
+  code: string;
+};
+
 export type MarkdownHeading = {
   depth: number;
   text: string;
@@ -123,6 +128,9 @@ export type AdminSettings = {
   openRouterModel: string;
   openRouterApiKey: string;
   openRouterApiKeyConfigured: boolean;
+  autoTranslateEnabled: boolean;
+  autoTranslateOpenRouterModel: string;
+  autoTranslateLanguages: AutoTranslateLanguage[];
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;

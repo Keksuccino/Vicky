@@ -18,6 +18,12 @@ import { DocsTree } from "@/components/docs-tree";
 import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState } from "@/components/states";
+import {
+  AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT,
+  AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME,
+  DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+  normalizeAutoTranslateLanguageCode,
+} from "@/lib/auto-translate";
 import type { DocPage, DocSearchResult, DocTreeNode } from "@/components/types";
 
 type DocsClientProps = {
@@ -28,6 +34,24 @@ const COPIED_STATE_DURATION_MS = 1400;
 
 function normalizePath(path: string): string {
   return toAbsoluteDocPath(path || "/");
+}
+
+function readCookie(name: string): string {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const prefix = `${name}=`;
+  const match = document.cookie
+    .split(";")
+    .map((chunk) => chunk.trim())
+    .find((chunk) => chunk.startsWith(prefix));
+
+  return match ? decodeURIComponent(match.slice(prefix.length)) : "";
+}
+
+function readSelectedLanguageCode(): string {
+  return normalizeAutoTranslateLanguageCode(readCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)) || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
 }
 
 function toDocsHref(path: string): string {
@@ -151,7 +175,27 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [pageCopied, setPageCopied] = useState(false);
+  const [selectedLanguageCode, setSelectedLanguageCode] = useState(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
   const copyMenuRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    setSelectedLanguageCode(readSelectedLanguageCode());
+
+    const onLanguageChange = (event: Event) => {
+      const languageCode =
+        event instanceof CustomEvent && typeof event.detail?.languageCode === "string"
+          ? event.detail.languageCode
+          : readSelectedLanguageCode();
+      const normalized = normalizeAutoTranslateLanguageCode(languageCode) || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
+
+      setSelectedLanguageCode((current) => (current === normalized ? current : normalized));
+    };
+
+    window.addEventListener(AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT, onLanguageChange);
+    return () => {
+      window.removeEventListener(AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT, onLanguageChange);
+    };
+  }, []);
 
   useEffect(() => {
     const mobileViewportQuery = window.matchMedia("(max-width: 900px)");
@@ -253,21 +297,21 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     setTreeLoading(true);
     setTreeError(null);
     try {
-      const nextTree = await fetchDocsTree();
+      const nextTree = await fetchDocsTree(selectedLanguageCode);
       setTree(nextTree);
     } catch (error) {
       setTreeError(formatApiError(error));
     } finally {
       setTreeLoading(false);
     }
-  }, []);
+  }, [selectedLanguageCode]);
 
   const loadPage = useCallback(async (path: string) => {
     setPageLoading(true);
     setPageError(null);
 
     try {
-      const nextPage = await fetchDocPage(path);
+      const nextPage = await fetchDocPage(path, selectedLanguageCode);
       setPage(nextPage);
     } catch (error) {
       setPage(null);
@@ -275,7 +319,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     } finally {
       setPageLoading(false);
     }
-  }, []);
+  }, [selectedLanguageCode]);
 
   useEffect(() => {
     void loadTree();

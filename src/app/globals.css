@@ -627,6 +627,54 @@ select {
   box-shadow: 0 4px 14px rgba(22, 38, 66, 0.14);
 }
 
+.language-selector {
+  position: relative;
+  height: var(--header-control-size);
+  min-width: 8.8rem;
+  max-width: 13rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.36rem;
+  padding: 0 0.62rem;
+  transition:
+    background 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease,
+    box-shadow 160ms ease;
+}
+
+.language-selector:hover,
+.language-selector:focus-within {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+}
+
+.language-selector .material-icon {
+  flex: 0 0 auto;
+  font-size: 1.18rem;
+}
+
+.language-selector select {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.language-selector select:focus-visible {
+  outline: none;
+}
+
 .mode-button {
   display: inline-flex;
   align-items: center;
@@ -2051,6 +2099,35 @@ html[data-color-mode="light"] .page-copy-menu {
   flex: 0 0 auto;
   min-height: 2.75rem;
   padding-inline: 0.82rem;
+}
+
+.translation-language-list {
+  display: grid;
+  gap: 0.58rem;
+}
+
+.translation-language-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.62rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-muted);
+  padding: 0.72rem;
+}
+
+.translation-language-item-fixed {
+  background: color-mix(in srgb, var(--accent-surface-soft) 58%, var(--surface-muted));
+}
+
+.translation-language-remove {
+  min-height: 2.75rem;
+  white-space: nowrap;
+}
+
+.translation-language-remove .material-icon {
+  font-size: 1.12rem;
 }
 
 .password-input-row {
@@ -4104,6 +4181,14 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
     flex-direction: column;
   }
 
+  .translation-language-item {
+    grid-template-columns: 1fr;
+  }
+
+  .translation-language-remove {
+    justify-self: start;
+  }
+
   .moderator-actions {
     justify-content: flex-start;
   }
@@ -4140,6 +4225,20 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
   .app-header-actions {
     --header-control-size: 2.44rem;
+  }
+
+  .language-selector {
+    min-width: var(--header-control-size);
+    max-width: var(--header-control-size);
+    width: var(--header-control-size);
+    justify-content: center;
+    padding: 0;
+  }
+
+  .language-selector select {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
   }
 }
 

@@ -2,6 +2,7 @@ import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/prom
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
+import { normalizeAutoTranslateSettings } from "@/lib/auto-translate";
 import {
   DEFAULT_AI_CHAT_SETTINGS,
   normalizeAiAssistantName,
@@ -306,12 +307,17 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
     typeof source.aiChat === "object" && source.aiChat !== null
       ? (source.aiChat as Record<string, unknown>)
       : ({} as Record<string, unknown>);
+  const sourceOpenRouter =
+    typeof source.openRouter === "object" && source.openRouter !== null
+      ? (source.openRouter as Record<string, unknown>)
+      : ({} as Record<string, unknown>);
   const fallbackTheme = sourceTheme ? defaults.theme : deriveThemeCustomizationFromLegacyStore(source, legacyThemes);
   const defaultAiChat = DEFAULT_AI_CHAT_SETTINGS();
   const assistantName = normalizeAiAssistantName(sourceAiChat.assistantName, defaultAiChat.assistantName);
   const avatarUrl = normalizeAiChatAvatarUrl(sourceAiChat.avatarUrl);
   const headerSubtitle = normalizeAiChatHeaderSubtitle(sourceAiChat.headerSubtitle, defaultAiChat.headerSubtitle);
   const welcomeMessage = normalizeAiChatWelcomeMessage(sourceAiChat.welcomeMessage, defaultAiChat.welcomeMessage);
+  const legacyOpenRouterApiKeyEncrypted = normalizeOptionalString(sourceAiChat.openRouterApiKeyEncrypted);
 
   const settings: AppSettings = {
     siteTitle: normalizeString(source.siteTitle, defaults.siteTitle),
@@ -339,6 +345,9 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
       docsPath: normalizeString(sourceGitHub.docsPath, defaults.github.docsPath),
       tokenEncrypted: normalizeOptionalString(sourceGitHub.tokenEncrypted),
     },
+    openRouter: {
+      apiKeyEncrypted: normalizeOptionalString(sourceOpenRouter.apiKeyEncrypted) ?? legacyOpenRouterApiKeyEncrypted,
+    },
     aiChat: {
       enabled: typeof sourceAiChat.enabled === "boolean" ? sourceAiChat.enabled : defaultAiChat.enabled,
       assistantName,
@@ -346,9 +355,9 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
       headerSubtitle,
       welcomeMessage,
       openRouterModel: normalizeString(sourceAiChat.openRouterModel, defaultAiChat.openRouterModel),
-      openRouterApiKeyEncrypted: normalizeOptionalString(sourceAiChat.openRouterApiKeyEncrypted),
       systemPrompt: normalizeAiChatSystemPromptTemplate(sourceAiChat.systemPrompt, assistantName),
     },
+    autoTranslate: normalizeAutoTranslateSettings(source.autoTranslate),
     theme: normalizeThemeCustomization(sourceTheme, fallbackTheme),
     updatedAt: normalizeString(source.updatedAt, defaults.updatedAt),
   };
@@ -567,9 +576,9 @@ export const updateStore = async (
     });
   });
 
-export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "github" | "aiChat"> & {
+export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "github" | "openRouter"> & {
   github: Omit<AppSettings["github"], "tokenEncrypted"> & { tokenConfigured: boolean };
-  aiChat: Omit<AppSettings["aiChat"], "openRouterApiKeyEncrypted"> & { openRouterApiKeyConfigured: boolean };
+  openRouter: { apiKeyConfigured: boolean };
 } => ({
   ...settings,
   github: {
@@ -579,6 +588,9 @@ export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "git
     docsPath: settings.github.docsPath,
     tokenConfigured: Boolean(settings.github.tokenEncrypted),
   },
+  openRouter: {
+    apiKeyConfigured: Boolean(settings.openRouter.apiKeyEncrypted),
+  },
   aiChat: {
     enabled: settings.aiChat.enabled,
     assistantName: settings.aiChat.assistantName,
@@ -587,6 +599,5 @@ export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "git
     welcomeMessage: settings.aiChat.welcomeMessage,
     openRouterModel: settings.aiChat.openRouterModel,
     systemPrompt: settings.aiChat.systemPrompt,
-    openRouterApiKeyConfigured: Boolean(settings.aiChat.openRouterApiKeyEncrypted),
   },
 });

@@ -31,8 +31,22 @@ export interface AiChatSettings {
   headerSubtitle: string;
   welcomeMessage: string;
   openRouterModel: string;
-  openRouterApiKeyEncrypted: string | null;
   systemPrompt: string;
+}
+
+export interface OpenRouterSettings {
+  apiKeyEncrypted: string | null;
+}
+
+export interface AutoTranslateLanguage {
+  name: string;
+  code: string;
+}
+
+export interface AutoTranslateSettings {
+  enabled: boolean;
+  openRouterModel: string;
+  languages: AutoTranslateLanguage[];
 }
 
 export interface ThemeCustomizationSettings {
@@ -116,13 +130,15 @@ export interface AppSettings {
   docsCacheTtlMs: number;
   domain: DomainSettings;
   github: GitHubSettings;
+  openRouter: OpenRouterSettings;
   aiChat: AiChatSettings;
+  autoTranslate: AutoTranslateSettings;
   theme: ThemeCustomizationSettings;
   updatedAt: string;
 }
 
 export interface DocsStore {
-  version: 8;
+  version: 9;
   settings: AppSettings;
   moderators: ModeratorAccount[];
   visitorStats: VisitorStatsStore;

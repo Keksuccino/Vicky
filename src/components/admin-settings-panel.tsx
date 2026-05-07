@@ -42,8 +42,18 @@ import {
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   DEFAULT_AI_CHAT_WELCOME_MESSAGE,
 } from "@/lib/ai-chat";
+import {
+  DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+  DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
+  DEFAULT_AUTO_TRANSLATE_LANGUAGES,
+  DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  isDefaultAutoTranslateLanguageCode,
+  languageCodesEqual,
+  normalizeAutoTranslateLanguageCode,
+} from "@/lib/auto-translate";
 import type {
   AdminSettings,
+  AutoTranslateLanguage,
   DomainSslRuntimeStatus,
   ModeratorAccount,
   ThemeCustomization,
@@ -101,6 +111,9 @@ const INITIAL_SETTINGS: AdminSettings = {
   openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
   openRouterApiKey: "",
   openRouterApiKeyConfigured: false,
+  autoTranslateEnabled: false,
+  autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
   themeLightAccent: THEME_DEFAULTS.lightAccent,
   themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
   themeDarkAccent: THEME_DEFAULTS.darkAccent,
@@ -126,6 +139,24 @@ type AiChatFieldErrors = {
 const EMPTY_AI_CHAT_FIELD_ERRORS: AiChatFieldErrors = {
   systemPrompt: null,
   openRouterModel: null,
+};
+
+type OpenRouterFieldErrors = {
+  apiKey: string | null;
+};
+
+const EMPTY_OPENROUTER_FIELD_ERRORS: OpenRouterFieldErrors = {
+  apiKey: null,
+};
+
+type AutoTranslateFieldErrors = {
+  openRouterModel: string | null;
+  languages: string | null;
+};
+
+const EMPTY_AUTO_TRANSLATE_FIELD_ERRORS: AutoTranslateFieldErrors = {
+  openRouterModel: null,
+  languages: null,
 };
 
 const validateCustomDomainInput = (value: string): string | null => {
@@ -170,10 +201,109 @@ const validateAiChatFields = (settings: AdminSettings): AiChatFieldErrors => {
 
 const hasAiChatFieldErrors = (errors: AiChatFieldErrors): boolean => Boolean(errors.systemPrompt || errors.openRouterModel);
 
+const validateOpenRouterFields = (settings: AdminSettings): OpenRouterFieldErrors => ({
+  apiKey:
+    settings.aiChatEnabled || settings.autoTranslateEnabled
+      ? settings.openRouterApiKey.trim() || settings.openRouterApiKeyConfigured
+        ? null
+        : "Enter an OpenRouter API key before enabling AI features."
+      : null,
+});
+
+const hasOpenRouterFieldErrors = (errors: OpenRouterFieldErrors): boolean => Boolean(errors.apiKey);
+
+const validateAutoTranslateLanguages = (languages: AutoTranslateLanguage[]): string | null => {
+  const seenCodes = new Set<string>();
+  let hasDefaultLanguage = false;
+
+  for (const language of languages) {
+    const name = language.name.trim();
+    const code = normalizeAutoTranslateLanguageCode(language.code);
+
+    if (!name || !code) {
+      return "Each language needs a display name and a language code.";
+    }
+
+    const codeKey = code.toLowerCase();
+    if (seenCodes.has(codeKey)) {
+      return "Language codes must be unique.";
+    }
+
+    seenCodes.add(codeKey);
+    if (isDefaultAutoTranslateLanguageCode(code)) {
+      hasDefaultLanguage = true;
+    }
+  }
+
+  return hasDefaultLanguage ? null : `${DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME} must stay in the language list.`;
+};
+
+const validateAutoTranslateFields = (settings: AdminSettings): AutoTranslateFieldErrors => {
+  if (!settings.autoTranslateEnabled) {
+    return {
+      openRouterModel: null,
+      languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
+    };
+  }
+
+  return {
+    openRouterModel: settings.autoTranslateOpenRouterModel.trim() ? null : "Enter an OpenRouter model identifier.",
+    languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
+  };
+};
+
+const hasAutoTranslateFieldErrors = (errors: AutoTranslateFieldErrors): boolean =>
+  Boolean(errors.openRouterModel || errors.languages);
+
+const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
+  const output: AutoTranslateLanguage[] = [
+    {
+      name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
+      code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+    },
+  ];
+  const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
+
+  for (const language of languages) {
+    const code = normalizeAutoTranslateLanguageCode(language.code);
+    const name = language.name.trim().replace(/\s+/g, " ");
+
+    if (!code || !name || isDefaultAutoTranslateLanguageCode(code)) {
+      continue;
+    }
+
+    const codeKey = code.toLowerCase();
+    if (seenCodes.has(codeKey)) {
+      continue;
+    }
+
+    seenCodes.add(codeKey);
+    output.push({ name, code });
+  }
+
+  return output;
+};
+
+const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage => {
+  let index = 1;
+  let code = "custom";
+
+  while (languages.some((language) => languageCodesEqual(language.code, code))) {
+    index += 1;
+    code = `custom-${index}`;
+  }
+
+  return {
+    name: "Custom Language",
+    code,
+  };
+};
+
 const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings => ({
   ...settings,
   customDomain: normalizeCustomDomain(settings.customDomain),
   letsEncryptEmail: normalizeLetsEncryptEmail(settings.letsEncryptEmail),
+  autoTranslateLanguages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
 });
 
 const themeCustomizationFromSettings = (settings: AdminSettings): ThemeCustomization => ({
@@ -465,10 +595,12 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         visibility: tooltipPosition ? "visible" : "hidden",
       } as CSSProperties)
     : undefined;
+  const activePointKey = activePoint?.key;
+  const activePointX = activePoint?.x;
+  const activePointY = activePoint?.y;
 
   useLayoutEffect(() => {
-    if (!activePoint) {
-      setTooltipPosition(null);
+    if (!activePointKey || activePointX === undefined || activePointY === undefined) {
       return undefined;
     }
 
@@ -496,8 +628,8 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         return;
       }
 
-      const pointX = stageBounds.left - cardBounds.left + (activePoint.x / VISITOR_SPARKLINE_WIDTH) * stageBounds.width;
-      const pointY = stageBounds.top - cardBounds.top + (activePoint.y / VISITOR_SPARKLINE_HEIGHT) * stageBounds.height;
+      const pointX = stageBounds.left - cardBounds.left + (activePointX / VISITOR_SPARKLINE_WIDTH) * stageBounds.width;
+      const pointY = stageBounds.top - cardBounds.top + (activePointY / VISITOR_SPARKLINE_HEIGHT) * stageBounds.height;
       const maxLeft = Math.max(
         VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
         cardBounds.width - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
@@ -543,7 +675,6 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
       );
     };
 
-    setTooltipPosition(null);
     updateTooltipPosition();
 
     const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateTooltipPosition);
@@ -560,80 +691,71 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
       resizeObserver?.disconnect();
       window.removeEventListener("resize", updateTooltipPosition);
     };
-  }, [activePoint?.key, activePoint?.x, activePoint?.y]);
+  }, [activePointKey, activePointX, activePointY]);
 
-  const activateNearestPoint = useCallback(
-    (clientX: number) => {
-      const chartStage = chartStageRef.current;
+  const activateNearestPoint = (clientX: number) => {
+    const chartStage = chartStageRef.current;
 
-      if (!chartStage || points.length === 0) {
-        return;
+    if (!chartStage || points.length === 0) {
+      return;
+    }
+
+    const bounds = chartStage.getBoundingClientRect();
+
+    if (bounds.width <= 0) {
+      return;
+    }
+
+    const chartX = ((clientX - bounds.left) / bounds.width) * VISITOR_SPARKLINE_WIDTH;
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    points.forEach((point, index) => {
+      const distance = Math.abs(point.x - chartX);
+
+      if (distance < nearestDistance) {
+        nearestIndex = index;
+        nearestDistance = distance;
       }
+    });
 
-      const bounds = chartStage.getBoundingClientRect();
+    setActivePointIndex((currentIndex) => (currentIndex === nearestIndex ? currentIndex : nearestIndex));
+  };
 
-      if (bounds.width <= 0) {
-        return;
-      }
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    activateNearestPoint(event.clientX);
+  };
 
-      const chartX = ((clientX - bounds.left) / bounds.width) * VISITOR_SPARKLINE_WIDTH;
-      let nearestIndex = 0;
-      let nearestDistance = Number.POSITIVE_INFINITY;
-
-      points.forEach((point, index) => {
-        const distance = Math.abs(point.x - chartX);
-
-        if (distance < nearestDistance) {
-          nearestIndex = index;
-          nearestDistance = distance;
-        }
-      });
-
-      setActivePointIndex((currentIndex) => (currentIndex === nearestIndex ? currentIndex : nearestIndex));
-    },
-    [points],
-  );
-
-  const handlePointerMove = useCallback(
-    (event: PointerEvent<HTMLDivElement>) => {
-      activateNearestPoint(event.clientX);
-    },
-    [activateNearestPoint],
-  );
-
-  const handlePointFocus = useCallback(() => {
+  const handlePointFocus = () => {
     if (points.length === 0) {
       return;
     }
 
     setActivePointIndex((currentIndex) => currentIndex ?? points.length - 1);
-  }, [points.length]);
+  };
 
-  const handlePointKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLDivElement>) => {
-      if (points.length === 0) {
-        return;
-      }
+  const handlePointKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (points.length === 0) {
+      return;
+    }
 
-      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-        const direction = event.key === "ArrowRight" ? 1 : -1;
+    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const direction = event.key === "ArrowRight" ? 1 : -1;
 
-        event.preventDefault();
-        setActivePointIndex((currentIndex) => {
-          if (currentIndex === null) {
-            return direction > 0 ? 0 : points.length - 1;
-          }
+      event.preventDefault();
+      setActivePointIndex((currentIndex) => {
+        if (currentIndex === null) {
+          return direction > 0 ? 0 : points.length - 1;
+        }
 
-          return Math.max(0, Math.min(points.length - 1, currentIndex + direction));
-        });
-      }
+        return Math.max(0, Math.min(points.length - 1, currentIndex + direction));
+      });
+    }
 
-      if (event.key === "Escape") {
-        setActivePointIndex(null);
-      }
-    },
-    [points.length],
-  );
+    if (event.key === "Escape") {
+      setActivePointIndex(null);
+    }
+  };
 
   return (
     <div ref={chartCardRef} className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
@@ -870,6 +992,9 @@ export function AdminSettingsPanel() {
   const [clearingSecret, setClearingSecret] = useState<ClearSecretTarget | null>(null);
   const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_DOMAIN_FIELD_ERRORS);
   const [aiChatFieldErrors, setAiChatFieldErrors] = useState<AiChatFieldErrors>(EMPTY_AI_CHAT_FIELD_ERRORS);
+  const [openRouterFieldErrors, setOpenRouterFieldErrors] = useState<OpenRouterFieldErrors>(EMPTY_OPENROUTER_FIELD_ERRORS);
+  const [autoTranslateFieldErrors, setAutoTranslateFieldErrors] =
+    useState<AutoTranslateFieldErrors>(EMPTY_AUTO_TRANSLATE_FIELD_ERRORS);
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
@@ -1062,10 +1187,19 @@ export function AdminSettingsPanel() {
 
     const domainErrors = validateDomainFields(draft.customDomain, draft.letsEncryptEmail);
     const aiErrors = validateAiChatFields(draft);
+    const openRouterErrors = validateOpenRouterFields(draft);
+    const autoTranslateErrors = validateAutoTranslateFields(draft);
     setDomainFieldErrors(domainErrors);
     setAiChatFieldErrors(aiErrors);
+    setOpenRouterFieldErrors(openRouterErrors);
+    setAutoTranslateFieldErrors(autoTranslateErrors);
 
-    if (hasDomainFieldErrors(domainErrors) || hasAiChatFieldErrors(aiErrors)) {
+    if (
+      hasDomainFieldErrors(domainErrors) ||
+      hasAiChatFieldErrors(aiErrors) ||
+      hasOpenRouterFieldErrors(openRouterErrors) ||
+      hasAutoTranslateFieldErrors(autoTranslateErrors)
+    ) {
       setSaveError(null);
       return;
     }
@@ -1081,9 +1215,9 @@ export function AdminSettingsPanel() {
       const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft));
       const nextSettings: AdminSettings = {
         ...saved,
-        githubToken: draft.githubToken,
-        openRouterApiKey: draft.openRouterApiKey,
-      };
+          githubToken: draft.githubToken,
+          openRouterApiKey: draft.openRouterApiKey,
+        };
       const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
 
       lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings);
@@ -1098,6 +1232,8 @@ export function AdminSettingsPanel() {
         setThemeSettings(themeCustomizationFromSettings(saved));
         setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(saved));
+        setOpenRouterFieldErrors(validateOpenRouterFields(saved));
+        setAutoTranslateFieldErrors(validateAutoTranslateFields(saved));
       }
 
       if (shouldRefreshSslStatus) {
@@ -1150,6 +1286,8 @@ export function AdminSettingsPanel() {
               tokenConfigured: target === "githubToken" ? saved.tokenConfigured : latestSettings.tokenConfigured,
               openRouterApiKey: target === "openRouterApiKey" ? "" : latestSettings.openRouterApiKey,
               aiChatEnabled: target === "openRouterApiKey" ? saved.aiChatEnabled : latestSettings.aiChatEnabled,
+              autoTranslateEnabled:
+                target === "openRouterApiKey" ? saved.autoTranslateEnabled : latestSettings.autoTranslateEnabled,
               openRouterApiKeyConfigured:
                 target === "openRouterApiKey" ? saved.openRouterApiKeyConfigured : latestSettings.openRouterApiKeyConfigured,
             }
@@ -1171,6 +1309,8 @@ export function AdminSettingsPanel() {
           setThemeSettings(themeCustomizationFromSettings(nextSettings));
           setDomainFieldErrors(validateDomainFields(nextSettings.customDomain, nextSettings.letsEncryptEmail));
           setAiChatFieldErrors(validateAiChatFields(nextSettings));
+          setOpenRouterFieldErrors(validateOpenRouterFields(nextSettings));
+          setAutoTranslateFieldErrors(validateAutoTranslateFields(nextSettings));
         }
       } catch (error) {
         setSaveError(formatApiError(error));
@@ -1263,6 +1403,8 @@ export function AdminSettingsPanel() {
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(loadedSettings));
+        setOpenRouterFieldErrors(validateOpenRouterFields(loadedSettings));
+        setAutoTranslateFieldErrors(validateAutoTranslateFields(loadedSettings));
         autoSaveReadyRef.current = true;
         await refreshSslStatus();
       } catch (error) {
@@ -2001,6 +2143,291 @@ export function AdminSettingsPanel() {
             </div>
           </section>
 
+          <section className="panel-card panel-card-openrouter">
+            <div className="panel-header">
+              <h2>OpenRouter Settings</h2>
+            </div>
+
+            <p className="panel-description">
+              Shared OpenRouter credentials for AI-powered docs features.
+            </p>
+
+            <div className="form-grid">
+              <div className="field-row">
+                <label className="field-label" htmlFor="openrouter-api-key">
+                  OpenRouter API key
+                </label>
+                <div className="secret-input-row">
+                  <input
+                    id="openrouter-api-key"
+                    className="input"
+                    type="text"
+                    autoComplete="off"
+                    value={settings.openRouterApiKey}
+                    aria-invalid={Boolean(openRouterFieldErrors.apiKey)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSettings((prev) => ({ ...prev, openRouterApiKey: value }));
+                      setOpenRouterFieldErrors((prev) => ({
+                        ...prev,
+                        apiKey:
+                          settings.aiChatEnabled || settings.autoTranslateEnabled
+                            ? value.trim() || settings.openRouterApiKeyConfigured
+                              ? null
+                              : "Enter an OpenRouter API key before enabling AI features."
+                            : null,
+                      }));
+                    }}
+                    placeholder={
+                      settings.openRouterApiKeyConfigured
+                        ? "Saved OpenRouter key configured (leave blank to keep)"
+                        : "sk-or-v1-..."
+                    }
+                  />
+                  <button
+                    type="button"
+                    className="btn btn-ghost secret-clear-button"
+                    disabled={
+                      settingsSaving ||
+                      clearingSecret !== null ||
+                      (!settings.openRouterApiKey.trim() && !settings.openRouterApiKeyConfigured)
+                    }
+                    onClick={() => {
+                      void clearSavedSecret("openRouterApiKey");
+                    }}
+                  >
+                    {clearingSecret === "openRouterApiKey" ? "Clearing..." : "Clear"}
+                  </button>
+                </div>
+                <span className="field-hint">
+                  Stored encrypted in the local app settings file. Leave blank to keep the existing saved key.
+                </span>
+                {openRouterFieldErrors.apiKey ? <span className="error-text">{openRouterFieldErrors.apiKey}</span> : null}
+              </div>
+            </div>
+          </section>
+
+          <section className="panel-card panel-card-auto-translate">
+            <div className="panel-header">
+              <h2>Auto Translate</h2>
+            </div>
+
+            <p className="panel-description">
+              Translate docs pages for the languages visitors can select.
+            </p>
+
+            <div className="form-grid">
+              <div className="field-row">
+                <span className="field-label">Enable auto-translate</span>
+                <label className="toggle-row" htmlFor="auto-translate-enabled">
+                  <input
+                    id="auto-translate-enabled"
+                    className="toggle-input"
+                    type="checkbox"
+                    checked={settings.autoTranslateEnabled}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      setSettings((prev) => ({ ...prev, autoTranslateEnabled: enabled }));
+                      setOpenRouterFieldErrors((prev) => ({
+                        ...prev,
+                        apiKey:
+                          enabled || settings.aiChatEnabled
+                            ? settings.openRouterApiKey.trim() || settings.openRouterApiKeyConfigured
+                              ? null
+                              : "Enter an OpenRouter API key before enabling AI features."
+                            : null,
+                      }));
+                    }}
+                  />
+                  <span className="toggle-control" aria-hidden="true">
+                    <span className="toggle-thumb" />
+                  </span>
+                  <span>{settings.autoTranslateEnabled ? "Enabled" : "Disabled"}</span>
+                </label>
+                <span className="field-hint">
+                  Shows the language selector in the docs header and translates selected non-English pages.
+                </span>
+              </div>
+
+              <div className="field-row">
+                <label className="field-label" htmlFor="auto-translate-openrouter-model">
+                  Translation model
+                </label>
+                <div className="field-control-row">
+                  <input
+                    id="auto-translate-openrouter-model"
+                    className="input"
+                    value={settings.autoTranslateOpenRouterModel}
+                    aria-invalid={Boolean(autoTranslateFieldErrors.openRouterModel)}
+                    onChange={(event) => {
+                      const value = event.target.value;
+                      setSettings((prev) => ({ ...prev, autoTranslateOpenRouterModel: value }));
+                      setAutoTranslateFieldErrors((prev) => ({
+                        ...prev,
+                        openRouterModel: value.trim() || !settings.autoTranslateEnabled ? null : "Enter an OpenRouter model identifier.",
+                      }));
+                    }}
+                    placeholder={DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
+                  />
+                  <ResetToDefaultButton
+                    disabled={settings.autoTranslateOpenRouterModel === DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
+                    onClick={() => {
+                      setSettings((prev) => ({
+                        ...prev,
+                        autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+                      }));
+                      setAutoTranslateFieldErrors((prev) => ({ ...prev, openRouterModel: null }));
+                    }}
+                  />
+                </div>
+                <span className="field-hint">
+                  Default: <code>{DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}</code>.
+                </span>
+                {autoTranslateFieldErrors.openRouterModel ? (
+                  <span className="error-text">{autoTranslateFieldErrors.openRouterModel}</span>
+                ) : null}
+              </div>
+
+              <div className="field-row">
+                <span className="field-label">Selectable languages</span>
+                <div className="translation-language-list">
+                  {settings.autoTranslateLanguages.map((language, index) => {
+                    const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
+                    const languageKey = `${language.code || "language"}-${index}`;
+
+                    return (
+                      <div
+                        className={`translation-language-item${isDefaultLanguage ? " translation-language-item-fixed" : ""}`}
+                        key={languageKey}
+                      >
+                        <div className="field-inline">
+                          <label className="field-row" htmlFor={`auto-translate-language-name-${index}`}>
+                            <span className="field-label">Display name</span>
+                            <input
+                              id={`auto-translate-language-name-${index}`}
+                              className="input"
+                              value={isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name}
+                              disabled={isDefaultLanguage}
+                              onChange={(event) => {
+                                const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, name: event.target.value } : entry,
+                                );
+                                setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                                setAutoTranslateFieldErrors((prev) => ({
+                                  ...prev,
+                                  languages: validateAutoTranslateLanguages(nextLanguages),
+                                }));
+                              }}
+                            />
+                          </label>
+
+                          <label className="field-row" htmlFor={`auto-translate-language-code-${index}`}>
+                            <span className="field-label">Language code</span>
+                            <input
+                              id={`auto-translate-language-code-${index}`}
+                              className="input"
+                              value={isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code}
+                              disabled={isDefaultLanguage}
+                              onChange={(event) => {
+                                const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, code: event.target.value } : entry,
+                                );
+                                setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                                setAutoTranslateFieldErrors((prev) => ({
+                                  ...prev,
+                                  languages: validateAutoTranslateLanguages(nextLanguages),
+                                }));
+                              }}
+                              onBlur={(event) => {
+                                const normalizedCode = normalizeAutoTranslateLanguageCode(event.target.value);
+                                if (!normalizedCode) {
+                                  return;
+                                }
+
+                                const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, code: normalizedCode } : entry,
+                                );
+                                setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                                setAutoTranslateFieldErrors((prev) => ({
+                                  ...prev,
+                                  languages: validateAutoTranslateLanguages(nextLanguages),
+                                }));
+                              }}
+                            />
+                          </label>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="btn btn-ghost translation-language-remove"
+                          disabled={isDefaultLanguage}
+                          onClick={() => {
+                            const nextLanguages = settings.autoTranslateLanguages.filter((_, entryIndex) => entryIndex !== index);
+                            setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                            setAutoTranslateFieldErrors((prev) => ({
+                              ...prev,
+                              languages: validateAutoTranslateLanguages(nextLanguages),
+                            }));
+                          }}
+                        >
+                          <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
+                          <span>{isDefaultLanguage ? "Fixed" : "Remove"}</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const nextLanguages = [
+                        ...settings.autoTranslateLanguages,
+                        createCustomAutoTranslateLanguage(settings.autoTranslateLanguages),
+                      ];
+                      setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                      setAutoTranslateFieldErrors((prev) => ({
+                        ...prev,
+                        languages: validateAutoTranslateLanguages(nextLanguages),
+                      }));
+                    }}
+                  >
+                    <MaterialIcon name="add" />
+                    <span>Add language</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={
+                      JSON.stringify(settings.autoTranslateLanguages) ===
+                      JSON.stringify(DEFAULT_AUTO_TRANSLATE_LANGUAGES)
+                    }
+                    onClick={() => {
+                      const nextLanguages = DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language }));
+                      setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                      setAutoTranslateFieldErrors((prev) => ({
+                        ...prev,
+                        languages: validateAutoTranslateLanguages(nextLanguages),
+                      }));
+                    }}
+                  >
+                    Reset languages
+                  </button>
+                </div>
+
+                <span className="field-hint">
+                  {DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME} is always the default source language and is never sent to the translation model.
+                </span>
+                {autoTranslateFieldErrors.languages ? (
+                  <span className="error-text">{autoTranslateFieldErrors.languages}</span>
+                ) : null}
+              </div>
+            </div>
+          </section>
+
           <section className="panel-card panel-card-ai-chat">
             <div className="panel-header">
               <h2>AI Chat</h2>
@@ -2153,46 +2580,6 @@ export function AdminSettingsPanel() {
                   Example: <code>openai/gpt-5.1-codex-mini</code>. Use a vision-capable model if you want image uploads.
                 </span>
                 {aiChatFieldErrors.openRouterModel ? <span className="error-text">{aiChatFieldErrors.openRouterModel}</span> : null}
-              </div>
-
-              <div className="field-row">
-                <label className="field-label" htmlFor="openrouter-api-key">
-                  OpenRouter API key
-                </label>
-                <div className="secret-input-row">
-                  <input
-                    id="openrouter-api-key"
-                    className="input"
-                    type="text"
-                    autoComplete="off"
-                    value={settings.openRouterApiKey}
-                    onChange={(event) => {
-                      setSettings((prev) => ({ ...prev, openRouterApiKey: event.target.value }));
-                    }}
-                    placeholder={
-                      settings.openRouterApiKeyConfigured
-                        ? "Saved OpenRouter key configured (leave blank to keep)"
-                        : "sk-or-v1-..."
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="btn btn-ghost secret-clear-button"
-                    disabled={
-                      settingsSaving ||
-                      clearingSecret !== null ||
-                      (!settings.openRouterApiKey.trim() && !settings.openRouterApiKeyConfigured)
-                    }
-                    onClick={() => {
-                      void clearSavedSecret("openRouterApiKey");
-                    }}
-                  >
-                    {clearingSecret === "openRouterApiKey" ? "Clearing..." : "Clear"}
-                  </button>
-                </div>
-                <span className="field-hint">
-                  Stored encrypted in the local app settings file. Leave blank to keep the existing saved key.
-                </span>
               </div>
 
               <div className="field-row">

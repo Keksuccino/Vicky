@@ -3,7 +3,6 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   normalizeAiAssistantName,
-  extractAiAssistantText,
   injectDocsIntoSystemPrompt,
   MAX_AI_CHAT_HISTORY_MESSAGES,
   MAX_AI_CHAT_IMAGE_BYTES,
@@ -16,12 +15,12 @@ import { getPlaintextDocsExport } from "@/lib/docs-plaintext";
 import { decryptSecret } from "@/lib/encryption";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { ApiError, badRequest, errorResponse, parseJsonBody } from "@/lib/http";
+import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const MAX_IMAGE_COUNT = MAX_AI_CHAT_IMAGES_PER_MESSAGE;
 const MAX_MESSAGES = MAX_AI_CHAT_HISTORY_MESSAGES;
 const MAX_TEXT_LENGTH = MAX_AI_CHAT_MESSAGE_LENGTH;
@@ -76,14 +75,6 @@ const requestSchema = z
   });
 
 const DATA_URL_PREFIX = /^data:(image\/(?:png|jpe?g|webp|gif));base64,[a-z0-9+/=\s]+$/i;
-
-const safeJsonParse = (input: string): unknown => {
-  try {
-    return JSON.parse(input) as unknown;
-  } catch {
-    return input;
-  }
-};
 
 const resolveRequestOrigin = (request: NextRequest): string => {
   const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
@@ -145,30 +136,6 @@ const toOpenRouterMessage = (message: z.infer<typeof messageSchema>) => {
   };
 };
 
-const extractErrorMessage = (payload: unknown, fallback: string): string => {
-  if (typeof payload === "string" && payload.trim()) {
-    return payload;
-  }
-
-  if (typeof payload !== "object" || payload === null) {
-    return fallback;
-  }
-
-  const record = payload as Record<string, unknown>;
-  const directMessage = record.message;
-  if (typeof directMessage === "string" && directMessage.trim()) {
-    return directMessage;
-  }
-
-  const errorRecord = typeof record.error === "object" && record.error !== null ? (record.error as Record<string, unknown>) : null;
-  const nestedMessage = errorRecord?.message;
-  if (typeof nestedMessage === "string" && nestedMessage.trim()) {
-    return nestedMessage;
-  }
-
-  return fallback;
-};
-
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const rateLimit = consumeAiChatRateLimit(request);
@@ -195,7 +162,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       throw new ApiError(404, "AI chat is disabled.");
     }
 
-    if (!store.settings.aiChat.openRouterApiKeyEncrypted || !store.settings.aiChat.openRouterModel.trim()) {
+    if (!store.settings.openRouter.apiKeyEncrypted || !store.settings.aiChat.openRouterModel.trim()) {
       throw new ApiError(503, "AI chat is not fully configured.");
     }
 
@@ -208,46 +175,19 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     const systemPrompt = injectDocsIntoSystemPrompt(store.settings.aiChat.systemPrompt, docsText, assistantName);
     const messages = payload.messages.map((message) => toOpenRouterMessage(message));
 
-    const response = await fetch(OPENROUTER_API_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${decryptSecret(store.settings.aiChat.openRouterApiKeyEncrypted).trim()}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": origin,
-        "X-Title": store.settings.siteTitle || "Vicky Docs",
-      },
-      body: JSON.stringify({
-        model: store.settings.aiChat.openRouterModel.trim(),
-        messages: [
-          {
-            role: "system",
-            content: systemPrompt,
-          },
-          ...messages,
-        ],
-      }),
-      cache: "no-store",
+    const assistantText = await requestOpenRouterChatCompletion({
+      apiKey: decryptSecret(store.settings.openRouter.apiKeyEncrypted).trim(),
+      model: store.settings.aiChat.openRouterModel.trim(),
+      origin,
+      siteTitle: store.settings.siteTitle || "Vicky Docs",
+      messages: [
+        {
+          role: "system",
+          content: systemPrompt,
+        },
+        ...messages,
+      ],
     });
-
-    const rawText = await response.text();
-    const parsed = rawText ? safeJsonParse(rawText) : null;
-
-    if (!response.ok) {
-      throw new ApiError(response.status, extractErrorMessage(parsed, "OpenRouter request failed."));
-    }
-
-    const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};
-    const choices = Array.isArray(record.choices) ? record.choices : [];
-    const firstChoice = choices[0];
-    const message =
-      typeof firstChoice === "object" && firstChoice !== null
-        ? ((firstChoice as Record<string, unknown>).message as Record<string, unknown> | undefined)
-        : undefined;
-    const assistantText = extractAiAssistantText(message?.content);
-
-    if (!assistantText) {
-      throw new ApiError(502, "OpenRouter returned an empty response.");
-    }
 
     return NextResponse.json({
       reply: {

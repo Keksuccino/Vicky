@@ -9,6 +9,10 @@ import {
   normalizeAiChatSystemPromptTemplate,
   normalizeAiChatWelcomeMessage,
 } from "@/lib/ai-chat";
+import {
+  normalizeAutoTranslateLanguages,
+  normalizeAutoTranslateOpenRouterModel,
+} from "@/lib/auto-translate";
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
@@ -75,6 +79,27 @@ const settingsPatchSchema = z
         openRouterModel: z.string().optional(),
         openRouterApiKey: z.string().optional(),
         systemPrompt: z.string().optional(),
+      })
+      .optional(),
+    openRouter: z
+      .object({
+        apiKey: z.string().optional(),
+      })
+      .optional(),
+    autoTranslate: z
+      .object({
+        enabled: z.boolean().optional(),
+        openRouterModel: z.string().optional(),
+        languages: z
+          .array(
+            z
+              .object({
+                name: z.string(),
+                code: z.string(),
+              })
+              .strict(),
+          )
+          .optional(),
       })
       .optional(),
   })
@@ -278,9 +303,31 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
         }
 
         if (patch.aiChat.openRouterApiKey !== undefined) {
-          store.settings.aiChat.openRouterApiKeyEncrypted = patch.aiChat.openRouterApiKey.trim()
+          store.settings.openRouter.apiKeyEncrypted = patch.aiChat.openRouterApiKey.trim()
             ? encryptSecret(patch.aiChat.openRouterApiKey.trim())
             : null;
+        }
+      }
+
+      if (patch.openRouter?.apiKey !== undefined) {
+        store.settings.openRouter.apiKeyEncrypted = patch.openRouter.apiKey.trim()
+          ? encryptSecret(patch.openRouter.apiKey.trim())
+          : null;
+      }
+
+      if (patch.autoTranslate) {
+        if (patch.autoTranslate.enabled !== undefined) {
+          store.settings.autoTranslate.enabled = patch.autoTranslate.enabled;
+        }
+
+        if (patch.autoTranslate.openRouterModel !== undefined) {
+          store.settings.autoTranslate.openRouterModel = normalizeAutoTranslateOpenRouterModel(
+            patch.autoTranslate.openRouterModel,
+          );
+        }
+
+        if (patch.autoTranslate.languages !== undefined) {
+          store.settings.autoTranslate.languages = normalizeAutoTranslateLanguages(patch.autoTranslate.languages);
         }
       }
 
@@ -293,8 +340,18 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
           throw badRequest("AI Chat: OpenRouter model is required when AI chat is enabled.");
         }
 
-        if (!store.settings.aiChat.openRouterApiKeyEncrypted) {
+        if (!store.settings.openRouter.apiKeyEncrypted) {
           throw badRequest("AI Chat: OpenRouter API key is required when AI chat is enabled.");
+        }
+      }
+
+      if (store.settings.autoTranslate.enabled) {
+        if (!store.settings.autoTranslate.openRouterModel.trim()) {
+          throw badRequest("Auto Translate: OpenRouter model is required when auto-translate is enabled.");
+        }
+
+        if (!store.settings.openRouter.apiKeyEncrypted) {
+          throw badRequest("Auto Translate: OpenRouter API key is required when auto-translate is enabled.");
         }
       }
     });

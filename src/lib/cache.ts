@@ -75,6 +75,34 @@ export class TtlCache<K, V> {
   }
 }
 
+export class MemoryCache<K, V> {
+  private readonly entries = new Map<K, V>();
+
+  get(key: K): V | undefined {
+    return this.entries.get(key);
+  }
+
+  set(key: K, value: V): void {
+    this.entries.set(key, value);
+  }
+
+  delete(key: K): void {
+    this.entries.delete(key);
+  }
+
+  clear(): void {
+    this.entries.clear();
+  }
+
+  deleteWhere(predicate: (key: K) => boolean): void {
+    for (const key of this.entries.keys()) {
+      if (predicate(key)) {
+        this.entries.delete(key);
+      }
+    }
+  }
+}
+
 const defaultTtlMs = normalizeDocsCacheTtlMs(process.env.DOCS_CACHE_TTL_MS);
 export const DOCS_CACHE_TTL_MS = defaultTtlMs;
 
@@ -83,6 +111,8 @@ export const docsTreeCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 export const docsPageCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 export const docsSearchCorpusCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
 export const aiPlaintextDocsCache = new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS);
+export const translatedDocsPageCache = new MemoryCache<string, unknown>();
+export const translatedDocsTitleCache = new MemoryCache<string, unknown>();
 
 export const setDocsCacheTtlMs = (ttlMs: number): number => {
   const normalized = normalizeDocsCacheTtlMs(ttlMs, docsSnapshotCache.getTtlMs());

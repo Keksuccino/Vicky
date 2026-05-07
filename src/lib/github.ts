@@ -2,7 +2,15 @@ import path from "node:path";
 
 import { Octokit } from "@octokit/rest";
 
-import { aiPlaintextDocsCache, docsPageCache, docsSearchCorpusCache, docsSnapshotCache, docsTreeCache } from "@/lib/cache";
+import {
+  aiPlaintextDocsCache,
+  docsPageCache,
+  docsSearchCorpusCache,
+  docsSnapshotCache,
+  docsTreeCache,
+  translatedDocsPageCache,
+  translatedDocsTitleCache,
+} from "@/lib/cache";
 import { decryptSecret } from "@/lib/encryption";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
@@ -245,6 +253,8 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
     docsPageCache.clear();
     docsSearchCorpusCache.clear();
     aiPlaintextDocsCache.clear();
+    translatedDocsPageCache.clear();
+    translatedDocsTitleCache.clear();
     return;
   }
 
@@ -254,6 +264,8 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   docsPageCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
+  translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
+  translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
 };
 
 const clearDerivedGitHubDocsCache = (config: GitHubRuntimeConfig): void => {
@@ -359,6 +371,16 @@ export const listMarkdownDocsTree = async (
 export const listMarkdownDocsTreeWithTitles = async (config: GitHubRuntimeConfig): Promise<GitHubDocTreeItem[]> => {
   const snapshot = await loadGitHubDocsSnapshot(config);
   return snapshot.tree;
+};
+
+export const listMarkdownDocsTreePagesWithTitles = async (
+  config: GitHubRuntimeConfig,
+): Promise<{ items: GitHubDocTreeItem[]; pages: GitHubDocPage[] }> => {
+  const snapshot = await loadGitHubDocsSnapshot(config);
+  return {
+    items: snapshot.tree,
+    pages: snapshot.pages,
+  };
 };
 
 const fetchFileFromGitHub = async (

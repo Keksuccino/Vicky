@@ -2,6 +2,7 @@ import {
   type AdminSettings,
   type AiChatReply,
   type AuthUser,
+  type AutoTranslateLanguage,
   type DocPage,
   type DocsRefreshResult,
   type DocSearchResult,
@@ -23,6 +24,12 @@ import {
   DEFAULT_AI_CHAT_WELCOME_MESSAGE,
   DEFAULT_OPENROUTER_MODEL,
 } from "@/lib/ai-chat";
+import {
+  DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+  DEFAULT_AUTO_TRANSLATE_LANGUAGES,
+  DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  normalizeAutoTranslateLanguage,
+} from "@/lib/auto-translate";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 
 type JsonRecord = Record<string, unknown>;
@@ -49,6 +56,8 @@ export type PublicSiteSettings = {
   aiChatAvatarUrl: string;
   aiChatHeaderSubtitle: string;
   aiChatWelcomeMessage: string;
+  autoTranslateEnabled: boolean;
+  autoTranslateLanguages: AutoTranslateLanguage[];
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;
@@ -96,6 +105,9 @@ const DEFAULT_SETTINGS: AdminSettings = {
   openRouterModel: DEFAULT_OPENROUTER_MODEL,
   openRouterApiKey: "",
   openRouterApiKeyConfigured: false,
+  autoTranslateEnabled: false,
+  autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
   themeDarkAccent: "#5EBBE4",
@@ -253,6 +265,15 @@ function normalizeHeadings(value: unknown): MarkdownHeading[] {
       };
     })
     .filter((entry): entry is MarkdownHeading => Boolean(entry));
+}
+
+function normalizeAutoTranslateLanguageList(source: unknown): AutoTranslateLanguage[] {
+  const values = Array.isArray(source) ? source : DEFAULT_AUTO_TRANSLATE_LANGUAGES;
+  const languages = values
+    .map((entry) => normalizeAutoTranslateLanguage(entry))
+    .filter((entry): entry is AutoTranslateLanguage => Boolean(entry));
+
+  return languages.length > 0 ? languages : DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language }));
 }
 
 function normalizePage(source: unknown, fallbackPath = "/"): DocPage {
@@ -432,6 +453,8 @@ function normalizeSettings(source: unknown): AdminSettings {
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const domain = asRecord(payload.domain);
   const aiChat = asRecord(payload.aiChat);
+  const openRouter = asRecord(payload.openRouter);
+  const autoTranslate = asRecord(payload.autoTranslate);
   const theme = asRecord(payload.theme);
   const docsCacheTtlMs = asNumber(payload.docsCacheTtlMs, DEFAULT_DOCS_REFRESH_INTERVAL_MINUTES * 60_000);
 
@@ -462,7 +485,16 @@ function normalizeSettings(source: unknown): AdminSettings {
     aiChatSystemPrompt: asString(aiChat.systemPrompt, DEFAULT_SETTINGS.aiChatSystemPrompt),
     openRouterModel: asString(aiChat.openRouterModel, DEFAULT_SETTINGS.openRouterModel),
     openRouterApiKey: "",
-    openRouterApiKeyConfigured: asBoolean(aiChat.openRouterApiKeyConfigured, false),
+    openRouterApiKeyConfigured: asBoolean(
+      openRouter.apiKeyConfigured,
+      asBoolean(aiChat.openRouterApiKeyConfigured, false),
+    ),
+    autoTranslateEnabled: asBoolean(autoTranslate.enabled, DEFAULT_SETTINGS.autoTranslateEnabled),
+    autoTranslateOpenRouterModel: asString(
+      autoTranslate.openRouterModel,
+      DEFAULT_SETTINGS.autoTranslateOpenRouterModel,
+    ),
+    autoTranslateLanguages: normalizeAutoTranslateLanguageList(autoTranslate.languages),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -607,6 +639,7 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const siteTitleGradient = asRecord(payload.siteTitleGradient);
   const domain = asRecord(payload.domain);
   const aiChat = asRecord(payload.aiChat);
+  const autoTranslate = asRecord(payload.autoTranslate);
   const theme = asRecord(payload.theme);
 
   return {
@@ -625,6 +658,8 @@ function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
     aiChatAvatarUrl: asString(aiChat.avatarUrl, DEFAULT_SETTINGS.aiChatAvatarUrl),
     aiChatHeaderSubtitle: asString(aiChat.headerSubtitle, DEFAULT_SETTINGS.aiChatHeaderSubtitle),
     aiChatWelcomeMessage: asString(aiChat.welcomeMessage, DEFAULT_SETTINGS.aiChatWelcomeMessage),
+    autoTranslateEnabled: asBoolean(autoTranslate.enabled, DEFAULT_SETTINGS.autoTranslateEnabled),
+    autoTranslateLanguages: normalizeAutoTranslateLanguageList(autoTranslate.languages),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -670,14 +705,18 @@ export function formatApiError(error: unknown): string {
   return "Something went wrong. Please try again.";
 }
 
-export async function fetchDocsTree(): Promise<DocTreeNode[]> {
-  const response = await requestJson<unknown>("/api/docs/tree");
+export async function fetchDocsTree(languageCode?: string): Promise<DocTreeNode[]> {
+  const query = languageCode ? `?${new URLSearchParams({ language: languageCode }).toString()}` : "";
+  const response = await requestJson<unknown>(`/api/docs/tree${query}`);
   return buildTree(normalizeTreeItems(response));
 }
 
-export async function fetchDocPage(pathOrSlug: string): Promise<DocPage> {
+export async function fetchDocPage(pathOrSlug: string, languageCode?: string): Promise<DocPage> {
   const slug = toDocSlug(pathOrSlug);
-  const query = new URLSearchParams({ slug });
+  const query = new URLSearchParams({
+    slug,
+    ...(languageCode ? { language: languageCode } : {}),
+  });
   const response = await requestJson<unknown>(`/api/docs/page?${query.toString()}`);
   return normalizePage(response, slugToPath(slug));
 }
@@ -830,6 +869,12 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<AdminS
       systemPrompt: settings.aiChatSystemPrompt,
       openRouterModel: settings.openRouterModel,
     },
+    openRouter: {},
+    autoTranslate: {
+      enabled: settings.autoTranslateEnabled,
+      openRouterModel: settings.autoTranslateOpenRouterModel,
+      languages: settings.autoTranslateLanguages,
+    },
   };
 
   const github = payload.github as Record<string, unknown>;
@@ -837,9 +882,9 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<AdminS
     github.token = settings.githubToken.trim();
   }
 
-  const aiChat = payload.aiChat as Record<string, unknown>;
   if (settings.openRouterApiKey.trim()) {
-    aiChat.openRouterApiKey = settings.openRouterApiKey.trim();
+    const openRouter = payload.openRouter as Record<string, unknown>;
+    openRouter.apiKey = settings.openRouterApiKey.trim();
   }
 
   const response = await requestJson<unknown>("/api/admin/settings", {
@@ -862,7 +907,11 @@ export async function clearAdminGitHubToken(): Promise<AdminSettings> {
 export async function clearAdminOpenRouterApiKey(): Promise<AdminSettings> {
   const response = await requestJson<unknown>("/api/admin/settings", {
     method: "PATCH",
-    body: JSON.stringify({ aiChat: { enabled: false, openRouterApiKey: "" } }),
+    body: JSON.stringify({
+      aiChat: { enabled: false },
+      autoTranslate: { enabled: false },
+      openRouter: { apiKey: "" },
+    }),
   });
 
   return normalizeSettings(response);
@@ -927,7 +976,7 @@ export async function testAdminConnection(settings: AdminSettings): Promise<stri
 }
 
 export async function fetchAdminDocs(): Promise<DocTreeNode[]> {
-  return fetchDocsTree();
+  return fetchDocsTree(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
 }
 
 export async function saveAdminDoc(doc: EditableDoc): Promise<DocPage> {

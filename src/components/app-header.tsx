@@ -7,9 +7,10 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { fetchPublicSiteSettings, getCurrentUser, logout } from "@/components/api";
 import { cn } from "@/components/cn";
+import { LanguageSelector } from "@/components/language-selector";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
-import type { AuthUser } from "@/components/types";
+import type { AuthUser, AutoTranslateLanguage } from "@/components/types";
 
 const ADMIN_NAVIGATION = {
   settingsHref: "/admin/settings",
@@ -59,6 +60,8 @@ export function AppHeader() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState<boolean | null>(null);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
+  const [autoTranslateEnabled, setAutoTranslateEnabled] = useState(false);
+  const [autoTranslateLanguages, setAutoTranslateLanguages] = useState<AutoTranslateLanguage[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -77,6 +80,8 @@ export function AppHeader() {
         });
         setHasConfiguredIcon(Boolean(settings.docsIconPng180Url.trim()));
         setIconLoadFailed(false);
+        setAutoTranslateEnabled(settings.autoTranslateEnabled);
+        setAutoTranslateLanguages(settings.autoTranslateLanguages);
       } catch {
         if (!active) {
           return;
@@ -86,6 +91,8 @@ export function AppHeader() {
         setSiteTitleGradient({ from: "", to: "" });
         setHasConfiguredIcon(false);
         setIconLoadFailed(false);
+        setAutoTranslateEnabled(false);
+        setAutoTranslateLanguages([]);
       }
     };
 
@@ -176,6 +183,8 @@ export function AppHeader() {
         </Link>
 
         <div className="app-header-actions">
+          {brandingReady ? <LanguageSelector enabled={autoTranslateEnabled} languages={autoTranslateLanguages} /> : null}
+
           <Link
             href={PLAINTEXT_EXPORT_NAVIGATION.href}
             className="admin-icon-link ui-tooltip"
