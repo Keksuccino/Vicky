@@ -34,6 +34,19 @@ type TitleTranslationPayload = {
 const pageTranslationLoads = new Map<string, Promise<GitHubDocPage>>();
 const titleTranslationLoads = new Map<string, Promise<Map<string, string>>>();
 
+export type GitHubDocPageTranslationRequestResult = {
+  totalPages: number;
+  cachedPages: number;
+  requestedPages: number;
+  translatedPages: number;
+  failedPages: number;
+  failures: Array<{
+    slug: string;
+    path: string;
+    error: string;
+  }>;
+};
+
 const hashValue = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
 
@@ -276,6 +289,69 @@ export const translateGitHubDocPage = async ({
 
   pageTranslationLoads.set(key, loadPromise);
   return loadPromise;
+};
+
+export const translateMissingGitHubDocPages = async ({
+  apiKey,
+  config,
+  language,
+  model,
+  origin,
+  pages,
+  settings,
+  siteTitle,
+}: {
+  apiKey: string;
+  config: GitHubRuntimeConfig;
+  language: AutoTranslateLanguage;
+  model: string;
+  origin: string;
+  pages: GitHubDocPage[];
+  settings: AutoTranslateSettings;
+  siteTitle: string;
+}): Promise<GitHubDocPageTranslationRequestResult> => {
+  const pagesToTranslate = pages.filter((page) => !getCachedTranslatedDocPage(config, page, language, model));
+  const results = await Promise.allSettled(
+    pagesToTranslate.map((sourcePage) =>
+      translateGitHubDocPage({
+        apiKey,
+        config,
+        language,
+        model,
+        origin,
+        settings,
+        siteTitle,
+        sourcePage,
+      }),
+    ),
+  );
+
+  const failures: GitHubDocPageTranslationRequestResult["failures"] = [];
+  let translatedPages = 0;
+
+  results.forEach((result, index) => {
+    if (result.status === "fulfilled") {
+      translatedPages += 1;
+      return;
+    }
+
+    const sourcePage = pagesToTranslate[index];
+    const reason = result.reason;
+    failures.push({
+      slug: sourcePage.slug,
+      path: sourcePage.path,
+      error: reason instanceof Error ? reason.message : String(reason),
+    });
+  });
+
+  return {
+    totalPages: pages.length,
+    cachedPages: pages.length - pagesToTranslate.length,
+    requestedPages: pagesToTranslate.length,
+    translatedPages,
+    failedPages: failures.length,
+    failures,
+  };
 };
 
 export const translateGitHubDocTreeTitles = async ({

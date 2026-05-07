@@ -436,8 +436,9 @@ export const listMarkdownDocsTreeWithTitles = async (config: GitHubRuntimeConfig
 
 export const listMarkdownDocsTreePagesWithTitles = async (
   config: GitHubRuntimeConfig,
+  options?: { bypassCache?: boolean },
 ): Promise<{ items: GitHubDocTreeItem[]; pages: GitHubDocPage[] }> => {
-  const snapshot = await loadGitHubDocsSnapshot(config);
+  const snapshot = await loadGitHubDocsSnapshot(config, options);
   return {
     items: snapshot.tree,
     pages: snapshot.pages,

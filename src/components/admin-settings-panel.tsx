@@ -26,6 +26,7 @@ import {
   formatApiError,
   getCurrentUser,
   refreshAdminDocsCache,
+  requestAdminLanguageTranslations,
   saveAdminSettings,
   testAdminConnection,
   updateAdminModerator,
@@ -968,6 +969,10 @@ const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "
 };
 
 type ClearSecretTarget = "githubToken" | "openRouterApiKey";
+type TranslationRequestStatus = {
+  tone: "success" | "warning" | "error";
+  message: string;
+};
 
 const formatStatusTimestamp = (value: string): string => {
   const parsed = new Date(value);
@@ -1002,6 +1007,10 @@ export function AdminSettingsPanel() {
   const [refreshingDocs, setRefreshingDocs] = useState(false);
   const [docsRefreshMessage, setDocsRefreshMessage] = useState<string | null>(null);
   const [docsRefreshError, setDocsRefreshError] = useState<string | null>(null);
+  const [requestedTranslationLanguageCodes, setRequestedTranslationLanguageCodes] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [translationRequestStatus, setTranslationRequestStatus] = useState<TranslationRequestStatus | null>(null);
 
   const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
@@ -1345,6 +1354,78 @@ export function AdminSettingsPanel() {
       setRefreshingDocs(false);
     }
   }, [persistLatestSettings]);
+
+  const requestLanguageTranslations = useCallback(
+    async (language: AutoTranslateLanguage) => {
+      const code = normalizeAutoTranslateLanguageCode(language.code);
+      const name = language.name.trim();
+
+      if (!code || !name) {
+        setTranslationRequestStatus({
+          tone: "error",
+          message: "Enter a valid language name and code before requesting translations.",
+        });
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Request translations for all pages in ${name}? Only pages without a current cached translation will be sent.`,
+      );
+
+      if (!confirmed) {
+        return;
+      }
+
+      setRequestedTranslationLanguageCodes((prev) => {
+        const next = new Set(prev);
+        next.add(code.toLowerCase());
+        return next;
+      });
+      setTranslationRequestStatus({
+        tone: "warning",
+        message: `Requesting ${name} translations...`,
+      });
+
+      try {
+        await persistLatestSettings();
+        const result = await requestAdminLanguageTranslations({ name, code });
+        const pageLabel = result.totalPages === 1 ? "page" : "pages";
+
+        if (result.failedPages > 0) {
+          setTranslationRequestStatus({
+            tone: "warning",
+            message: `${result.translatedPages} ${name} translation${
+              result.translatedPages === 1 ? "" : "s"
+            } finished, ${result.cachedPages} ${pageLabel} already had current translations, and ${
+              result.failedPages
+            } failed.`,
+          });
+          return;
+        }
+
+        if (result.requestedPages === 0) {
+          setTranslationRequestStatus({
+            tone: "success",
+            message: `All ${result.totalPages} ${pageLabel} already have current ${name} translations.`,
+          });
+          return;
+        }
+
+        setTranslationRequestStatus({
+          tone: "success",
+          message: `Finished ${result.translatedPages} ${name} translation${
+            result.translatedPages === 1 ? "" : "s"
+          }. ${result.cachedPages} ${pageLabel} already had current translations.`,
+        });
+      } catch (error) {
+        setTranslationRequestStatus({
+          tone: "error",
+          message: formatApiError(error),
+        });
+      }
+    },
+    [persistLatestSettings],
+  );
 
   useEffect(() => {
     latestSettingsRef.current = settings;
@@ -2293,6 +2374,12 @@ export function AdminSettingsPanel() {
                 <div className="translation-language-list">
                   {settings.autoTranslateLanguages.map((language, index) => {
                     const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
+                    const normalizedLanguageCode = normalizeAutoTranslateLanguageCode(language.code);
+                    const translationRequestDisabled =
+                      isDefaultLanguage ||
+                      (normalizedLanguageCode
+                        ? requestedTranslationLanguageCodes.has(normalizedLanguageCode.toLowerCase())
+                        : false);
                     const languageKey = `${language.code || "language"}-${index}`;
 
                     return (
@@ -2357,26 +2444,47 @@ export function AdminSettingsPanel() {
                           </label>
                         </div>
 
-                        <button
-                          type="button"
-                          className={`btn btn-ghost translation-language-remove${isDefaultLanguage ? "" : " danger"}`}
-                          disabled={isDefaultLanguage}
-                          onClick={() => {
-                            const nextLanguages = settings.autoTranslateLanguages.filter((_, entryIndex) => entryIndex !== index);
-                            setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
-                            setAutoTranslateFieldErrors((prev) => ({
-                              ...prev,
-                              languages: validateAutoTranslateLanguages(nextLanguages),
-                            }));
-                          }}
-                        >
-                          <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
-                          <span>{isDefaultLanguage ? "Fixed" : "Remove"}</span>
-                        </button>
+                        <div className="translation-language-actions">
+                          <button
+                            type="button"
+                            className={`btn btn-ghost translation-language-remove${isDefaultLanguage ? "" : " danger"}`}
+                            disabled={isDefaultLanguage}
+                            onClick={() => {
+                              const nextLanguages = settings.autoTranslateLanguages.filter((_, entryIndex) => entryIndex !== index);
+                              setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                              setAutoTranslateFieldErrors((prev) => ({
+                                ...prev,
+                                languages: validateAutoTranslateLanguages(nextLanguages),
+                              }));
+                            }}
+                          >
+                            <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
+                            <span>{isDefaultLanguage ? "Fixed" : "Remove"}</span>
+                          </button>
+                          <span
+                            className="translation-language-request-tooltip ui-tooltip"
+                            data-ui-tooltip="Request Translations for All Pages"
+                          >
+                            <button
+                              type="button"
+                              className="btn btn-ghost translation-language-request"
+                              aria-label="Request Translations for All Pages"
+                              disabled={translationRequestDisabled}
+                              onClick={() => {
+                                void requestLanguageTranslations(language);
+                              }}
+                            >
+                              <MaterialIcon name="download" />
+                            </button>
+                          </span>
+                        </div>
                       </div>
                     );
                   })}
                 </div>
+                {translationRequestStatus ? (
+                  <p className={`${translationRequestStatus.tone}-text`}>{translationRequestStatus.message}</p>
+                ) : null}
 
                 <div className="action-row">
                   <button

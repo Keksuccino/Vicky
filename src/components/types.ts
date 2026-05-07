@@ -100,6 +100,19 @@ export type DocsRefreshResult = {
   expiresAt: string;
 };
 
+export type AdminTranslationRequestResult = {
+  totalPages: number;
+  cachedPages: number;
+  requestedPages: number;
+  translatedPages: number;
+  failedPages: number;
+  failures: Array<{
+    slug: string;
+    path: string;
+    error: string;
+  }>;
+};
+
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;

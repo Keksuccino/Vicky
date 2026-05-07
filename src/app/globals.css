@@ -2178,12 +2178,37 @@ html[data-color-mode="light"] .page-copy-menu {
   background: color-mix(in srgb, var(--accent-surface-soft) 58%, var(--surface-muted));
 }
 
+.translation-language-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.42rem;
+}
+
 .translation-language-remove {
   min-height: 2.75rem;
   white-space: nowrap;
 }
 
-.translation-language-remove .material-icon {
+.translation-language-request-tooltip {
+  display: inline-flex;
+}
+
+.translation-language-request {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  flex: 0 0 2.75rem;
+  padding: 0;
+}
+
+.translation-language-request:disabled {
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface-elevated));
+  border-color: color-mix(in srgb, var(--border) 76%, transparent);
+}
+
+.translation-language-remove .material-icon,
+.translation-language-request .material-icon {
   font-size: 1.12rem;
 }
 
@@ -4242,8 +4267,8 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
     grid-template-columns: 1fr;
   }
 
-  .translation-language-remove {
-    justify-self: start;
+  .translation-language-actions {
+    justify-content: flex-start;
   }
 
   .moderator-actions {

@@ -3,6 +3,7 @@ import {
   type AiChatReply,
   type AuthUser,
   type AutoTranslateLanguage,
+  type AdminTranslationRequestResult,
   type DocPage,
   type DocsRefreshResult,
   type DocSearchResult,
@@ -633,6 +634,40 @@ function normalizeDocsRefreshResult(source: unknown): DocsRefreshResult {
   };
 }
 
+function normalizeAdminTranslationRequestResult(source: unknown): AdminTranslationRequestResult {
+  const payload = asRecord(asRecord(source).result ?? source);
+  const rawFailures = payload.failures;
+  const failures = Array.isArray(rawFailures)
+    ? rawFailures
+        .map((entry) => {
+          const failure = asRecord(entry);
+          const slug = asString(failure.slug).trim();
+          const path = asString(failure.path).trim();
+          const error = asString(failure.error).trim();
+
+          if (!slug && !path && !error) {
+            return null;
+          }
+
+          return {
+            slug,
+            path,
+            error: error || "Translation request failed.",
+          };
+        })
+        .filter((entry): entry is AdminTranslationRequestResult["failures"][number] => Boolean(entry))
+    : [];
+
+  return {
+    totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
+    cachedPages: Math.max(0, Math.round(asNumber(payload.cachedPages, 0))),
+    requestedPages: Math.max(0, Math.round(asNumber(payload.requestedPages, 0))),
+    translatedPages: Math.max(0, Math.round(asNumber(payload.translatedPages, 0))),
+    failedPages: Math.max(0, Math.round(asNumber(payload.failedPages, failures.length))),
+    failures,
+  };
+}
+
 function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
@@ -927,6 +962,17 @@ export async function refreshAdminDocsCache(): Promise<DocsRefreshResult> {
   });
 
   return normalizeDocsRefreshResult(response);
+}
+
+export async function requestAdminLanguageTranslations(
+  language: AutoTranslateLanguage,
+): Promise<AdminTranslationRequestResult> {
+  const response = await requestJson<unknown>("/api/admin/translations/request", {
+    method: "POST",
+    body: JSON.stringify({ language }),
+  });
+
+  return normalizeAdminTranslationRequestResult(response);
 }
 
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {
