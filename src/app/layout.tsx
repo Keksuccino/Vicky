@@ -4,14 +4,14 @@ import { Manrope, Space_Grotesk } from "next/font/google";
 import localFont from "next/font/local";
 import { Fragment } from "react";
 
-import { AppHeader } from "@/components/app-header";
+import { LazyAppHeader } from "@/components/lazy-app-header";
 import { ThemeProvider } from "@/components/theme-provider";
 import { normalizeCustomDomain } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT, FALLBACK_FOOTER_OWNER, resolveFooterTemplateParts, VICKY_REPO_URL } from "@/lib/footer";
 import { createThemeBootstrapScript, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 import { getStore } from "@/lib/store";
 
-import "@fontsource/material-symbols-outlined";
+import "@fontsource/material-symbols-outlined/400.css";
 import "./globals.css";
 
 const fontDisplay = Space_Grotesk({
@@ -130,7 +130,7 @@ export default async function RootLayout({
             Skip to content
           </a>
           <div className="app-shell">
-            <AppHeader />
+            <LazyAppHeader />
             <div className="app-content">
               {children}
               <footer className="app-footer" aria-label="Site footer">
