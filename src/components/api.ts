@@ -728,13 +728,17 @@ export async function fetchAdminDocPage(pathOrSlug: string): Promise<DocPage> {
   return normalizePage(asRecord(response).page, slugToPath(slug));
 }
 
-export async function searchDocs(query: string, signal?: AbortSignal): Promise<DocSearchResult[]> {
+export async function searchDocs(query: string, signal?: AbortSignal, languageCode?: string): Promise<DocSearchResult[]> {
   const trimmed = query.trim();
   if (!trimmed) {
     return [];
   }
 
   const params = new URLSearchParams({ q: trimmed });
+  if (languageCode?.trim()) {
+    params.set("language", languageCode.trim());
+  }
+
   const response = await requestJson<unknown>(`/api/docs/search?${params.toString()}`, { signal });
   return normalizeSearchResults(response);
 }

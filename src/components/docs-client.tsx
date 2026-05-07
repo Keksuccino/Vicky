@@ -547,6 +547,11 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [scrollToHashTarget, page?.slug]);
 
   useEffect(() => {
+    if (!languageReady) {
+      setSearching(false);
+      return;
+    }
+
     const controller = new AbortController();
     let active = true;
 
@@ -565,7 +570,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       }
 
       try {
-        const nextResults = await searchDocs(term, controller.signal);
+        const nextResults = await searchDocs(term, controller.signal, selectedLanguageCode);
         if (!active) {
           return;
         }
@@ -589,7 +594,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       controller.abort();
       window.clearTimeout(handle);
     };
-  }, [searchQuery]);
+  }, [languageReady, searchQuery, selectedLanguageCode]);
 
   useEffect(() => {
     if (!copyMenuOpen) {

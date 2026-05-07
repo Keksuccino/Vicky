@@ -1,6 +1,7 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
+import { getCachedTranslatedDocPage } from "@/lib/auto-translate-server";
 import { listMarkdownDocsTree, loadGitHubDoc, toRuntimeConfigCacheKey } from "@/lib/github";
-import type { GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
+import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
 const DEFAULT_SEARCH_LIMIT = 50;
 const MAX_SEARCH_LIMIT = 100;
@@ -18,6 +19,7 @@ type SearchableDoc = {
   title: string;
   description: string;
   contentText: string;
+  sourcePage: GitHubDocPage;
   normalized: Record<SearchField, string>;
   words: Record<SearchField, string[]>;
   sections: SearchableDocSection[];
@@ -44,11 +46,53 @@ export type DocsSearchResult = {
   score: number;
 };
 
+type SearchTranslationOptions = {
+  language: AutoTranslateLanguage;
+  model: string;
+};
+
 const FIELD_WEIGHTS: Record<SearchField, number> = {
   title: 3.0,
   name: 2.4,
   description: 1.8,
   content: 1.1,
+};
+
+const toSearchableDocFromPage = (
+  page: GitHubDocPage,
+  sourcePage: GitHubDocPage,
+  displayName: string,
+): SearchableDoc => {
+  const fallbackName = displayName.trim() || page.title.trim() || page.path;
+  const title = page.title.trim() || fallbackName;
+  const description = page.description.trim();
+  const contentText = collapseWhitespace(stripMarkdownForSearch(page.content));
+  const sections = splitIntoSections(page.content, page.headings);
+
+  const normalized: Record<SearchField, string> = {
+    name: normalizeSearchText(fallbackName),
+    title: normalizeSearchText(title),
+    description: normalizeSearchText(description),
+    content: normalizeSearchText(contentText),
+  };
+
+  return {
+    slug: page.slug,
+    path: page.path,
+    name: fallbackName,
+    title,
+    description,
+    contentText,
+    sourcePage,
+    normalized,
+    words: {
+      name: toNormalizedWords(normalized.name),
+      title: toNormalizedWords(normalized.title),
+      description: toNormalizedWords(normalized.description),
+      content: toNormalizedWords(normalized.content),
+    },
+    sections,
+  };
 };
 
 const collapseWhitespace = (value: string): string => value.replace(/\s+/g, " ").trim();
@@ -150,34 +194,7 @@ const toSearchableDoc = async (
 ): Promise<SearchableDoc | null> => {
   try {
     const page = await loadGitHubDoc(config, { slug: treeItem.slug });
-    const title = page.title.trim() || treeItem.name;
-    const description = page.description.trim();
-    const contentText = collapseWhitespace(stripMarkdownForSearch(page.content));
-    const sections = splitIntoSections(page.content, page.headings);
-
-    const normalized: Record<SearchField, string> = {
-      name: normalizeSearchText(treeItem.name),
-      title: normalizeSearchText(title),
-      description: normalizeSearchText(description),
-      content: normalizeSearchText(contentText),
-    };
-
-    return {
-      slug: page.slug,
-      path: page.path,
-      name: treeItem.name,
-      title,
-      description,
-      contentText,
-      normalized,
-      words: {
-        name: toNormalizedWords(normalized.name),
-        title: toNormalizedWords(normalized.title),
-        description: toNormalizedWords(normalized.description),
-        content: toNormalizedWords(normalized.content),
-      },
-      sections,
-    };
+    return toSearchableDocFromPage(page, page, treeItem.name);
   } catch {
     return null;
   }
@@ -222,6 +239,26 @@ const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<Searchable
 
   docsSearchCorpusCache.set(cacheKey, corpus);
   return corpus;
+};
+
+const applyCachedTranslationsToCorpus = (
+  config: GitHubRuntimeConfig,
+  corpus: SearchableDoc[],
+  translation?: SearchTranslationOptions,
+): SearchableDoc[] => {
+  const model = translation?.model.trim();
+  if (!translation || !model) {
+    return corpus;
+  }
+
+  return corpus.map((doc) => {
+    const translatedPage = getCachedTranslatedDocPage(config, doc.sourcePage, translation.language, model);
+    if (!translatedPage) {
+      return doc;
+    }
+
+    return toSearchableDocFromPage(translatedPage, doc.sourcePage, translatedPage.title.trim() || doc.name);
+  });
 };
 
 const tokenLengthFactor = (token: string): number => Math.max(0.35, Math.min(1, token.length / 4));
@@ -500,7 +537,7 @@ const normalizeLimit = (limit: number | undefined): number => {
 export const searchDocsCorpus = async (
   config: GitHubRuntimeConfig,
   query: string,
-  options?: { limit?: number },
+  options?: { limit?: number; translation?: SearchTranslationOptions },
 ): Promise<DocsSearchResult[]> => {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) {
@@ -512,7 +549,8 @@ export const searchDocsCorpus = async (
     return [];
   }
 
-  const corpus = await loadSearchCorpus(config);
+  const sourceCorpus = await loadSearchCorpus(config);
+  const corpus = applyCachedTranslationsToCorpus(config, sourceCorpus, options?.translation);
   const results: DocsSearchResult[] = [];
 
   for (const doc of corpus) {
