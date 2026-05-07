@@ -7,10 +7,13 @@ It gives you:
 - an admin panel for repository, branding, domain, and theme settings
 - an optional AI chat assistant for docs pages
 - an in-browser markdown editor that saves directly back to GitHub
+- visitor and visit analytics, including per-page analytics
 
 ![Screenshot_4_5](https://github.com/user-attachments/assets/1b2e9754-5402-48e5-808c-5f79c254318d)
 
-<img width="400" alt="Screenshot_4" src="https://github.com/user-attachments/assets/6f65dbec-0367-48a0-8449-166c64e31a27" />
+<img width="353" height="387" alt="Screenshot_3" src="https://github.com/user-attachments/assets/2533f8ac-f8d1-498c-9908-da76b0993767" />
+<br>
+<img width="378" height="388" alt="Screenshot_2" src="https://github.com/user-attachments/assets/718216d5-0b97-48d2-9a9b-0bfdb9f58b24" />
 
 ## Highlights
 
@@ -22,6 +25,7 @@ It gives you:
 - Optional OpenRouter-powered AI chat assistant with configurable name, avatar, UI copy, and system prompt template
 - Custom domain support with automatic Let's Encrypt HTTPS when using the included production server
 - Admin-only editor with live preview and immediate GitHub commits on save
+- Built-in visitor and visit analytics, including per-page analytics, for All-time, last 24h, last 7 days, last 30 days, and last 365 days
 
 ## How Vicky Stores Data
 
