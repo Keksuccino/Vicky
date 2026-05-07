@@ -12,6 +12,8 @@ It gives you:
 
 <img width="400" alt="Screenshot_4" src="https://github.com/user-attachments/assets/6f65dbec-0367-48a0-8449-166c64e31a27" />
 
+<img width="378" height="388" alt="Screenshot_2" src="https://github.com/user-attachments/assets/718216d5-0b97-48d2-9a9b-0bfdb9f58b24" />
+
 ## Highlights
 
 - GitHub-backed docs storage: pages are read from a configured repository and path, not from this repo
