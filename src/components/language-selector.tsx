@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { MaterialIcon } from "@/components/material-icon";
 import type { AutoTranslateLanguage } from "@/components/types";
@@ -85,6 +85,12 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
   const [selectedLanguageCode, setSelectedLanguageCode] = useState(() =>
     resolveLanguageCode(availableLanguages, readCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)),
   );
+  const [menuOpen, setMenuOpen] = useState(false);
+  const selectorRef = useRef<HTMLDivElement | null>(null);
+  const resolvedSelectedLanguageCode = resolveLanguageCode(availableLanguages, selectedLanguageCode);
+  const selectedLanguage =
+    availableLanguages.find((language) => languageCodesEqual(language.code, resolvedSelectedLanguageCode)) ??
+    availableLanguages[0];
 
   useEffect(() => {
     const nextLanguageCode = enabled
@@ -95,29 +101,80 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
     dispatchLanguageChange(nextLanguageCode);
   }, [availableLanguages, enabled, selectedLanguageCode]);
 
+  useEffect(() => {
+    if (!menuOpen) {
+      return;
+    }
+
+    const onPointerDown = (event: MouseEvent) => {
+      const eventTarget = event.target;
+      if (!(eventTarget instanceof Node) || selectorRef.current?.contains(eventTarget)) {
+        return;
+      }
+
+      setMenuOpen(false);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [menuOpen]);
+
   if (!enabled) {
     return null;
   }
 
   return (
-    <label className="language-selector" aria-label="Docs language">
-      <MaterialIcon name="translate" />
-      <select
-        value={resolveLanguageCode(availableLanguages, selectedLanguageCode)}
-        aria-label="Docs language"
-        onChange={(event) => {
-          const nextLanguageCode = resolveLanguageCode(availableLanguages, event.target.value);
-          setSelectedLanguageCode(nextLanguageCode);
-          writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, nextLanguageCode);
-          dispatchLanguageChange(nextLanguageCode);
+    <div className="language-selector" ref={selectorRef}>
+      <button
+        type="button"
+        className="language-selector-button"
+        aria-label={`Docs language: ${selectedLanguage.name}`}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        onClick={() => {
+          setMenuOpen((previous) => !previous);
         }}
       >
-        {availableLanguages.map((language) => (
-          <option key={language.code} value={language.code}>
-            {language.name}
-          </option>
-        ))}
-      </select>
-    </label>
+        <MaterialIcon name="translate" />
+        <span className="language-selector-label">{selectedLanguage.name}</span>
+        <MaterialIcon name="arrow_drop_down" />
+      </button>
+
+      {menuOpen ? (
+        <div className="language-selector-menu" role="menu" aria-label="Docs language">
+          {availableLanguages.map((language) => {
+            const selected = languageCodesEqual(language.code, resolvedSelectedLanguageCode);
+
+            return (
+              <button
+                key={language.code}
+                type="button"
+                className="language-selector-menu-item"
+                role="menuitemradio"
+                aria-checked={selected}
+                onClick={() => {
+                  const nextLanguageCode = resolveLanguageCode(availableLanguages, language.code);
+                  setSelectedLanguageCode(nextLanguageCode);
+                  setMenuOpen(false);
+                }}
+              >
+                <MaterialIcon name={selected ? "check" : "language"} />
+                <span>{language.name}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
   );
 }

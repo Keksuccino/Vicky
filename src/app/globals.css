@@ -628,18 +628,31 @@ select {
 }
 
 .language-selector {
+  --language-selector-border: color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  --language-selector-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  --language-selector-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+  --language-selector-menu-bg: color-mix(in srgb, var(--accent-surface-soft) 76%, var(--surface-elevated));
+  --language-selector-menu-hover: color-mix(in srgb, var(--accent-surface) 18%, var(--surface-elevated));
   position: relative;
   height: var(--header-control-size);
   min-width: 8.8rem;
   max-width: 13rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
-  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
   color: var(--text-secondary);
+}
+
+.language-selector-button {
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  border: 1px solid var(--language-selector-border);
+  background: var(--language-selector-bg);
+  color: inherit;
+  font: inherit;
   display: inline-flex;
   align-items: center;
   gap: 0.36rem;
   padding: 0 0.62rem;
+  cursor: pointer;
   transition:
     background 160ms ease,
     color 160ms ease,
@@ -647,10 +660,15 @@ select {
     box-shadow 160ms ease;
 }
 
-.language-selector:hover,
-.language-selector:focus-within {
+.language-selector-button:hover,
+.language-selector-button:focus-visible,
+.language-selector-button[aria-expanded="true"] {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+  background: var(--language-selector-bg-hover);
+}
+
+.language-selector-button:focus-visible {
+  outline: none;
 }
 
 .language-selector .material-icon {
@@ -658,21 +676,60 @@ select {
   font-size: 1.18rem;
 }
 
-.language-selector select {
+.language-selector-label {
   min-width: 0;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  font: inherit;
+  flex: 1 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.88rem;
   font-weight: 650;
   line-height: 1;
+}
+
+.language-selector-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.45rem);
+  z-index: 30;
+  min-width: max(13rem, 100%);
+  max-height: min(22rem, calc(100vh - 5rem));
+  overflow-y: auto;
+  padding: 0.35rem;
+  border: 1px solid var(--language-selector-border);
+  border-radius: 16px;
+  background: var(--language-selector-menu-bg);
+}
+
+.language-selector-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: 0.9rem;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.68rem 0.78rem;
   cursor: pointer;
 }
 
-.language-selector select:focus-visible {
+.language-selector-menu-item .material-icon {
+  font-size: 1.05rem;
+  color: var(--text-secondary);
+}
+
+.language-selector-menu-item[aria-checked="true"] .material-icon {
+  color: var(--accent);
+}
+
+.language-selector-menu-item:hover,
+.language-selector-menu-item:focus-visible {
   outline: none;
+  background: var(--language-selector-menu-hover);
 }
 
 .mode-button {
@@ -4231,14 +4288,20 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
     min-width: var(--header-control-size);
     max-width: var(--header-control-size);
     width: var(--header-control-size);
+  }
+
+  .language-selector-button {
     justify-content: center;
     padding: 0;
   }
 
-  .language-selector select {
-    position: absolute;
-    inset: 0;
-    opacity: 0;
+  .language-selector-label,
+  .language-selector-button .material-icon:last-child {
+    display: none;
+  }
+
+  .language-selector-menu {
+    min-width: min(16rem, calc(100vw - 1.5rem));
   }
 }
 
