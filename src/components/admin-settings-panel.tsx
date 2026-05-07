@@ -1836,34 +1836,41 @@ export function AdminSettingsPanel() {
                           </div>
 
                           <div className="moderator-actions">
-                            <button
-                              type="button"
-                              className="btn btn-secondary"
-                              disabled={Boolean(moderatorActionId)}
-                              onClick={() => {
-                                setModeratorError(null);
-                                setEditingModeratorId(moderator.id);
-                                setEditingModeratorUsername(moderator.username);
-                                setEditingModeratorPassword("");
-                                setShowEditingModeratorPassword(false);
-                              }}
+                            <span className="moderator-action-tooltip ui-tooltip" data-ui-tooltip="Edit">
+                              <button
+                                type="button"
+                                className="btn btn-secondary moderator-action-button"
+                                aria-label="Edit"
+                                disabled={Boolean(moderatorActionId)}
+                                onClick={() => {
+                                  setModeratorError(null);
+                                  setEditingModeratorId(moderator.id);
+                                  setEditingModeratorUsername(moderator.username);
+                                  setEditingModeratorPassword("");
+                                  setShowEditingModeratorPassword(false);
+                                }}
+                              >
+                                <MaterialIcon name="edit" />
+                              </button>
+                            </span>
+                            <span
+                              className="moderator-action-tooltip ui-tooltip"
+                              data-ui-tooltip="Remove"
                             >
-                              <MaterialIcon name="edit" />
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              type="button"
-                              className="btn btn-ghost danger"
-                              disabled={Boolean(moderatorActionId)}
-                              onClick={() => {
-                                if (window.confirm(`Remove moderator "${moderator.username}"?`)) {
-                                  void handleDeleteModerator(moderator);
-                                }
-                              }}
-                            >
-                              <MaterialIcon name={isBusy ? "hourglass_top" : "delete"} />
-                              <span>{isBusy ? "Removing..." : "Remove"}</span>
-                            </button>
+                              <button
+                                type="button"
+                                className="btn btn-ghost danger moderator-action-button"
+                                aria-label="Remove"
+                                disabled={Boolean(moderatorActionId)}
+                                onClick={() => {
+                                  if (window.confirm(`Remove moderator "${moderator.username}"?`)) {
+                                    void handleDeleteModerator(moderator);
+                                  }
+                                }}
+                              >
+                                <MaterialIcon name={isBusy ? "hourglass_top" : "delete"} />
+                              </button>
+                            </span>
                           </div>
                         </>
                       )}

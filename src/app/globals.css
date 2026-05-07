@@ -2659,6 +2659,21 @@ html[data-color-mode="light"] .page-copy-menu {
   gap: 0.48rem;
 }
 
+.moderator-action-tooltip {
+  display: inline-flex;
+}
+
+.moderator-action-button {
+  width: 2.75rem;
+  min-height: 2.75rem;
+  flex: 0 0 2.75rem;
+  padding: 0;
+}
+
+.moderator-action-button .material-icon {
+  font-size: 1.12rem;
+}
+
 .moderator-edit-form {
   width: 100%;
   display: grid;
