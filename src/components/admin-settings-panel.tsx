@@ -2359,7 +2359,7 @@ export function AdminSettingsPanel() {
 
                         <button
                           type="button"
-                          className="btn btn-ghost translation-language-remove"
+                          className={`btn btn-ghost translation-language-remove${isDefaultLanguage ? "" : " danger"}`}
                           disabled={isDefaultLanguage}
                           onClick={() => {
                             const nextLanguages = settings.autoTranslateLanguages.filter((_, entryIndex) => entryIndex !== index);
