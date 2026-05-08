@@ -437,7 +437,7 @@ select {
 
 .app-content > .docs-page + .app-footer .app-footer-card {
   grid-column: 2;
-  background: var(--surface);
+  background: var(--surface-elevated);
 }
 
 .app-header {
