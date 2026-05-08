@@ -961,7 +961,10 @@ select {
   justify-content: center;
   gap: 0.35rem;
   padding: 0.36rem 0.54rem;
-  font-size: 0.86rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.5;
   cursor: pointer;
   transition:
     background 150ms ease,
