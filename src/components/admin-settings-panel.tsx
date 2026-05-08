@@ -623,7 +623,6 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
         ) : (
           <>
             <div className="visitor-section-heading performance-section-heading">
-              <h3>Live Snapshot</h3>
               <span>{loading ? "Refreshing..." : `Updated ${formatStatusTimestamp(stats.updatedAt)}`}</span>
             </div>
             <div className="visitor-sparkline-grid performance-meter-grid">
