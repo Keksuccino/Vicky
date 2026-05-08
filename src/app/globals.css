@@ -1198,7 +1198,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   --page-header-bg: color-mix(in srgb, var(--accent-surface-soft) 44%, var(--surface-elevated));
   --page-header-control-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
   --page-header-control-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
-  --page-header-menu-bg: color-mix(in srgb, var(--accent-surface-soft) 76%, var(--surface-elevated));
+  --page-header-menu-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
   --page-header-menu-hover: color-mix(in srgb, var(--accent-surface) 18%, var(--surface-elevated));
   border: 1px solid var(--page-header-border);
   border-radius: var(--radius-md);
@@ -2224,7 +2224,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   padding: 0.55rem;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-elevated));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
 }
 
 .circle-flag-picker-search .input {
