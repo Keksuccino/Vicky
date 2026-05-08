@@ -925,7 +925,7 @@ select {
   border-radius: 12px;
   padding: 0.2rem;
   background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 28%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 30%, var(--border));
 }
 
 .sidebar-view-button {
