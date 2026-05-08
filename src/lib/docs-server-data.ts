@@ -5,6 +5,7 @@ import {
 import {
   applyCachedTranslatedDocTreeTitles,
   hasCachedTranslatedDocTreeTitles,
+  loadTranslatedDocTreeTitles,
   translateGitHubDocPage,
   warmTranslatedDocTreeTitles,
 } from "@/lib/auto-translate-server";
@@ -159,6 +160,25 @@ export const loadDocsTreeForLanguage = async ({
     };
 
     if (treeResult.titleIndexReady) {
+      if (waitForTitleIndex) {
+        const translatedItems = await loadTranslatedDocTreeTitles({
+          apiKey,
+          config,
+          items: sourceItems,
+          language,
+          model,
+          origin,
+          settings: store.settings.autoTranslate,
+          siteTitle: store.settings.siteTitle || "Vicky Docs",
+        });
+
+        return {
+          data: translatedItems,
+          language,
+          titlesPending: false,
+        };
+      }
+
       warmTranslations(sourceItems);
     } else {
       void warmMarkdownDocsTitleIndex(config)
@@ -195,7 +215,7 @@ export const loadDocsTreeForLanguage = async ({
     return {
       data: sourceItems,
       language,
-      titlesPending: !treeResult.titleIndexReady,
+      titlesPending: true,
     };
   }
 };

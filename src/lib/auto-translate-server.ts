@@ -332,13 +332,14 @@ export const warmTranslatedDocTreeTitles = ({
     return;
   }
 
-  void loadTitleOnlyTranslations({
+  void loadTranslatedDocTreeTitles({
     apiKey,
     config,
     items,
     language,
     model,
     origin,
+    settings,
     siteTitle,
   }).catch((error: unknown) => {
     const message = error instanceof Error ? error.message : String(error);
@@ -346,6 +347,42 @@ export const warmTranslatedDocTreeTitles = ({
       `[auto-translate] Failed to warm docs sidebar title translations for ${language.name} (${language.code}): ${message}`,
     );
   });
+};
+
+export const loadTranslatedDocTreeTitles = async ({
+  apiKey,
+  config,
+  items,
+  language,
+  model,
+  origin,
+  settings,
+  siteTitle,
+}: {
+  apiKey: string;
+  config: GitHubRuntimeConfig;
+  items: GitHubDocTreeItem[];
+  language: AutoTranslateLanguage;
+  model: string;
+  origin: string;
+  settings: AutoTranslateSettings;
+  siteTitle: string;
+}): Promise<GitHubDocTreeItem[]> => {
+  if (!shouldTranslateAutoTranslateLanguage(settings, language) || items.length === 0 || !apiKey.trim() || !model.trim()) {
+    return items;
+  }
+
+  const translations = await loadTitleOnlyTranslations({
+    apiKey,
+    config,
+    items,
+    language,
+    model,
+    origin,
+    siteTitle,
+  });
+
+  return applyTreeTitleTranslations(items, translations);
 };
 
 const createTranslatedDocPage = (sourcePage: GitHubDocPage, translation: PageTranslationPayload): GitHubDocPage => {
