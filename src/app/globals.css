@@ -2995,18 +2995,17 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .theme-color-input-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  flex-wrap: wrap;
   gap: 0.62rem;
 }
 
 .theme-color-picker-wrap {
   position: relative;
   display: inline-flex;
-  flex: 1 1 13.5rem;
-  max-width: 17rem;
-  min-width: min(100%, 13.5rem);
+  width: 100%;
+  min-width: 0;
 }
 
 .theme-color-picker-shell {
