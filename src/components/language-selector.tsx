@@ -234,7 +234,6 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
                   >
                     <CircleFlagIcon iconId={languageIconId} />
                     <span>{language.name}</span>
-                    <code>{language.code}</code>
                   </button>
                 );
               })

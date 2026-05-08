@@ -689,10 +689,15 @@ select {
   line-height: 1.5;
 }
 
-.language-selector-menu {
-  min-width: max(18rem, 100%);
+.language-selector .language-selector-menu {
+  width: min(16.8rem, calc(100vw - 2rem));
+  min-width: max(12.6rem, 100%);
   max-height: none;
   overflow: visible;
+}
+
+.language-selector .language-selector-menu-item {
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .language-selector-options {
@@ -4481,8 +4486,9 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
     display: none;
   }
 
-  .language-selector-menu {
-    min-width: min(16rem, calc(100vw - 1.5rem));
+  .language-selector .language-selector-menu {
+    width: min(11.2rem, calc(100vw - 1.5rem));
+    min-width: min(11.2rem, calc(100vw - 1.5rem));
   }
 }
 
