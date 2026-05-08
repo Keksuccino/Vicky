@@ -1241,13 +1241,15 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 
 .page-header-card {
   --page-meta-control-height: 2.15rem;
-  border: 1px solid color-mix(in srgb, var(--border) 82%, var(--accent) 18%);
+  --page-header-border: color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  --page-header-bg: color-mix(in srgb, var(--accent-surface-soft) 44%, var(--surface-elevated));
+  --page-header-control-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  --page-header-control-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+  --page-header-menu-bg: color-mix(in srgb, var(--accent-surface-soft) 76%, var(--surface-elevated));
+  --page-header-menu-hover: color-mix(in srgb, var(--accent-surface) 18%, var(--surface-elevated));
+  border: 1px solid var(--page-header-border);
   border-radius: var(--radius-md);
-  background: color-mix(
-    in srgb,
-    var(--accent) 4%,
-    color-mix(in srgb, var(--surface-muted) 46%, var(--surface-elevated) 54%) 96%
-  );
+  background: var(--page-header-bg);
   padding: clamp(0.85rem, 2vw, 1.1rem) clamp(0.9rem, 2.3vw, 1.25rem);
   margin-bottom: clamp(1.3rem, 3.1vw, 1.9rem);
 }
@@ -1300,9 +1302,9 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 }
 
 .meta-item {
-  border: 1px solid var(--border);
+  border: 1px solid var(--page-header-border);
   border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-elevated) 94%, var(--accent) 6%);
+  background: var(--page-header-control-bg);
   color: var(--text-secondary);
   display: inline-flex;
   align-items: center;
@@ -1310,10 +1312,6 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   min-height: var(--page-meta-control-height);
   padding: 0.35rem 0.65rem;
   font-size: 0.87rem;
-}
-
-html[data-color-mode="light"] .meta-item {
-  background: var(--surface-elevated);
 }
 
 .page-copy-actions {
@@ -1325,10 +1323,10 @@ html[data-color-mode="light"] .meta-item {
   display: inline-flex;
   align-items: stretch;
   min-height: var(--page-meta-control-height);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, var(--accent) 30%);
+  border: 1px solid var(--page-header-border);
   border-radius: 999px;
   overflow: hidden;
-  background: color-mix(in srgb, var(--surface-elevated) 88%, var(--accent) 12%);
+  background: var(--page-header-control-bg);
 }
 
 .page-copy-button,
@@ -1361,7 +1359,7 @@ html[data-color-mode="light"] .meta-item {
   align-items: center;
   justify-content: center;
   width: 2.3rem;
-  border-left: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  border-left: 1px solid var(--page-header-border);
 }
 
 .page-copy-menu-button .material-icon {
@@ -1372,7 +1370,7 @@ html[data-color-mode="light"] .meta-item {
 .page-copy-button:focus-visible,
 .page-copy-menu-button:hover,
 .page-copy-menu-button:focus-visible {
-  background: color-mix(in srgb, var(--accent) 17%, var(--surface-elevated));
+  background: var(--page-header-control-bg-hover);
 }
 
 .page-copy-button:focus-visible,
@@ -1391,9 +1389,9 @@ html[data-color-mode="light"] .meta-item {
   z-index: 20;
   min-width: 13rem;
   padding: 0.35rem;
-  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  border: 1px solid var(--page-header-border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-elevated) 96%, var(--accent) 4%);
+  background: var(--page-header-menu-bg);
 }
 
 .page-copy-menu-item {
@@ -1415,15 +1413,7 @@ html[data-color-mode="light"] .meta-item {
 .page-copy-menu-item:hover,
 .page-copy-menu-item:focus-visible {
   outline: none;
-  background: color-mix(in srgb, var(--accent) 14%, var(--surface-elevated));
-}
-
-html[data-color-mode="light"] .page-copy-button-group {
-  background: var(--surface-elevated);
-}
-
-html[data-color-mode="light"] .page-copy-menu {
-  background: var(--surface-elevated);
+  background: var(--page-header-menu-hover);
 }
 
 .markdown-body {
