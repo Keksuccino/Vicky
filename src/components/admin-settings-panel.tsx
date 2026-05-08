@@ -380,8 +380,14 @@ function AccentColorField({
         {label}
       </span>
       <div className="theme-color-input-row">
-        <span className={`theme-color-picker-shell${trimmedValue ? "" : " theme-color-picker-shell-empty"}`} style={previewStyle}>
+        <label className={`theme-color-picker-shell${trimmedValue ? "" : " theme-color-picker-shell-empty"}`} style={previewStyle}>
           <span className="theme-color-picker-preview" aria-hidden="true" />
+          <span className={`theme-color-value${trimmedValue ? "" : " theme-color-value-empty"}`} aria-live="polite">
+            {displayValue}
+          </span>
+          <span className="theme-color-picker-icon" aria-hidden="true">
+            <MaterialIcon name="palette" />
+          </span>
           <input
             id={id}
             className="theme-color-picker"
@@ -390,14 +396,11 @@ function AccentColorField({
             aria-labelledby={labelId}
             onChange={(event) => onChange(event.target.value)}
           />
-        </span>
-        <span className={`theme-color-value${trimmedValue ? "" : " theme-color-value-empty"}`} aria-live="polite">
-          {displayValue}
-        </span>
+        </label>
         {showReset ? (
           <button
             type="button"
-            className="btn btn-ghost theme-color-action"
+            className="btn theme-color-action"
             disabled={!canReset}
             onClick={() => onChange(normalizedFallbackColor)}
           >
@@ -405,7 +408,7 @@ function AccentColorField({
           </button>
         ) : null}
         {allowEmpty ? (
-          <button type="button" className="btn btn-ghost theme-color-action" disabled={!trimmedValue} onClick={() => onChange("")}>
+          <button type="button" className="btn theme-color-action" disabled={!trimmedValue} onClick={() => onChange("")}>
             Clear
           </button>
         ) : null}
