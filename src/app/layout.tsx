@@ -121,7 +121,7 @@ export default async function RootLayout({
   const initialThemeBootstrapScript = createThemeBootstrapScript(initialThemeSettings);
 
   return (
-    <html lang="en" data-color-mode="light" suppressHydrationWarning>
+    <html lang="en" data-color-mode="dark" suppressHydrationWarning>
       <head>
         <script id="theme-bootstrap" dangerouslySetInnerHTML={{ __html: initialThemeBootstrapScript }} />
       </head>

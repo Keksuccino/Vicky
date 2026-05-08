@@ -57,7 +57,7 @@ export function ThemeProvider({
   children: ReactNode;
   initialThemeSettings: ThemeCustomization;
 }) {
-  const [mode, setMode] = useState<ThemeMode>("light");
+  const [mode, setMode] = useState<ThemeMode>("dark");
   const [themeSettings, setThemeSettings] = useState<ThemeCustomization>(initialThemeSettings);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const appliedCustomVariablesRef = useRef<string[]>([]);
@@ -71,8 +71,8 @@ export function ThemeProvider({
   useEffect(() => {
     try {
       const storedMode = window.localStorage.getItem(MODE_STORAGE_KEY);
-      if (storedMode === "dark") {
-        setMode("dark");
+      if (storedMode === "light") {
+        setMode("light");
       }
     } catch {
       // Keep defaults if storage is unavailable.

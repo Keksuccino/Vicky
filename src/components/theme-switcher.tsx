@@ -26,7 +26,7 @@ export function ThemeSwitcher() {
   }, []);
 
   const compactTargetMode: "light" | "dark" = mode === "dark" ? "light" : "dark";
-  const displayTargetMode: "light" | "dark" = hydrated ? compactTargetMode : "dark";
+  const displayTargetMode: "light" | "dark" = hydrated ? compactTargetMode : "light";
   const compactIcon = displayTargetMode === "light" ? "light_mode" : "dark_mode";
   const compactLabel = `Switch to ${displayTargetMode} mode`;
 
