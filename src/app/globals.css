@@ -2621,6 +2621,11 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   min-width: 0;
 }
 
+.visitor-refresh-tooltip {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
 .visitor-refresh-button {
   --btn-size: 2.42rem;
   --btn-icon-size: 1.18rem;

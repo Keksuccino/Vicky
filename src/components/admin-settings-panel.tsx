@@ -786,16 +786,17 @@ function VisitorStatsCard({
           <h2>Analytics</h2>
           <p className="panel-description">Visits and unique visitors over time.</p>
         </div>
-        <button
-          type="button"
-          className="btn btn-icon visitor-refresh-button"
-          disabled={loading}
-          aria-label={loading ? "Refreshing analytics" : "Refresh analytics"}
-          title={loading ? "Refreshing analytics" : "Refresh analytics"}
-          onClick={onRefresh}
-        >
-          <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
-        </button>
+        <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing analytics" : "Refresh analytics"}>
+          <button
+            type="button"
+            className="btn btn-icon visitor-refresh-button"
+            disabled={loading}
+            aria-label={loading ? "Refreshing analytics" : "Refresh analytics"}
+            onClick={onRefresh}
+          >
+            <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
+          </button>
+        </span>
       </div>
 
       <div className="visitor-tabs" role="tablist" aria-label="Analytics range">
