@@ -1975,18 +1975,23 @@ select {
 .tree-row {
   display: flex;
   align-items: center;
+  border: 1px solid transparent;
   border-radius: 8px;
   padding: 0.1rem 0.08rem 0.1rem 0;
   margin-block: 2px;
   position: relative;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
 }
 
-.tree-row:hover:not(.tree-row-active) {
-  background: color-mix(in srgb, var(--accent-surface-soft) 76%, transparent);
-}
-
+.tree-row:hover,
+.tree-row:focus-within,
 .tree-row-active {
-  background: color-mix(in srgb, var(--accent-surface-soft) 90%, transparent);
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
 }
 
 .tree-toggle {
@@ -2012,6 +2017,11 @@ select {
   border-radius: 8px;
   text-align: left;
   cursor: pointer;
+}
+
+.tree-row:focus-within .tree-toggle,
+.tree-row:focus-within .tree-link {
+  outline: none;
 }
 
 .tree-icon {
