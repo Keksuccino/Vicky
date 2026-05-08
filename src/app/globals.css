@@ -2670,11 +2670,11 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 0.72rem;
+  gap: 0.45rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-muted);
-  padding: 0.72rem;
+  padding: 0.58rem;
 }
 
 .moderator-item-main,
@@ -2700,7 +2700,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
-  gap: 0.48rem;
+  gap: 0.32rem;
 }
 
 .moderator-action-tooltip {
@@ -2708,8 +2708,8 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 }
 
 .moderator-action-button {
-  --btn-size: 2.75rem;
-  --btn-icon-size: 1.12rem;
+  --btn-size: 2.5rem;
+  --btn-icon-size: 1.08rem;
 }
 
 .moderator-edit-form {
