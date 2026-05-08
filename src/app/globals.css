@@ -2164,6 +2164,10 @@ select {
   padding-left: 0.58rem;
 }
 
+.translation-language-label-fields .field-label:first-child {
+  padding-left: 0.32rem;
+}
+
 .translation-language-label-actions {
   width: 10.35rem;
 }
