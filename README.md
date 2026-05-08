@@ -32,6 +32,7 @@ It gives you:
 - Docs content lives in your configured GitHub repository.
 - App settings live in `data/wiki-store.json` by default.
 - SSL certificates and runtime SSL status live in `data/ssl/` by default.
+- OpenRouter docs translation cache files live in `data/translation-cache/` by default.
 - Optional login rate-limit persistence uses `data/login-rate-limit.json`.
 
 This repo contains the app itself, not your docs content.
@@ -194,6 +195,7 @@ Common optional settings:
 | --- | --- | --- |
 | `WIKI_STORE_FILE_PATH` | Location of the app settings store | `./data/wiki-store.json` |
 | `WIKI_SSL_STORAGE_DIR` | Certificate storage directory | `./data/ssl` |
+| `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `HOST` | Listen host | `0.0.0.0` |
 | `HTTP_PORT` | HTTP listen port | `3000` |
 | `HTTPS_PORT` | HTTPS listen port | `443` |
@@ -238,6 +240,7 @@ For direct HTTP-01 validation without a reverse proxy, you usually want:
 Persist these paths across deployments:
 - `data/wiki-store.json`
 - `data/ssl/`
+- `data/translation-cache/`
 
 ## API Overview
 

@@ -5,6 +5,14 @@ import { translatedDocsPageCache, translatedDocsTitleCache } from "@/lib/cache";
 import { ApiError } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
 import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
+import {
+  readPersistentTitleTranslations,
+  readPersistentTitleTranslationsSync,
+  readPersistentTranslatedPage,
+  readPersistentTranslatedPageSync,
+  writePersistentTitleTranslations,
+  writePersistentTranslatedPage,
+} from "@/lib/translation-cache-store";
 import type {
   AutoTranslateLanguage,
   AutoTranslateSettings,
@@ -225,6 +233,12 @@ const loadTitleOnlyTranslations = async ({
     return pending;
   }
 
+  const persisted = await readPersistentTitleTranslations(key);
+  if (persisted) {
+    translatedDocsTitleCache.set(key, persisted);
+    return persisted;
+  }
+
   const loadPromise = requestOpenRouterChatCompletion({
     apiKey,
     model,
@@ -241,9 +255,10 @@ const loadTitleOnlyTranslations = async ({
       },
     ],
   })
-    .then((text) => {
+    .then(async (text) => {
       const translations = normalizeTitleTranslationResponse(text, items);
       translatedDocsTitleCache.set(key, translations);
+      await writePersistentTitleTranslations(key, translations);
       return translations;
     })
     .finally(() => {
@@ -282,11 +297,19 @@ export const applyCachedTranslatedDocTreeTitles = ({
     return items;
   }
 
-  const cached = translatedDocsTitleCache.get(titleTranslationCacheKey(config, items, language, model)) as
-    | Map<string, string>
-    | undefined;
+  const key = titleTranslationCacheKey(config, items, language, model);
+  const cached = translatedDocsTitleCache.get(key) as Map<string, string> | undefined;
+  if (cached) {
+    return applyTreeTitleTranslations(items, cached);
+  }
 
-  return cached ? applyTreeTitleTranslations(items, cached) : items;
+  const persisted = readPersistentTitleTranslationsSync(key);
+  if (persisted) {
+    translatedDocsTitleCache.set(key, persisted);
+    return applyTreeTitleTranslations(items, persisted);
+  }
+
+  return items;
 };
 
 export const hasCachedTranslatedDocTreeTitles = ({
@@ -306,7 +329,18 @@ export const hasCachedTranslatedDocTreeTitles = ({
     return true;
   }
 
-  return Boolean(translatedDocsTitleCache.get(titleTranslationCacheKey(config, items, language, model)));
+  const key = titleTranslationCacheKey(config, items, language, model);
+  if (translatedDocsTitleCache.get(key)) {
+    return true;
+  }
+
+  const persisted = readPersistentTitleTranslationsSync(key);
+  if (!persisted) {
+    return false;
+  }
+
+  translatedDocsTitleCache.set(key, persisted);
+  return true;
 };
 
 export const warmTranslatedDocTreeTitles = ({
@@ -404,6 +438,16 @@ const createTranslatedDocPage = (sourcePage: GitHubDocPage, translation: PageTra
   };
 };
 
+const withSourcePageRuntimeFields = (translatedPage: GitHubDocPage, sourcePage: GitHubDocPage): GitHubDocPage => ({
+  ...translatedPage,
+  path: sourcePage.path,
+  slug: sourcePage.slug,
+  sha: sourcePage.sha,
+  includeInPlaintextExport: sourcePage.includeInPlaintextExport,
+  updatedAt: sourcePage.updatedAt ?? translatedPage.updatedAt,
+  updatedBy: sourcePage.updatedBy ?? translatedPage.updatedBy,
+});
+
 export const getCachedTranslatedDocPage = (
   config: GitHubRuntimeConfig,
   sourcePage: GitHubDocPage,
@@ -411,7 +455,18 @@ export const getCachedTranslatedDocPage = (
   model: string,
 ): GitHubDocPage | null => {
   const key = pageTranslationCacheKey(config, sourcePage, language, model);
-  return (translatedDocsPageCache.get(key) as GitHubDocPage | undefined) ?? null;
+  const cached = translatedDocsPageCache.get(key) as GitHubDocPage | undefined;
+  if (cached) {
+    return withSourcePageRuntimeFields(cached, sourcePage);
+  }
+
+  const persisted = readPersistentTranslatedPageSync(key);
+  if (!persisted) {
+    return null;
+  }
+
+  translatedDocsPageCache.set(key, persisted);
+  return withSourcePageRuntimeFields(persisted, sourcePage);
 };
 
 export const translateGitHubDocPage = async ({
@@ -440,12 +495,18 @@ export const translateGitHubDocPage = async ({
   const key = pageTranslationCacheKey(config, sourcePage, language, model);
   const cached = translatedDocsPageCache.get(key) as GitHubDocPage | undefined;
   if (cached) {
-    return cached;
+    return withSourcePageRuntimeFields(cached, sourcePage);
   }
 
   const pending = pageTranslationLoads.get(key);
   if (pending) {
-    return pending;
+    return pending.then((translatedPage) => withSourcePageRuntimeFields(translatedPage, sourcePage));
+  }
+
+  const persisted = await readPersistentTranslatedPage(key);
+  if (persisted) {
+    translatedDocsPageCache.set(key, persisted);
+    return withSourcePageRuntimeFields(persisted, sourcePage);
   }
 
   const loadPromise = requestOpenRouterChatCompletion({
@@ -464,9 +525,10 @@ export const translateGitHubDocPage = async ({
       },
     ],
   })
-    .then((text) => {
+    .then(async (text) => {
       const translatedPage = createTranslatedDocPage(sourcePage, normalizePageTranslationResponse(text));
       translatedDocsPageCache.set(key, translatedPage);
+      await writePersistentTranslatedPage(key, translatedPage);
       return translatedPage;
     })
     .finally(() => {
