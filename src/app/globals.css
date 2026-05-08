@@ -2918,8 +2918,8 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .visitor-page-row:hover {
-  border-color: color-mix(in srgb, var(--accent) 32%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 28%, var(--surface-muted));
+  border-color: color-mix(in srgb, var(--accent-surface) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
 }
 
 .visitor-page-main {
