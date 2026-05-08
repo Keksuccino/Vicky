@@ -3707,7 +3707,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   max-width: min(88%, 34rem);
   border-radius: 20px;
   padding: 0.78rem 0.86rem;
-  box-shadow: 0 10px 24px rgba(22, 38, 66, 0.08);
 }
 
 .docs-ai-chat-message-assistant .docs-ai-chat-bubble {
