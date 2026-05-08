@@ -2859,7 +2859,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   border: 1px solid color-mix(in srgb, var(--visitor-chart-line) 30%, var(--border));
   border-radius: 8px;
   background: var(--visitor-tooltip-bg);
-  box-shadow: 0 1rem 2rem rgb(0 0 0 / 0.18);
   color: var(--text-primary);
   padding: 0.54rem 0.64rem 0.58rem;
   pointer-events: none;
