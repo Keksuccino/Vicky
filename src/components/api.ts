@@ -773,8 +773,19 @@ export async function fetchDocsTree(languageCode?: string): Promise<DocTreeNode[
   return result.tree;
 }
 
-export async function fetchDocsTreeState(languageCode?: string): Promise<DocsTreeLoadResult> {
-  const query = languageCode ? `?${new URLSearchParams({ language: languageCode }).toString()}` : "";
+export async function fetchDocsTreeState(
+  languageCode?: string,
+  options?: { waitForTitles?: boolean },
+): Promise<DocsTreeLoadResult> {
+  const params = new URLSearchParams();
+  if (languageCode) {
+    params.set("language", languageCode);
+  }
+  if (options?.waitForTitles) {
+    params.set("waitForTitles", "1");
+  }
+
+  const query = params.size > 0 ? `?${params.toString()}` : "";
   const response = await requestJson<unknown>(`/api/docs/tree${query}`);
   return {
     tree: buildTree(normalizeTreeItems(response)),

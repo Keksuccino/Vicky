@@ -111,13 +111,15 @@ export const loadDocsTreeForLanguage = async ({
   origin,
   requestedLanguageCode,
   store,
+  waitForTitleIndex,
 }: {
   config: GitHubRuntimeConfig;
   origin: string;
   requestedLanguageCode?: string;
   store: DocsStore;
+  waitForTitleIndex?: boolean;
 }): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => {
-  const treeResult = await listMarkdownDocsTreeWithTitleStatus(config);
+  const treeResult = await listMarkdownDocsTreeWithTitleStatus(config, { waitForTitleIndex });
   const sourceItems = treeResult.items;
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
   const shouldTranslate = shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language);

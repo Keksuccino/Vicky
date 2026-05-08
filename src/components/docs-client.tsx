@@ -392,7 +392,7 @@ export function DocsClient({
     }
     loadedTreeLanguageRef.current = null;
     try {
-      const nextTreeResult = await fetchDocsTreeState(selectedLanguageCode);
+      const nextTreeResult = await fetchDocsTreeState(selectedLanguageCode, { waitForTitles: quiet });
       if (treeLoadIdRef.current !== loadId) {
         return;
       }

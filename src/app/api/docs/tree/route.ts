@@ -30,11 +30,13 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.nextUrl.searchParams.get("language") ??
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
+    const waitForTitleIndex = request.nextUrl.searchParams.get("waitForTitles") === "1";
     const { data: items, titlesPending } = await loadDocsTreeForLanguage({
       config,
       origin: resolveRequestOrigin(request),
       requestedLanguageCode,
       store,
+      waitForTitleIndex,
     });
 
     return NextResponse.json({ items, titlesPending: Boolean(titlesPending) });
