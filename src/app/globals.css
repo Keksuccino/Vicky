@@ -3607,6 +3607,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   background:
     linear-gradient(
       180deg,
