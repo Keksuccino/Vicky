@@ -2795,9 +2795,14 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
   min-height: 9rem;
 }
 
+.performance-section-heading {
+  justify-content: flex-end;
+}
+
 .performance-section-heading span {
   max-width: 58%;
   overflow: hidden;
+  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
