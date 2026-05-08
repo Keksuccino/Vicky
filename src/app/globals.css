@@ -634,8 +634,8 @@ select {
   display: inline-flex;
   border-radius: 999px;
   padding: 0.2rem;
-  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
 }
 
 .mode-toggle-compact {
@@ -720,7 +720,7 @@ select {
 }
 
 .mode-button-active {
-  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-surface) 22%, var(--border));
   background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   color: var(--text-primary);
 }
@@ -924,8 +924,8 @@ select {
   gap: 0.18rem;
   border-radius: 12px;
   padding: 0.2rem;
-  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 30%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
 }
 
 .sidebar-view-button {
@@ -961,24 +961,9 @@ select {
 }
 
 .sidebar-view-button-active {
-  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  border-color: color-mix(in srgb, var(--accent-surface) 22%, var(--border));
   background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   color: var(--text-primary);
-}
-
-html[data-color-mode="dark"] .mode-toggle,
-html[data-color-mode="custom"] .mode-toggle,
-html[data-color-mode="dark"] .sidebar-view-toggle,
-html[data-color-mode="custom"] .sidebar-view-toggle {
-  background: color-mix(in srgb, var(--accent-surface-soft) 60%, var(--surface-muted));
-  border-color: color-mix(in srgb, var(--accent-surface) 18%, var(--border));
-}
-
-html[data-color-mode="dark"] .mode-button-active,
-html[data-color-mode="custom"] .mode-button-active,
-html[data-color-mode="dark"] .sidebar-view-button-active,
-html[data-color-mode="custom"] .sidebar-view-button-active {
-  background: color-mix(in srgb, var(--accent-surface-soft) 58%, var(--surface-elevated));
 }
 
 .docs-sidebar-unresolved {
