@@ -14,6 +14,7 @@ import {
   type EditableDoc,
   type MarkdownHeading,
   type ModeratorAccount,
+  type PerformanceStatsSnapshot,
   type VisitorStatsPage,
   type VisitorStatsPeriod,
   type VisitorStatsScopeData,
@@ -653,6 +654,51 @@ function normalizeVisitorStatsSummary(source: unknown): VisitorStatsSummary {
   };
 }
 
+function clampPercent(value: number): number {
+  return Math.min(100, Math.max(0, value));
+}
+
+function normalizeUsagePercent(value: unknown, used: number, total: number): number {
+  const fallback = total > 0 ? (used / total) * 100 : 0;
+  return clampPercent(asNumber(value, fallback));
+}
+
+function normalizePerformanceStats(source: unknown): PerformanceStatsSnapshot {
+  const payload = asRecord(asRecord(source).performance ?? source);
+  const memory = asRecord(payload.memory);
+  const cpu = asRecord(payload.cpu);
+  const drive = asRecord(payload.drive);
+  const memoryTotalBytes = Math.max(0, asNumber(memory.totalBytes, 0));
+  const memoryFreeBytes = Math.max(0, asNumber(memory.freeBytes, 0));
+  const memoryUsedBytes = Math.max(0, asNumber(memory.usedBytes, Math.max(0, memoryTotalBytes - memoryFreeBytes)));
+  const driveTotalBytes = Math.max(0, asNumber(drive.totalBytes, 0));
+  const driveFreeBytes = Math.max(0, asNumber(drive.freeBytes, 0));
+  const driveUsedBytes = Math.max(0, asNumber(drive.usedBytes, Math.max(0, driveTotalBytes - driveFreeBytes)));
+
+  return {
+    updatedAt: asString(payload.updatedAt).trim() || new Date(0).toISOString(),
+    memory: {
+      totalBytes: memoryTotalBytes,
+      usedBytes: memoryUsedBytes,
+      freeBytes: memoryFreeBytes,
+      usagePercent: normalizeUsagePercent(memory.usagePercent, memoryUsedBytes, memoryTotalBytes),
+    },
+    cpu: {
+      usagePercent: normalizeUsagePercent(cpu.usagePercent, 0, 0),
+      logicalCores: Math.max(0, Math.round(asNumber(cpu.logicalCores, 0))),
+      sampleMs: Math.max(0, Math.round(asNumber(cpu.sampleMs, 0))),
+    },
+    drive: {
+      path: asString(drive.path).trim(),
+      totalBytes: driveTotalBytes,
+      usedBytes: driveUsedBytes,
+      freeBytes: driveFreeBytes,
+      availableBytes: Math.max(0, asNumber(drive.availableBytes, driveFreeBytes)),
+      usagePercent: normalizeUsagePercent(drive.usagePercent, driveUsedBytes, driveTotalBytes),
+    },
+  };
+}
+
 function normalizeDocsRefreshResult(source: unknown): DocsRefreshResult {
   const payload = asRecord(asRecord(source).refresh ?? source);
 
@@ -958,6 +1004,11 @@ export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatu
 export async function fetchAdminVisitorStats(): Promise<VisitorStatsSummary> {
   const response = await requestJson<unknown>("/api/admin/visitors");
   return normalizeVisitorStatsSummary(response);
+}
+
+export async function fetchAdminPerformanceStats(): Promise<PerformanceStatsSnapshot> {
+  const response = await requestJson<unknown>("/api/admin/performance");
+  return normalizePerformanceStats(response);
 }
 
 export async function saveAdminSettings(settings: AdminSettings): Promise<AdminSettings> {

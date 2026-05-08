@@ -2775,6 +2775,119 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
   background: color-mix(in srgb, var(--warning, var(--accent)) 16%, transparent);
 }
 
+.panel-card-performance {
+  overflow: hidden;
+}
+
+.panel-card-performance > .panel-header {
+  align-items: flex-start;
+}
+
+.panel-card-performance > .panel-header > div {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 0;
+}
+
+.performance-stats-scroll {
+  display: grid;
+  gap: 0.85rem;
+  min-height: 9rem;
+}
+
+.performance-section-heading span {
+  max-width: 58%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.performance-meter-grid {
+  grid-template-columns: 1fr;
+}
+
+.performance-meter-card {
+  min-height: 9.4rem;
+}
+
+.visitor-sparkline-card.performance-meter-card-low {
+  --visitor-chart-line: #2f9e44;
+  --visitor-chart-line-rgb: 47 158 68;
+}
+
+.visitor-sparkline-card.performance-meter-card-medium {
+  --visitor-chart-line: #f08c00;
+  --visitor-chart-line-rgb: 240 140 0;
+}
+
+.visitor-sparkline-card.performance-meter-card-high {
+  --visitor-chart-line: #e03131;
+  --visitor-chart-line-rgb: 224 49 49;
+}
+
+html[data-color-mode="dark"] .visitor-sparkline-card.performance-meter-card-low,
+html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-low {
+  --visitor-chart-line: #69db7c;
+  --visitor-chart-line-rgb: 105 219 124;
+}
+
+html[data-color-mode="dark"] .visitor-sparkline-card.performance-meter-card-medium,
+html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-medium {
+  --visitor-chart-line: #ffa94d;
+  --visitor-chart-line-rgb: 255 169 77;
+}
+
+html[data-color-mode="dark"] .visitor-sparkline-card.performance-meter-card-high,
+html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-high {
+  --visitor-chart-line: #ff6b6b;
+  --visitor-chart-line-rgb: 255 107 107;
+}
+
+.performance-meter-card .visitor-sparkline-meta strong {
+  color: color-mix(in srgb, var(--visitor-chart-line) 84%, var(--text-primary));
+}
+
+.performance-meter-card .visitor-sparkline-range {
+  color: color-mix(in srgb, var(--visitor-chart-line) 72%, var(--text-secondary));
+}
+
+.performance-meter-stage {
+  position: relative;
+  z-index: 1;
+  grid-column: 1 / -1;
+  align-self: end;
+  width: calc(100% + 1.2rem);
+  height: 5.9rem;
+  margin: -0.1rem -0.6rem -0.28rem;
+  overflow: visible;
+}
+
+.performance-meter {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.performance-meter-grid-line {
+  opacity: 0.44;
+  stroke: rgb(var(--visitor-chart-line-rgb) / 0.22);
+  stroke-dasharray: 4 7;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.performance-meter-area {
+  fill: rgb(var(--visitor-chart-line-rgb) / 0.24);
+}
+
+.performance-meter-dot {
+  fill: color-mix(in srgb, var(--surface-elevated) 84%, var(--visitor-chart-line) 16%);
+  stroke: var(--visitor-chart-line);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
 .panel-card-visitors {
   max-height: min(46rem, calc(100vh - var(--header-height) - 2rem));
   overflow: hidden;

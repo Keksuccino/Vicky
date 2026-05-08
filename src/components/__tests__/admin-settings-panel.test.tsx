@@ -16,6 +16,7 @@ const createAdminModeratorMock = vi.fn();
 const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
 const fetchAdminModeratorsMock = vi.fn();
+const fetchAdminPerformanceStatsMock = vi.fn();
 const fetchAdminSettingsMock = vi.fn();
 const fetchAdminVisitorStatsMock = vi.fn();
 const getCurrentUserMock = vi.fn();
@@ -40,6 +41,7 @@ vi.mock("@/components/api", () => ({
   deleteAdminModerator: (...args: unknown[]) => deleteAdminModeratorMock(...args),
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
   fetchAdminModerators: (...args: unknown[]) => fetchAdminModeratorsMock(...args),
+  fetchAdminPerformanceStats: (...args: unknown[]) => fetchAdminPerformanceStatsMock(...args),
   fetchAdminSettings: (...args: unknown[]) => fetchAdminSettingsMock(...args),
   fetchAdminVisitorStats: (...args: unknown[]) => fetchAdminVisitorStatsMock(...args),
   formatApiError: (error: unknown) => (error instanceof Error ? error.message : "Something went wrong. Please try again."),
@@ -166,6 +168,29 @@ const VISITOR_STATS = {
   },
 };
 
+const PERFORMANCE_STATS = {
+  updatedAt: "2026-03-10T12:00:00.000Z",
+  memory: {
+    totalBytes: 16 * 1024 ** 3,
+    usedBytes: 4 * 1024 ** 3,
+    freeBytes: 12 * 1024 ** 3,
+    usagePercent: 25,
+  },
+  cpu: {
+    usagePercent: 18,
+    logicalCores: 8,
+    sampleMs: 180,
+  },
+  drive: {
+    path: "/wiki",
+    totalBytes: 256 * 1024 ** 3,
+    usedBytes: 128 * 1024 ** 3,
+    freeBytes: 128 * 1024 ** 3,
+    availableBytes: 128 * 1024 ** 3,
+    usagePercent: 50,
+  },
+};
+
 describe("AdminSettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -173,6 +198,7 @@ describe("AdminSettingsPanel", () => {
     fetchAdminSettingsMock.mockResolvedValue(INITIAL_SETTINGS);
     fetchAdminModeratorsMock.mockResolvedValue([]);
     fetchAdminDomainSslStatusMock.mockResolvedValue(SSL_STATUS);
+    fetchAdminPerformanceStatsMock.mockResolvedValue(PERFORMANCE_STATS);
     fetchAdminVisitorStatsMock.mockResolvedValue(VISITOR_STATS);
     createAdminModeratorMock.mockResolvedValue({
       id: "mod-1",

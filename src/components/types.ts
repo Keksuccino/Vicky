@@ -96,6 +96,35 @@ export type VisitorStatsSummary = {
   scopes: Record<VisitorStatsScope, VisitorStatsScopeData>;
 };
 
+export type PerformanceMemoryStats = {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  usagePercent: number;
+};
+
+export type PerformanceCpuStats = {
+  usagePercent: number;
+  logicalCores: number;
+  sampleMs: number;
+};
+
+export type PerformanceDriveStats = {
+  path: string;
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  availableBytes: number;
+  usagePercent: number;
+};
+
+export type PerformanceStatsSnapshot = {
+  updatedAt: string;
+  memory: PerformanceMemoryStats;
+  cpu: PerformanceCpuStats;
+  drive: PerformanceDriveStats;
+};
+
 export type DocsRefreshResult = {
   pageCount: number;
   fetchedAt: string;

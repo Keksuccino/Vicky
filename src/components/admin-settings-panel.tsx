@@ -22,6 +22,7 @@ import {
   fetchAdminDomainSslStatus,
   fetchAdminLanguageTranslationCacheStatuses,
   fetchAdminModerators,
+  fetchAdminPerformanceStats,
   fetchAdminSettings,
   fetchAdminVisitorStats,
   formatApiError,
@@ -63,6 +64,7 @@ import type {
   AutoTranslateLanguage,
   DomainSslRuntimeStatus,
   ModeratorAccount,
+  PerformanceStatsSnapshot,
   ThemeCustomization,
   VisitorStatsPeriod,
   VisitorStatsScope,
@@ -92,6 +94,7 @@ const VISITOR_STATS_TREND_LABELS: Record<VisitorStatsScope, string> = {
 };
 const TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS = 650;
 const TRANSLATION_CACHE_STATUS_POLL_MS = 4_000;
+const PERFORMANCE_REFRESH_INTERVAL_MS = 60_000;
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -370,6 +373,10 @@ type VisitorStatsLoadResult =
   | { error: null; stats: VisitorStatsSummary }
   | { error: string; stats: null };
 
+type PerformanceStatsLoadResult =
+  | { error: null; stats: PerformanceStatsSnapshot }
+  | { error: string; stats: null };
+
 const loadVisitorStatsResult = async (): Promise<VisitorStatsLoadResult> => {
   try {
     return {
@@ -384,7 +391,29 @@ const loadVisitorStatsResult = async (): Promise<VisitorStatsLoadResult> => {
   }
 };
 
+const loadPerformanceStatsResult = async (): Promise<PerformanceStatsLoadResult> => {
+  try {
+    return {
+      stats: await fetchAdminPerformanceStats(),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      stats: null,
+      error: formatApiError(error),
+    };
+  }
+};
+
 const visitorNumberFormatter = new Intl.NumberFormat();
+const usagePercentFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+});
+const byteSizeFormatter = new Intl.NumberFormat(undefined, {
+  maximumFractionDigits: 1,
+  minimumFractionDigits: 0,
+});
 
 const formatVisitorCount = (value: number): string => visitorNumberFormatter.format(value);
 
@@ -417,6 +446,213 @@ const VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y = 10;
 const formatSparklineCoordinate = (value: number): string => value.toFixed(2).replace(/\.?0+$/, "");
 
 const clampNumber = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
+
+const BYTE_SIZE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
+
+const formatUsagePercent = (value: number): string =>
+  `${usagePercentFormatter.format(clampNumber(value, 0, 100))}%`;
+
+const formatByteSize = (value: number): string => {
+  let size = Math.max(0, value);
+  let unitIndex = 0;
+
+  while (size >= 1024 && unitIndex < BYTE_SIZE_UNITS.length - 1) {
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${byteSizeFormatter.format(size)} ${BYTE_SIZE_UNITS[unitIndex]}`;
+};
+
+type PerformanceMetricKind = "memory" | "cpu" | "drive";
+type PerformanceUsageTone = "low" | "medium" | "high";
+
+type PerformanceMetricCardProps = {
+  detail: string;
+  kind: PerformanceMetricKind;
+  label: string;
+  usagePercent: number;
+};
+
+const PERFORMANCE_CHART_WIDTH = 240;
+const PERFORMANCE_CHART_HEIGHT = 84;
+const PERFORMANCE_CHART_PADDING_X = 5;
+const PERFORMANCE_CHART_PADDING_Y = 8;
+
+const getPerformanceUsageTone = (usagePercent: number): PerformanceUsageTone => {
+  if (usagePercent < 30) {
+    return "low";
+  }
+
+  if (usagePercent < 65) {
+    return "medium";
+  }
+
+  return "high";
+};
+
+const createPerformanceMeterGeometry = (usagePercent: number) => {
+  const normalizedPercent = clampNumber(usagePercent, 0, 100);
+  const baselineY = PERFORMANCE_CHART_HEIGHT - PERFORMANCE_CHART_PADDING_Y;
+  const chartHeight = PERFORMANCE_CHART_HEIGHT - PERFORMANCE_CHART_PADDING_Y * 2;
+  const startX = PERFORMANCE_CHART_PADDING_X;
+  const endX = PERFORMANCE_CHART_WIDTH - PERFORMANCE_CHART_PADDING_X;
+  const y = baselineY - (normalizedPercent / 100) * chartHeight;
+  const linePath = `M ${formatSparklineCoordinate(startX)} ${formatSparklineCoordinate(
+    y,
+  )} L ${formatSparklineCoordinate(endX)} ${formatSparklineCoordinate(y)}`;
+  const areaPath = [
+    "M",
+    formatSparklineCoordinate(startX),
+    formatSparklineCoordinate(baselineY),
+    "L",
+    formatSparklineCoordinate(startX),
+    formatSparklineCoordinate(y),
+    "L",
+    formatSparklineCoordinate(endX),
+    formatSparklineCoordinate(y),
+    "L",
+    formatSparklineCoordinate(endX),
+    formatSparklineCoordinate(baselineY),
+    "Z",
+  ].join(" ");
+
+  return {
+    areaPath,
+    baselineY,
+    endX,
+    linePath,
+    y,
+  };
+};
+
+function PerformanceMetricCard({ detail, kind, label, usagePercent }: PerformanceMetricCardProps) {
+  const percent = clampNumber(usagePercent, 0, 100);
+  const percentLabel = formatUsagePercent(percent);
+  const usageTone = getPerformanceUsageTone(percent);
+  const geometry = createPerformanceMeterGeometry(percent);
+  const tickLines = [25, 50, 75].map((tick) => {
+    const chartHeight = PERFORMANCE_CHART_HEIGHT - PERFORMANCE_CHART_PADDING_Y * 2;
+    const y = geometry.baselineY - (tick / 100) * chartHeight;
+
+    return {
+      key: tick,
+      y,
+    };
+  });
+
+  return (
+    <div
+      className={`visitor-sparkline-card performance-meter-card performance-meter-card-${kind} performance-meter-card-${usageTone}`}
+    >
+      <div className="visitor-sparkline-meta">
+        <strong>{percentLabel}</strong>
+        <span>{label}</span>
+      </div>
+      <span className="visitor-sparkline-range">{detail}</span>
+      <div className="performance-meter-stage">
+        <svg
+          className="performance-meter"
+          role="img"
+          aria-label={`${label}: ${percentLabel} used. ${detail}.`}
+          preserveAspectRatio="none"
+          viewBox={`0 0 ${PERFORMANCE_CHART_WIDTH} ${PERFORMANCE_CHART_HEIGHT}`}
+        >
+          {tickLines.map((tick) => (
+            <line
+              key={tick.key}
+              className="performance-meter-grid-line"
+              x1={PERFORMANCE_CHART_PADDING_X}
+              x2={PERFORMANCE_CHART_WIDTH - PERFORMANCE_CHART_PADDING_X}
+              y1={tick.y}
+              y2={tick.y}
+            />
+          ))}
+          <path className="visitor-sparkline-area performance-meter-area" d={geometry.areaPath} />
+          <path className="visitor-sparkline-glow performance-meter-glow" d={geometry.linePath} />
+          <path className="visitor-sparkline-line performance-meter-line" d={geometry.linePath} />
+          <circle className="performance-meter-dot" cx={geometry.endX} cy={geometry.y} r="3.7" />
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+type PerformanceStatsCardProps = {
+  error: string | null;
+  loading: boolean;
+  stats: PerformanceStatsSnapshot | null;
+  onRefresh: () => void;
+};
+
+function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceStatsCardProps) {
+  const memoryDetail = stats
+    ? `${formatByteSize(stats.memory.usedBytes)} of ${formatByteSize(stats.memory.totalBytes)}`
+    : "";
+  const cpuDetail = stats
+    ? `Across ${formatVisitorCount(stats.cpu.logicalCores)} logical core${stats.cpu.logicalCores === 1 ? "" : "s"}`
+    : "";
+  const driveDetail = stats
+    ? `${formatByteSize(stats.drive.usedBytes)} of ${formatByteSize(stats.drive.totalBytes)}`
+    : "";
+
+  return (
+    <section className="panel-card panel-card-performance">
+      <div className="panel-header">
+        <div>
+          <h2>Performance Overview</h2>
+          <p className="panel-description">Live server resource usage.</p>
+        </div>
+        <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing performance" : "Refresh performance"}>
+          <button
+            type="button"
+            className="btn btn-icon visitor-refresh-button"
+            disabled={loading}
+            aria-label={loading ? "Refreshing performance" : "Refresh performance"}
+            onClick={onRefresh}
+          >
+            <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
+          </button>
+        </span>
+      </div>
+
+      {error ? <p className="error-text">{error}</p> : null}
+
+      <div className="performance-stats-scroll">
+        {!stats ? (
+          <p className="muted-caption">{loading ? "Loading performance..." : "No performance data available."}</p>
+        ) : (
+          <>
+            <div className="visitor-section-heading performance-section-heading">
+              <h3>Live Snapshot</h3>
+              <span>{loading ? "Refreshing..." : `Updated ${formatStatusTimestamp(stats.updatedAt)}`}</span>
+            </div>
+            <div className="visitor-sparkline-grid performance-meter-grid">
+              <PerformanceMetricCard
+                detail={memoryDetail}
+                kind="memory"
+                label="Memory Usage"
+                usagePercent={stats.memory.usagePercent}
+              />
+              <PerformanceMetricCard
+                detail={cpuDetail}
+                kind="cpu"
+                label="CPU Usage"
+                usagePercent={stats.cpu.usagePercent}
+              />
+              <PerformanceMetricCard
+                detail={driveDetail}
+                kind="drive"
+                label="Drive Usage"
+                usagePercent={stats.drive.usagePercent}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
 
 const getVisitorSparklineValue = (period: VisitorStatsPeriod, metric: VisitorSparklineMetric): number =>
   metric === "visitors" ? period.visitors : period.visits;
@@ -1009,6 +1245,10 @@ export function AdminSettingsPanel() {
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
   const [sslStatusError, setSslStatusError] = useState<string | null>(null);
 
+  const [performanceStats, setPerformanceStats] = useState<PerformanceStatsSnapshot | null>(null);
+  const [performanceStatsLoading, setPerformanceStatsLoading] = useState(true);
+  const [performanceStatsError, setPerformanceStatsError] = useState<string | null>(null);
+
   const [visitorStats, setVisitorStats] = useState<VisitorStatsSummary | null>(null);
   const [visitorStatsLoading, setVisitorStatsLoading] = useState(true);
   const [visitorStatsError, setVisitorStatsError] = useState<string | null>(null);
@@ -1033,6 +1273,7 @@ export function AdminSettingsPanel() {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const translationCacheStatusRequestRef = useRef(0);
   const translationCacheStatusInFlightRef = useRef(false);
+  const performanceStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
     letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
@@ -1072,6 +1313,22 @@ export function AdminSettingsPanel() {
     } finally {
       setSslStatusLoading(false);
     }
+  }, []);
+
+  const refreshPerformanceStats = useCallback(async () => {
+    const requestId = performanceStatsRequestRef.current + 1;
+    performanceStatsRequestRef.current = requestId;
+    setPerformanceStatsLoading(true);
+    setPerformanceStatsError(null);
+
+    const result = await loadPerformanceStatsResult();
+    if (performanceStatsRequestRef.current !== requestId) {
+      return;
+    }
+
+    setPerformanceStats(result.stats);
+    setPerformanceStatsError(result.error);
+    setPerformanceStatsLoading(false);
   }, []);
 
   const refreshVisitorStats = useCallback(async () => {
@@ -1501,6 +1758,20 @@ export function AdminSettingsPanel() {
   }, [loadError, loading, refreshTranslationCacheStatuses, translationCacheStatusSignature]);
 
   useEffect(() => {
+    if (loading || loadError) {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void refreshPerformanceStats();
+    }, PERFORMANCE_REFRESH_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [loadError, loading, refreshPerformanceStats]);
+
+  useEffect(() => {
     if (!autoSaveReadyRef.current) {
       return;
     }
@@ -1514,6 +1785,8 @@ export function AdminSettingsPanel() {
     const run = async () => {
       setLoading(true);
       setLoadError(null);
+      setPerformanceStatsLoading(true);
+      setPerformanceStatsError(null);
       setVisitorStatsLoading(true);
       setVisitorStatsError(null);
 
@@ -1529,9 +1802,10 @@ export function AdminSettingsPanel() {
           return;
         }
 
-        const [loadedSettings, loadedModerators, loadedVisitorStats] = await Promise.all([
+        const [loadedSettings, loadedModerators, loadedPerformanceStats, loadedVisitorStats] = await Promise.all([
           fetchAdminSettings(),
           fetchAdminModerators(),
+          loadPerformanceStatsResult(),
           loadVisitorStatsResult(),
         ]);
         if (!isActive) {
@@ -1547,6 +1821,9 @@ export function AdminSettingsPanel() {
 
         setSettings(loadedSettings);
         setModerators(loadedModerators);
+        setPerformanceStats(loadedPerformanceStats.stats);
+        setPerformanceStatsError(loadedPerformanceStats.error);
+        setPerformanceStatsLoading(false);
         setVisitorStats(loadedVisitorStats.stats);
         setVisitorStatsError(loadedVisitorStats.error);
         setVisitorStatsLoading(false);
@@ -1560,6 +1837,7 @@ export function AdminSettingsPanel() {
       } catch (error) {
         if (isActive) {
           setLoadError(formatApiError(error));
+          setPerformanceStatsLoading(false);
           setVisitorStatsLoading(false);
         }
       } finally {
@@ -1598,6 +1876,15 @@ export function AdminSettingsPanel() {
 
       <div className="panel-grid">
         <div className="panel-stack-left">
+          <PerformanceStatsCard
+            error={performanceStatsError}
+            loading={performanceStatsLoading}
+            stats={performanceStats}
+            onRefresh={() => {
+              void refreshPerformanceStats();
+            }}
+          />
+
           <section className="panel-card panel-card-repo">
           <div className="panel-header">
             <h1>Repository Settings</h1>

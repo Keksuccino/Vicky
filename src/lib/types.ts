@@ -121,6 +121,35 @@ export interface VisitorPageIdentity {
   title: string;
 }
 
+export interface PerformanceMemoryStats {
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  usagePercent: number;
+}
+
+export interface PerformanceCpuStats {
+  usagePercent: number;
+  logicalCores: number;
+  sampleMs: number;
+}
+
+export interface PerformanceDriveStats {
+  path: string;
+  totalBytes: number;
+  usedBytes: number;
+  freeBytes: number;
+  availableBytes: number;
+  usagePercent: number;
+}
+
+export interface PerformanceStatsSnapshot {
+  updatedAt: string;
+  memory: PerformanceMemoryStats;
+  cpu: PerformanceCpuStats;
+  drive: PerformanceDriveStats;
+}
+
 export interface AppSettings {
   siteTitle: string;
   siteDescription: string;
