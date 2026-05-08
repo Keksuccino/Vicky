@@ -111,8 +111,8 @@ const DEFAULT_SETTINGS: AdminSettings = {
   autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
-  themeDarkAccent: "#5EBBE4",
-  themeDarkSurfaceAccent: "#AFE0EE",
+  themeDarkAccent: "#15A6E5",
+  themeDarkSurfaceAccent: "#657276",
   themeCustomCss: "",
 };
 

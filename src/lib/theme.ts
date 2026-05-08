@@ -5,8 +5,8 @@ export type ThemeVariables = Record<string, string>;
 
 const LIGHT_DEFAULT_ACCENT = "#006ecf";
 const LIGHT_DEFAULT_SURFACE_ACCENT = "#7db8f0";
-const DARK_DEFAULT_ACCENT = "#5EBBE4";
-const DARK_DEFAULT_SURFACE_ACCENT = "#AFE0EE";
+const DARK_DEFAULT_ACCENT = "#15A6E5";
+const DARK_DEFAULT_SURFACE_ACCENT = "#657276";
 const LIGHT_CONTRAST = "#f8fbff";
 const DARK_CONTRAST = "#111111";
 
@@ -39,11 +39,11 @@ export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
   "--text-muted": "#9d9d9d",
   "--border": "#3a3a3a",
   "--accent": DARK_DEFAULT_ACCENT,
-  "--accent-soft": "#243744",
-  "--accent-contrast": DARK_CONTRAST,
+  "--accent-soft": "#1a3a48",
+  "--accent-contrast": LIGHT_CONTRAST,
   "--accent-surface": DARK_DEFAULT_SURFACE_ACCENT,
-  "--accent-surface-soft": "#29333c",
-  "--accent-surface-contrast": "#eeeeee",
+  "--accent-surface-soft": "#2b2d2e",
+  "--accent-surface-contrast": LIGHT_CONTRAST,
   "--success": "#2bd08a",
   "--danger": "#ff6a7f",
   "--header-bg": "rgba(28, 28, 28, 0.86)",

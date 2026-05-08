@@ -102,8 +102,8 @@ const INITIAL_SETTINGS: AdminSettings = {
   ],
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
-  themeDarkAccent: "#5EBBE4",
-  themeDarkSurfaceAccent: "#AFE0EE",
+  themeDarkAccent: "#15A6E5",
+  themeDarkSurfaceAccent: "#657276",
   themeCustomCss: "",
 };
 
