@@ -571,7 +571,6 @@ function PerformanceMetricCard({ detail, kind, label, usagePercent }: Performanc
           <path className="visitor-sparkline-area performance-meter-area" d={geometry.areaPath} />
           <path className="visitor-sparkline-glow performance-meter-glow" d={geometry.linePath} />
           <path className="visitor-sparkline-line performance-meter-line" d={geometry.linePath} />
-          <circle className="performance-meter-dot" cx={geometry.endX} cy={geometry.y} r="3.7" />
         </svg>
       </div>
     </div>

@@ -2881,13 +2881,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
   fill: rgb(var(--visitor-chart-line-rgb) / 0.24);
 }
 
-.performance-meter-dot {
-  fill: color-mix(in srgb, var(--surface-elevated) 84%, var(--visitor-chart-line) 16%);
-  stroke: var(--visitor-chart-line);
-  stroke-width: 2;
-  vector-effect: non-scaling-stroke;
-}
-
 .panel-card-visitors {
   max-height: min(46rem, calc(100vh - var(--header-height) - 2rem));
   overflow: hidden;
