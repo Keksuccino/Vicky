@@ -422,7 +422,7 @@ type ResetToDefaultButtonProps = {
 
 function ResetToDefaultButton({ disabled, onClick }: ResetToDefaultButtonProps) {
   return (
-    <button type="button" className="btn btn-ghost field-control-action" disabled={disabled} onClick={onClick}>
+    <button type="button" className="btn field-control-action" disabled={disabled} onClick={onClick}>
       Reset To Default
     </button>
   );
@@ -1581,7 +1581,7 @@ export function AdminSettingsPanel() {
                 />
                 <button
                   type="button"
-                  className="btn btn-ghost secret-clear-button"
+                  className="btn secret-clear-button"
                   disabled={
                     settingsSaving ||
                     clearingSecret !== null ||
@@ -1859,7 +1859,7 @@ export function AdminSettingsPanel() {
                             >
                               <button
                                 type="button"
-                                className="btn btn-icon btn-ghost danger moderator-action-button"
+                                className="btn btn-icon danger moderator-action-button"
                                 aria-label="Remove"
                                 disabled={Boolean(moderatorActionId)}
                                 onClick={() => {
@@ -2274,7 +2274,7 @@ export function AdminSettingsPanel() {
                   />
                   <button
                     type="button"
-                    className="btn btn-ghost secret-clear-button"
+                    className="btn secret-clear-button"
                     disabled={
                       settingsSaving ||
                       clearingSecret !== null ||
@@ -2458,7 +2458,7 @@ export function AdminSettingsPanel() {
                           >
                             <button
                               type="button"
-                              className={`btn btn-ghost translation-language-remove${isDefaultLanguage ? "" : " danger"}`}
+                              className="btn btn-icon danger translation-language-remove"
                               aria-label="Remove"
                               disabled={isDefaultLanguage}
                               onClick={() => {
@@ -2479,7 +2479,7 @@ export function AdminSettingsPanel() {
                           >
                             <button
                               type="button"
-                              className="btn btn-ghost translation-language-request"
+                              className="btn btn-icon translation-language-request"
                               aria-label="Request Translations for All Pages"
                               disabled={translationRequestDisabled}
                               onClick={() => {

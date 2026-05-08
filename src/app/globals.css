@@ -2145,7 +2145,7 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .field-control-action {
-  min-height: 2.75rem;
+  --btn-height: 2.75rem;
 }
 
 .secret-input-row {
@@ -2160,9 +2160,8 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .secret-clear-button {
+  --btn-height: 2.75rem;
   flex: 0 0 auto;
-  min-height: 2.75rem;
-  padding-inline: 0.82rem;
 }
 
 .translation-language-list {
@@ -2198,21 +2197,8 @@ html[data-color-mode="light"] .page-copy-menu {
 
 .translation-language-remove,
 .translation-language-request {
-  width: 2.75rem;
-  min-height: 2.75rem;
-  flex: 0 0 2.75rem;
-  padding: 0;
-}
-
-.translation-language-request:disabled {
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--surface-muted) 72%, var(--surface-elevated));
-  border-color: color-mix(in srgb, var(--border) 76%, transparent);
-}
-
-.translation-language-remove .material-icon,
-.translation-language-request .material-icon {
-  font-size: 1.12rem;
+  --btn-size: 2.75rem;
+  --btn-icon-size: 1.12rem;
 }
 
 .password-input-row {
