@@ -18,10 +18,17 @@ type CircleFlagIconPickerProps = {
   id?: string;
   label?: string;
   onChange: (iconId: string) => void;
+  showLabel?: boolean;
   value: string;
 };
 
-export function CircleFlagIconPicker({ id, label = "Icon", onChange, value }: CircleFlagIconPickerProps) {
+export function CircleFlagIconPicker({
+  id,
+  label = "Icon",
+  onChange,
+  showLabel = true,
+  value,
+}: CircleFlagIconPickerProps) {
   const generatedId = useId();
   const buttonId = id ?? generatedId;
   const searchId = `${buttonId}-search`;
@@ -32,6 +39,7 @@ export function CircleFlagIconPicker({ id, label = "Icon", onChange, value }: Ci
 
   const selectedIconId = normalizeCircleFlagIconId(value) || DEFAULT_CIRCLE_FLAG_ICON_ID;
   const selectedOption = getCircleFlagIconOption(selectedIconId);
+  const selectedLabel = selectedOption?.label ?? selectedIconId;
   const normalizedQuery = query.trim().toLowerCase();
 
   const visibleOptions = useMemo(() => {
@@ -82,18 +90,19 @@ export function CircleFlagIconPicker({ id, label = "Icon", onChange, value }: Ci
   return (
     <div className="circle-flag-picker" ref={rootRef}>
       <label className="field-row" htmlFor={buttonId}>
-        <span className="field-label">{label}</span>
+        {showLabel ? <span className="field-label">{label}</span> : null}
         <button
           id={buttonId}
           type="button"
           className="btn circle-flag-picker-button"
+          aria-label={showLabel ? undefined : `${label}: ${selectedLabel} (${selectedIconId})`}
           aria-haspopup="dialog"
           aria-expanded={open}
           onClick={() => setOpen((previous) => !previous)}
         >
           <CircleFlagIcon iconId={selectedIconId} />
           <span className="circle-flag-picker-value">
-            <span>{selectedOption?.label ?? selectedIconId}</span>
+            <span>{selectedLabel}</span>
             <code>{selectedIconId}</code>
           </span>
           <MaterialIcon name="arrow_drop_down" />

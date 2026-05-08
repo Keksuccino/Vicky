@@ -2514,6 +2514,14 @@ export function AdminSettingsPanel() {
               <div className="field-row">
                 <span className="field-label">Selectable languages</span>
                 <div className="translation-language-list">
+                  <div className="translation-language-item translation-language-label-row" aria-hidden="true">
+                    <div className="field-inline translation-language-fields translation-language-label-fields">
+                      <span className="field-label">Display name</span>
+                      <span className="field-label">ID</span>
+                      <span className="field-label">Icon</span>
+                    </div>
+                    <div className="translation-language-label-actions" />
+                  </div>
                   {settings.autoTranslateLanguages.map((language, index) => {
                     const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
                     const normalizedLanguageCode = normalizeAutoTranslateLanguageCode(language.code);
@@ -2534,10 +2542,10 @@ export function AdminSettingsPanel() {
                       >
                         <div className="field-inline translation-language-fields">
                           <label className="field-row" htmlFor={`auto-translate-language-name-${index}`}>
-                            <span className="field-label">Display name</span>
                             <input
                               id={`auto-translate-language-name-${index}`}
                               className="input"
+                              aria-label="Display name"
                               value={isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name}
                               disabled={isDefaultLanguage}
                               onChange={(event) => {
@@ -2554,10 +2562,10 @@ export function AdminSettingsPanel() {
                           </label>
 
                           <label className="field-row" htmlFor={`auto-translate-language-code-${index}`}>
-                            <span className="field-label">ID</span>
                             <input
                               id={`auto-translate-language-code-${index}`}
                               className="input"
+                              aria-label="ID"
                               value={isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code}
                               disabled={isDefaultLanguage}
                               onChange={(event) => {
@@ -2591,6 +2599,7 @@ export function AdminSettingsPanel() {
                           <CircleFlagIconPicker
                             id={`auto-translate-language-icon-${index}`}
                             value={languageIcon}
+                            showLabel={false}
                             onChange={(icon) => {
                               const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
                                 entryIndex === index ? { ...entry, icon } : entry,

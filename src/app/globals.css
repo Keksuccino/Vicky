@@ -2169,6 +2169,18 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   background: color-mix(in srgb, var(--accent-surface-soft) 58%, var(--surface-muted));
 }
 
+.translation-language-label-row {
+  align-items: center;
+}
+
+.translation-language-label-fields {
+  align-items: center;
+}
+
+.translation-language-label-actions {
+  width: 5.32rem;
+}
+
 .translation-language-actions {
   display: flex;
   align-items: center;
@@ -4431,6 +4443,10 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
   .translation-language-actions {
     justify-content: flex-start;
+  }
+
+  .translation-language-label-actions {
+    display: none;
   }
 
   .moderator-actions {
