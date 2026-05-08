@@ -2253,6 +2253,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 
 .circle-flag-picker-search .input {
   height: 2.5rem;
+  padding-inline-start: 2.25rem;
 }
 
 .circle-flag-picker-options {
