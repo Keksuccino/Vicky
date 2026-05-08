@@ -2160,6 +2160,10 @@ select {
   align-items: center;
 }
 
+.translation-language-label-fields .field-label {
+  padding-left: 0.58rem;
+}
+
 .translation-language-label-actions {
   width: 10.35rem;
 }
