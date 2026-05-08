@@ -465,7 +465,7 @@ function AccentColorField({
   hint,
   id,
   label,
-  pickerPlacement = "bottom",
+  pickerPlacement = "top",
   resetLabel = "Reset",
   showReset = false,
   value,
@@ -2653,7 +2653,6 @@ export function AdminSettingsPanel() {
                       label="Emphasis accent"
                       value={settings.themeLightAccent}
                       fallbackColor={THEME_DEFAULTS.lightAccent}
-                      pickerPlacement="top"
                       showReset
                       hint="Used for links, primary actions, active states, focus borders, and strong highlights in Light mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
@@ -2678,7 +2677,6 @@ export function AdminSettingsPanel() {
                       label="Emphasis accent"
                       value={settings.themeDarkAccent}
                       fallbackColor={THEME_DEFAULTS.darkAccent}
-                      pickerPlacement="top"
                       showReset
                       hint="Used for links, primary actions, active states, focus borders, and strong highlights in Dark mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
