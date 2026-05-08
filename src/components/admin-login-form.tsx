@@ -197,7 +197,7 @@ export function AdminLoginForm() {
               />
               <button
                 type="button"
-                className="btn btn-icon btn-ghost password-toggle-button"
+                className="btn btn-icon password-toggle-button"
                 aria-label={showPassword ? "Hide password" : "Show password"}
                 aria-pressed={showPassword}
                 onClick={() => setShowPassword((current) => !current)}
