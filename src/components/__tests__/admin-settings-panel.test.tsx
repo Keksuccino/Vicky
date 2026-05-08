@@ -170,6 +170,8 @@ const VISITOR_STATS = {
 
 const PERFORMANCE_STATS = {
   updatedAt: "2026-03-10T12:00:00.000Z",
+  source: "server" as const,
+  sourceLabel: "Server host",
   memory: {
     totalBytes: 16 * 1024 ** 3,
     usedBytes: 4 * 1024 ** 3,

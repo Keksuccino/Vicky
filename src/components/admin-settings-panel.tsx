@@ -590,7 +590,7 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
     ? `${formatByteSize(stats.memory.usedBytes)} of ${formatByteSize(stats.memory.totalBytes)}`
     : "";
   const cpuDetail = stats
-    ? `Across ${formatVisitorCount(stats.cpu.logicalCores)} logical core${stats.cpu.logicalCores === 1 ? "" : "s"}`
+    ? `${stats.sourceLabel} - ${formatVisitorCount(stats.cpu.logicalCores)} logical core${stats.cpu.logicalCores === 1 ? "" : "s"}`
     : "";
   const driveDetail = stats
     ? `${formatByteSize(stats.drive.usedBytes)} of ${formatByteSize(stats.drive.totalBytes)}`
@@ -601,7 +601,9 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
       <div className="panel-header">
         <div>
           <h2>Performance Overview</h2>
-          <p className="panel-description">Live server resource usage.</p>
+          <p className="panel-description">
+            {stats ? `Live resource usage from ${stats.sourceLabel}.` : "Live host resource usage."}
+          </p>
         </div>
         <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing performance" : "Refresh performance"}>
           <button

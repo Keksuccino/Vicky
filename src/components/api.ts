@@ -668,6 +668,9 @@ function normalizePerformanceStats(source: unknown): PerformanceStatsSnapshot {
   const memory = asRecord(payload.memory);
   const cpu = asRecord(payload.cpu);
   const drive = asRecord(payload.drive);
+  const sourceType = asString(payload.source).trim() === "windows-host" ? "windows-host" : "server";
+  const sourceLabel =
+    asString(payload.sourceLabel).trim() || (sourceType === "windows-host" ? "Windows host (via WSL)" : "Server host");
   const memoryTotalBytes = Math.max(0, asNumber(memory.totalBytes, 0));
   const memoryFreeBytes = Math.max(0, asNumber(memory.freeBytes, 0));
   const memoryUsedBytes = Math.max(0, asNumber(memory.usedBytes, Math.max(0, memoryTotalBytes - memoryFreeBytes)));
@@ -677,6 +680,8 @@ function normalizePerformanceStats(source: unknown): PerformanceStatsSnapshot {
 
   return {
     updatedAt: asString(payload.updatedAt).trim() || new Date(0).toISOString(),
+    source: sourceType,
+    sourceLabel,
     memory: {
       totalBytes: memoryTotalBytes,
       usedBytes: memoryUsedBytes,

@@ -143,8 +143,12 @@ export interface PerformanceDriveStats {
   usagePercent: number;
 }
 
+export type PerformanceStatsSource = "server" | "windows-host";
+
 export interface PerformanceStatsSnapshot {
   updatedAt: string;
+  source: PerformanceStatsSource;
+  sourceLabel: string;
   memory: PerformanceMemoryStats;
   cpu: PerformanceCpuStats;
   drive: PerformanceDriveStats;
