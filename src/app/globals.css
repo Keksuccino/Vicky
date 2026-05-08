@@ -406,7 +406,7 @@ select {
 .app-footer-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-elevated) 30%, var(--surface));
+  background: color-mix(in srgb, var(--surface-elevated) 60%, var(--surface));
   padding: 0.82rem 1rem;
   color: var(--text-muted);
   font-size: 0.86rem;
@@ -1096,7 +1096,7 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .docs-main {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-elevated) 30%, var(--surface));
+  background: color-mix(in srgb, var(--surface-elevated) 60%, var(--surface));
   padding: clamp(1rem, 2vw, 1.6rem);
   min-height: 70vh;
   min-width: 0;
