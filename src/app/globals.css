@@ -860,12 +860,9 @@ select {
   justify-content: center;
   cursor: pointer;
   position: relative;
-  /* Ensure visible overflow for shadows */
   overflow: visible;
-  box-shadow: 0 14px 32px var(--mobile-fab-shadow);
   transition:
     color 160ms ease,
-    box-shadow 160ms ease,
     transform 160ms ease;
 }
 
@@ -901,13 +898,11 @@ select {
 }
 
 .mobile-sidebar-button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 55%, transparent);
-  outline-offset: 1px;
+  outline: none;
 }
 
 .mobile-sidebar-button[aria-expanded="true"] {
   color: var(--mobile-fab-icon);
-  box-shadow: 0 16px 36px var(--mobile-fab-shadow);
 }
 
 .mobile-sidebar-button[aria-expanded="true"] .mobile-sidebar-button-surface {
