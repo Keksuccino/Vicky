@@ -90,6 +90,8 @@ const VISITOR_STATS_TREND_LABELS: Record<VisitorStatsScope, string> = {
   monthly: "Trend of the last 30 days",
   yearly: "Trend of the last 365 days",
 };
+const TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS = 650;
+const TRANSLATION_CACHE_STATUS_POLL_MS = 4_000;
 
 const INITIAL_SETTINGS: AdminSettings = {
   siteTitle: "Vicky Docs",
@@ -1030,6 +1032,7 @@ export function AdminSettingsPanel() {
   const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const translationCacheStatusRequestRef = useRef(0);
+  const translationCacheStatusInFlightRef = useRef(false);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
     letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
@@ -1341,6 +1344,11 @@ export function AdminSettingsPanel() {
   );
 
   const refreshTranslationCacheStatuses = useCallback(async () => {
+    if (translationCacheStatusInFlightRef.current) {
+      return;
+    }
+
+    translationCacheStatusInFlightRef.current = true;
     const requestId = translationCacheStatusRequestRef.current + 1;
     translationCacheStatusRequestRef.current = requestId;
     setTranslationCacheStatusLoading(true);
@@ -1363,6 +1371,8 @@ export function AdminSettingsPanel() {
         setTranslationCacheStatusError(formatApiError(error));
       }
     } finally {
+      translationCacheStatusInFlightRef.current = false;
+
       if (translationCacheStatusRequestRef.current === requestId) {
         setTranslationCacheStatusLoading(false);
       }
@@ -1471,12 +1481,22 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
+    const refreshIfVisible = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
       void refreshTranslationCacheStatuses();
-    }, 650);
+    };
+
+    const timeoutId = window.setTimeout(refreshIfVisible, TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS);
+    const intervalId = window.setInterval(refreshIfVisible, TRANSLATION_CACHE_STATUS_POLL_MS);
+    document.addEventListener("visibilitychange", refreshIfVisible);
 
     return () => {
       window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", refreshIfVisible);
     };
   }, [loadError, loading, refreshTranslationCacheStatuses, translationCacheStatusSignature]);
 

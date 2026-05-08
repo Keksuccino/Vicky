@@ -72,7 +72,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
-    const { pages } = await listMarkdownDocsTreePagesWithTitles(config, { bypassCache: true });
+    const { pages } = await listMarkdownDocsTreePagesWithTitles(config);
     const totalPages = pages.length;
     const statuses: LanguageTranslationCacheStatus[] = languages.map((language) => {
       const sourceLanguage = isDefaultAutoTranslateLanguageCode(language.code);
