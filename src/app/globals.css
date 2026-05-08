@@ -3021,7 +3021,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   min-height: 2.75rem;
   padding: 0.34rem 0.5rem 0.34rem 0.38rem;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
   color: var(--text-secondary);
   cursor: pointer;
@@ -3141,7 +3141,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   position: relative;
   height: 10rem;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
-  border-radius: 14px;
+  border-radius: var(--radius-sm);
   background:
     linear-gradient(to top, #000000, transparent),
     linear-gradient(to right, #ffffff, var(--theme-color-picker-hue));
