@@ -175,11 +175,6 @@ export function DocsTree({
   const hasSearch = searchQuery.trim().length > 0;
   const showTree = !hasSearch;
 
-  const treeCount = useMemo(() => {
-    const countNodes = (nodes: DocTreeNode[]): number =>
-      nodes.reduce((acc, node) => acc + 1 + countNodes(node.children), 0);
-    return countNodes(tree);
-  }, [tree]);
   const tocHeadings = useMemo(() => headings.filter((heading) => heading.depth <= 4), [headings]);
   const excerptHighlightMatcher = useMemo(() => buildSearchHighlightMatcher(searchQuery), [searchQuery]);
 
@@ -238,7 +233,6 @@ export function DocsTree({
         showTree ? (
           tree.length > 0 ? (
             <div className="docs-tree-wrap">
-              <p className="muted-caption">{treeCount} entries</p>
               <ul className="tree-list" role="tree">
                 {tree.map((node) => (
                   <TreeNode
@@ -282,7 +276,6 @@ export function DocsTree({
         <div className="sidebar-toc">
           {tocHeadings.length > 0 ? (
             <>
-              <p className="muted-caption">{tocHeadings.length} headings</p>
               <nav aria-label="Page content">
                 <ul className="sidebar-toc-list">
                   {tocHeadings.map((heading) => (
