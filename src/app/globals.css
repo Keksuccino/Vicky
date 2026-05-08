@@ -2650,45 +2650,18 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .visitor-tab {
+  --btn-height: 2.55rem;
+  --btn-gap: 0.38rem;
+  --btn-padding-x: 0.54rem;
+  --btn-icon-size: 1.14rem;
   min-width: 0;
-  min-height: 2.55rem;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface-muted);
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.38rem;
-  padding: 0.46rem 0.54rem;
-  font: inherit;
   font-weight: 700;
-  cursor: pointer;
-  transition:
-    background 160ms ease,
-    border-color 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
-}
-
-.visitor-tab:hover {
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
-  color: var(--text-primary);
-}
-
-.visitor-tab:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--accent) 48%, transparent);
-  outline-offset: 2px;
 }
 
 .visitor-tab-active {
   border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
   background: var(--accent-soft);
   color: var(--accent);
-}
-
-.visitor-tab .material-icon {
-  font-size: 1.14rem;
 }
 
 .visitor-stats-scroll {

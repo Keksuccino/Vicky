@@ -880,7 +880,7 @@ function VisitorStatsCard({
           <button
             key={tab.scope}
             type="button"
-            className={`visitor-tab${activeScope === tab.scope ? " visitor-tab-active" : ""}`}
+            className={`btn visitor-tab${activeScope === tab.scope ? " visitor-tab-active" : ""}`}
             role="tab"
             aria-selected={activeScope === tab.scope}
             onClick={() => onScopeChange(tab.scope)}
