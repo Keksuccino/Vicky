@@ -442,7 +442,7 @@ export function DocsClient({
   useEffect(() => {
     if (rootPathNeedsReplaceRef.current && currentPath !== "/") {
       rootPathNeedsReplaceRef.current = false;
-      router.replace(toDocsHref(currentPath));
+      router.replace(toDocsHref(currentPath), { scroll: false });
       return;
     }
 
@@ -450,7 +450,7 @@ export function DocsClient({
       const firstPath = firstLeafPath(tree);
       if (firstPath && firstPath !== currentPath) {
         setCurrentPath(firstPath);
-        router.replace(toDocsHref(firstPath));
+        router.replace(toDocsHref(firstPath), { scroll: false });
       }
     }
   }, [tree, treeLoading, currentPath, router]);
@@ -845,7 +845,7 @@ export function DocsClient({
     setSearchResults([]);
     setSidebarOpen(false);
     const hash = anchor ? `#${encodeURIComponent(anchor)}` : "";
-    router.push(`${toDocsHref(normalized)}${hash}`);
+    router.push(`${toDocsHref(normalized)}${hash}`, { scroll: false });
   };
 
   const showPagePlaceholder = pageLoading;
