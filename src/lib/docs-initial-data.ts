@@ -17,6 +17,7 @@ export type InitialDocsClientData = {
   initialPage?: DocPage | null;
   initialLanguageCode: string;
   initialTreeLanguageCode?: string;
+  initialTreeTitlesPending?: boolean;
   initialPageLanguageCode?: string;
 };
 
@@ -78,6 +79,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
 
     let initialTree: DocTreeNode[] | undefined;
     let initialTreeLanguageCode: string | undefined;
+    let initialTreeTitlesPending = false;
     let initialPage: DocPage | null = null;
     let initialPageLanguageCode: string | undefined;
     let pagePath = normalizedRequestedPath;
@@ -91,6 +93,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
       });
       initialTree = buildDocTree(treeResult.data);
       initialTreeLanguageCode = treeResult.language.code;
+      initialTreeTitlesPending = Boolean(treeResult.titlesPending);
 
       if (pagePath === "/") {
         pagePath = firstLeafPath(initialTree) ?? "/";
@@ -122,6 +125,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
       initialPage,
       initialLanguageCode: initialPageLanguageCode ?? initialTreeLanguageCode ?? initialLanguageCode,
       initialTreeLanguageCode,
+      initialTreeTitlesPending,
       initialPageLanguageCode,
     };
   } catch (error: unknown) {

@@ -30,14 +30,14 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.nextUrl.searchParams.get("language") ??
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
-    const { data: items } = await loadDocsTreeForLanguage({
+    const { data: items, titlesPending } = await loadDocsTreeForLanguage({
       config,
       origin: resolveRequestOrigin(request),
       requestedLanguageCode,
       store,
     });
 
-    return NextResponse.json({ items });
+    return NextResponse.json({ items, titlesPending: Boolean(titlesPending) });
   } catch (error: unknown) {
     return errorResponse(error);
   }

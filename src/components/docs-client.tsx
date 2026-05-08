@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   fetchDocPage,
   fetchDocPageMetadata,
-  fetchDocsTree,
+  fetchDocsTreeState,
   firstLeafPath,
   formatApiError,
   recordDisplayedDocPageVisit,
@@ -34,10 +34,13 @@ type DocsClientProps = {
   initialPage?: DocPage | null;
   initialLanguageCode?: string;
   initialTreeLanguageCode?: string;
+  initialTreeTitlesPending?: boolean;
   initialPageLanguageCode?: string;
 };
 
 const COPIED_STATE_DURATION_MS = 1400;
+const TREE_TITLES_REFRESH_DELAY_MS = 2500;
+const MAX_TREE_TITLES_REFRESH_ATTEMPTS = 24;
 
 function normalizePath(path: string): string {
   return toAbsoluteDocPath(path || "/");
@@ -240,6 +243,7 @@ export function DocsClient({
   initialPage,
   initialLanguageCode,
   initialTreeLanguageCode,
+  initialTreeTitlesPending,
   initialPageLanguageCode,
 }: DocsClientProps) {
   const router = useRouter();
@@ -258,6 +262,7 @@ export function DocsClient({
     normalizePath(initialPage?.path ?? "") === initialDisplayPath;
   const [tree, setTree] = useState<DocTreeNode[]>(hasInitialTree ? initialTree ?? [] : []);
   const [treeLoading, setTreeLoading] = useState(!hasInitialTree);
+  const [treeTitlesPending, setTreeTitlesPending] = useState(hasInitialTree ? Boolean(initialTreeTitlesPending) : false);
   const [treeError, setTreeError] = useState<string | null>(null);
 
   const [currentPath, setCurrentPath] = useState<string>(initialDisplayPath);
@@ -277,6 +282,7 @@ export function DocsClient({
   const [selectedLanguageCode, setSelectedLanguageCode] = useState(normalizedInitialLanguageCode);
   const [languageReady, setLanguageReady] = useState(Boolean(initialLanguageCode));
   const treeLoadIdRef = useRef(0);
+  const treeTitleRefreshAttemptsRef = useRef(0);
   const pageLoadIdRef = useRef(0);
   const metadataRequestKeyRef = useRef<string | null>(null);
   const loadedTreeLanguageRef = useRef<string | null>(hasInitialTree ? normalizedInitialTreeLanguageCode : null);
@@ -376,26 +382,38 @@ export function DocsClient({
     setCurrentPath(nextDisplayPath);
   }, [initialPath, initialPage]);
 
-  const loadTree = useCallback(async () => {
+  const loadTree = useCallback(async (options?: { quiet?: boolean }) => {
+    const quiet = Boolean(options?.quiet);
     const loadId = treeLoadIdRef.current + 1;
     treeLoadIdRef.current = loadId;
-    setTreeLoading(true);
-    setTreeError(null);
+    if (!quiet) {
+      setTreeLoading(true);
+      setTreeError(null);
+    }
     loadedTreeLanguageRef.current = null;
     try {
-      const nextTree = await fetchDocsTree(selectedLanguageCode);
+      const nextTreeResult = await fetchDocsTreeState(selectedLanguageCode);
       if (treeLoadIdRef.current !== loadId) {
         return;
       }
-      setTree(nextTree);
+      setTree(nextTreeResult.tree);
+      setTreeTitlesPending(nextTreeResult.titlesPending);
+      if (!nextTreeResult.titlesPending) {
+        treeTitleRefreshAttemptsRef.current = 0;
+      }
       loadedTreeLanguageRef.current = selectedLanguageCode;
     } catch (error) {
       if (treeLoadIdRef.current !== loadId) {
         return;
       }
-      setTreeError(formatApiError(error));
+      if (!quiet) {
+        setTreeError(formatApiError(error));
+      } else {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[docs] Failed to refresh docs tree titles: ${message}`);
+      }
     } finally {
-      if (treeLoadIdRef.current === loadId) {
+      if (treeLoadIdRef.current === loadId && !quiet) {
         setTreeLoading(false);
       }
     }
@@ -438,6 +456,29 @@ export function DocsClient({
     }
     void loadTree();
   }, [languageReady, loadTree, selectedLanguageCode]);
+
+  useEffect(() => {
+    treeTitleRefreshAttemptsRef.current = 0;
+  }, [selectedLanguageCode]);
+
+  useEffect(() => {
+    if (!languageReady || treeLoading || treeError || !treeTitlesPending) {
+      return;
+    }
+
+    if (treeTitleRefreshAttemptsRef.current >= MAX_TREE_TITLES_REFRESH_ATTEMPTS) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      treeTitleRefreshAttemptsRef.current += 1;
+      void loadTree({ quiet: true });
+    }, TREE_TITLES_REFRESH_DELAY_MS);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [languageReady, loadTree, treeError, treeLoading, treeTitlesPending]);
 
   useEffect(() => {
     if (rootPathNeedsReplaceRef.current && currentPath !== "/") {

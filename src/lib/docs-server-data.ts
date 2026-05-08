@@ -4,6 +4,7 @@ import {
 } from "@/lib/auto-translate";
 import {
   applyCachedTranslatedDocTreeTitles,
+  hasCachedTranslatedDocTreeTitles,
   translateGitHubDocPage,
   warmTranslatedDocTreeTitles,
 } from "@/lib/auto-translate-server";
@@ -29,6 +30,7 @@ export type DocsPageWithSourceHeadings = GitHubDocPage & {
 export type DocsLanguageData<T> = {
   data: T;
   language: AutoTranslateLanguage;
+  titlesPending?: boolean;
 };
 
 const warnPageFallback = (language: AutoTranslateLanguage, error: unknown): void => {
@@ -126,6 +128,7 @@ export const loadDocsTreeForLanguage = async ({
     return {
       data: sourceItems,
       language,
+      titlesPending: !treeResult.titleIndexReady,
     };
   }
 
@@ -134,6 +137,7 @@ export const loadDocsTreeForLanguage = async ({
     return {
       data: sourceItems,
       language,
+      titlesPending: !treeResult.titleIndexReady,
     };
   }
 
@@ -174,12 +178,22 @@ export const loadDocsTreeForLanguage = async ({
         settings: store.settings.autoTranslate,
       }),
       language,
+      titlesPending:
+        !treeResult.titleIndexReady ||
+        !hasCachedTranslatedDocTreeTitles({
+          config,
+          items: sourceItems,
+          language,
+          model,
+          settings: store.settings.autoTranslate,
+        }),
     };
   } catch (error: unknown) {
     warnTreeFallback(language, error);
     return {
       data: sourceItems,
       language,
+      titlesPending: !treeResult.titleIndexReady,
     };
   }
 };

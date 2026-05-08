@@ -43,6 +43,11 @@ export type RawDocTreeItem = {
 
 type RawTreeItem = RawDocTreeItem;
 
+export type DocsTreeLoadResult = {
+  tree: DocTreeNode[];
+  titlesPending: boolean;
+};
+
 export type PublicSiteSettings = {
   siteTitle: string;
   siteDescription: string;
@@ -764,9 +769,17 @@ export function formatApiError(error: unknown): string {
 }
 
 export async function fetchDocsTree(languageCode?: string): Promise<DocTreeNode[]> {
+  const result = await fetchDocsTreeState(languageCode);
+  return result.tree;
+}
+
+export async function fetchDocsTreeState(languageCode?: string): Promise<DocsTreeLoadResult> {
   const query = languageCode ? `?${new URLSearchParams({ language: languageCode }).toString()}` : "";
   const response = await requestJson<unknown>(`/api/docs/tree${query}`);
-  return buildTree(normalizeTreeItems(response));
+  return {
+    tree: buildTree(normalizeTreeItems(response)),
+    titlesPending: asBoolean(asRecord(response).titlesPending, false),
+  };
 }
 
 export async function fetchDocPage(pathOrSlug: string, languageCode?: string): Promise<DocPage> {

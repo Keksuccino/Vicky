@@ -289,6 +289,26 @@ export const applyCachedTranslatedDocTreeTitles = ({
   return cached ? applyTreeTitleTranslations(items, cached) : items;
 };
 
+export const hasCachedTranslatedDocTreeTitles = ({
+  config,
+  items,
+  language,
+  model,
+  settings,
+}: {
+  config: GitHubRuntimeConfig;
+  items: GitHubDocTreeItem[];
+  language: AutoTranslateLanguage;
+  model: string;
+  settings: AutoTranslateSettings;
+}): boolean => {
+  if (!shouldTranslateAutoTranslateLanguage(settings, language) || items.length === 0 || !model.trim()) {
+    return true;
+  }
+
+  return Boolean(translatedDocsTitleCache.get(titleTranslationCacheKey(config, items, language, model)));
+};
+
 export const warmTranslatedDocTreeTitles = ({
   apiKey,
   config,
