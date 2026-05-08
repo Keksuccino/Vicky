@@ -201,7 +201,7 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
               className="input"
               value={query}
               aria-label="Search languages"
-              placeholder="Search language or ID"
+              placeholder="Search language"
               onChange={(event) => setQuery(event.target.value)}
             />
           </div>
