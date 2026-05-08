@@ -80,6 +80,7 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
             {
               name: "English (US)",
               code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+              icon: "us",
             },
           ],
     [languages],

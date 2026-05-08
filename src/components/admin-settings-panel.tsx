@@ -31,6 +31,7 @@ import {
   testAdminConnection,
   updateAdminModerator,
 } from "@/components/api";
+import { CircleFlagIconPicker } from "@/components/circle-flag-icon-picker";
 import { ColorPickerField } from "@/components/color-picker-field";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
@@ -45,10 +46,12 @@ import {
   DEFAULT_AI_CHAT_WELCOME_MESSAGE,
 } from "@/lib/ai-chat";
 import {
+  DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON,
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGES,
   DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  getDefaultAutoTranslateLanguageIcon,
   isDefaultAutoTranslateLanguageCode,
   languageCodesEqual,
   normalizeAutoTranslateLanguageCode,
@@ -63,6 +66,7 @@ import type {
   VisitorStatsScope,
   VisitorStatsSummary,
 } from "@/components/types";
+import { isCircleFlagIconId, normalizeCircleFlagIconId } from "@/lib/circle-flags";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
@@ -226,6 +230,10 @@ const validateAutoTranslateLanguages = (languages: AutoTranslateLanguage[]): str
       return "Each language needs a display name and a language code.";
     }
 
+    if (!isCircleFlagIconId(language.icon)) {
+      return "Each language needs a Circle Flags icon.";
+    }
+
     const codeKey = code.toLowerCase();
     if (seenCodes.has(codeKey)) {
       return "Language codes must be unique.";
@@ -258,10 +266,14 @@ const hasAutoTranslateFieldErrors = (errors: AutoTranslateFieldErrors): boolean 
   Boolean(errors.openRouterModel || errors.languages);
 
 const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
+  const defaultLanguage = languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code));
   const output: AutoTranslateLanguage[] = [
     {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+      icon:
+        normalizeCircleFlagIconId(defaultLanguage?.icon) ||
+        getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
     },
   ];
   const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
@@ -269,6 +281,7 @@ const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage
   for (const language of languages) {
     const code = normalizeAutoTranslateLanguageCode(language.code);
     const name = language.name.trim().replace(/\s+/g, " ");
+    const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
 
     if (!code || !name || isDefaultAutoTranslateLanguageCode(code)) {
       continue;
@@ -280,7 +293,7 @@ const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage
     }
 
     seenCodes.add(codeKey);
-    output.push({ name, code });
+    output.push({ name, code, icon });
   }
 
   return output;
@@ -298,6 +311,7 @@ const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): 
   return {
     name: "Custom Language",
     code,
+    icon: DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON,
   };
 };
 
@@ -1312,7 +1326,8 @@ export function AdminSettingsPanel() {
 
       try {
         await persistLatestSettings();
-        const result = await requestAdminLanguageTranslations({ name, code });
+        const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
+        const result = await requestAdminLanguageTranslations({ name, code, icon });
         const pageLabel = result.totalPages === 1 ? "page" : "pages";
 
         if (result.failedPages > 0) {
@@ -2502,6 +2517,9 @@ export function AdminSettingsPanel() {
                   {settings.autoTranslateLanguages.map((language, index) => {
                     const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
                     const normalizedLanguageCode = normalizeAutoTranslateLanguageCode(language.code);
+                    const languageIcon =
+                      normalizeCircleFlagIconId(language.icon) ||
+                      getDefaultAutoTranslateLanguageIcon(normalizedLanguageCode || language.code);
                     const translationRequestDisabled =
                       isDefaultLanguage ||
                       (normalizedLanguageCode
@@ -2514,7 +2532,7 @@ export function AdminSettingsPanel() {
                         className={`translation-language-item${isDefaultLanguage ? " translation-language-item-fixed" : ""}`}
                         key={languageKey}
                       >
-                        <div className="field-inline">
+                        <div className="field-inline translation-language-fields">
                           <label className="field-row" htmlFor={`auto-translate-language-name-${index}`}>
                             <span className="field-label">Display name</span>
                             <input
@@ -2569,6 +2587,21 @@ export function AdminSettingsPanel() {
                               }}
                             />
                           </label>
+
+                          <CircleFlagIconPicker
+                            id={`auto-translate-language-icon-${index}`}
+                            value={languageIcon}
+                            onChange={(icon) => {
+                              const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
+                                entryIndex === index ? { ...entry, icon } : entry,
+                              );
+                              setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                              setAutoTranslateFieldErrors((prev) => ({
+                                ...prev,
+                                languages: validateAutoTranslateLanguages(nextLanguages),
+                              }));
+                            }}
+                          />
                         </div>
 
                         <div className="translation-language-actions">

@@ -41,6 +41,7 @@ export interface OpenRouterSettings {
 export interface AutoTranslateLanguage {
   name: string;
   code: string;
+  icon: string;
 }
 
 export interface AutoTranslateSettings {

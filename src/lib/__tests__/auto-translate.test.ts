@@ -23,9 +23,10 @@ describe("auto translate settings", () => {
     expect(languages[0]).toEqual({
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+      icon: "us",
     });
-    expect(languages).toContainEqual({ name: "German", code: "de" });
-    expect(languages).toContainEqual({ name: "Portuguese (Brazil)", code: "pt-BR" });
+    expect(languages).toContainEqual({ name: "German", code: "de", icon: "de" });
+    expect(languages).toContainEqual({ name: "Portuguese (Brazil)", code: "pt-BR", icon: "br" });
     expect(languages.filter((language) => language.code.toLowerCase() === "de")).toHaveLength(1);
   });
 
@@ -41,8 +42,8 @@ describe("auto translate settings", () => {
     const settings = normalizeAutoTranslateSettings({
       enabled: true,
       languages: [
-        { name: "English (US)", code: "en-US" },
-        { name: "German", code: "de" },
+        { name: "English (US)", code: "en-US", icon: "us" },
+        { name: "German", code: "de", icon: "de" },
       ],
     });
 
@@ -51,7 +52,7 @@ describe("auto translate settings", () => {
 
     expect(english.code).toBe(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
     expect(shouldTranslateAutoTranslateLanguage(settings, english)).toBe(false);
-    expect(german).toEqual({ name: "German", code: "de" });
+    expect(german).toEqual({ name: "German", code: "de", icon: "de" });
     expect(shouldTranslateAutoTranslateLanguage(settings, german)).toBe(true);
   });
 });

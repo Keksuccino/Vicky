@@ -65,7 +65,7 @@ describe("docs search", () => {
   });
 
   it("uses cached translated pages for translated search when available", async () => {
-    const language = { name: "German", code: "de" };
+    const language = { name: "German", code: "de", icon: "de" };
     mocks.getCachedTranslatedDocPage.mockReturnValue(translatedPage);
 
     const results = await searchDocsCorpus(config, "installiere", {
@@ -94,7 +94,7 @@ describe("docs search", () => {
 
     const results = await searchDocsCorpus(config, "einrichtung", {
       translation: {
-        language: { name: "German", code: "de" },
+        language: { name: "German", code: "de", icon: "de" },
         model: "openai/gpt-5.4-mini",
       },
     });

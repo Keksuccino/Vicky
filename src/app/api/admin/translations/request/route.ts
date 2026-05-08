@@ -8,6 +8,7 @@ import {
 import { translateMissingGitHubDocPages } from "@/lib/auto-translate-server";
 import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
+import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { decryptSecret } from "@/lib/encryption";
 import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
@@ -22,6 +23,10 @@ const requestTranslationsSchema = z
       .object({
         name: z.string().min(1, "Language name is required."),
         code: z.string().min(1, "Language code is required."),
+        icon: z
+          .string()
+          .min(1, "Language icon is required.")
+          .refine(isCircleFlagIconId, "Language icon must be a Circle Flags icon ID."),
       })
       .strict(),
   })

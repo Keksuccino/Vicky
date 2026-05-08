@@ -5,21 +5,38 @@ export const DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME = "English (US)";
 export const AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME = "vicky_docs_language";
 export const AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT = "vicky:languagechange";
 export const DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL = "openai/gpt-5.4-mini";
+export const DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON = "xx";
+
+const DEFAULT_AUTO_TRANSLATE_LANGUAGE_ICONS: Record<string, string> = {
+  "en-US": "us",
+  de: "de",
+  pl: "pl",
+  ru: "ru",
+  uk: "ua",
+  ja: "jp",
+  ko: "kr",
+  "zh-CN": "cn",
+  th: "th",
+  fr: "fr",
+  "es-MX": "mx",
+  "es-ES": "es",
+  "pt-BR": "br",
+};
 
 export const DEFAULT_AUTO_TRANSLATE_LANGUAGES: AutoTranslateLanguage[] = [
-  { name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME, code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE },
-  { name: "German", code: "de" },
-  { name: "Polish", code: "pl" },
-  { name: "Russian", code: "ru" },
-  { name: "Ukrainian", code: "uk" },
-  { name: "Japanese", code: "ja" },
-  { name: "Korean", code: "ko" },
-  { name: "Chinese (Simplified)", code: "zh-CN" },
-  { name: "Thai", code: "th" },
-  { name: "French", code: "fr" },
-  { name: "Spanish (Mexico)", code: "es-MX" },
-  { name: "Spanish (Spain)", code: "es-ES" },
-  { name: "Portuguese (Brazil)", code: "pt-BR" },
+  { name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME, code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE, icon: "us" },
+  { name: "German", code: "de", icon: "de" },
+  { name: "Polish", code: "pl", icon: "pl" },
+  { name: "Russian", code: "ru", icon: "ru" },
+  { name: "Ukrainian", code: "uk", icon: "ua" },
+  { name: "Japanese", code: "ja", icon: "jp" },
+  { name: "Korean", code: "ko", icon: "kr" },
+  { name: "Chinese (Simplified)", code: "zh-CN", icon: "cn" },
+  { name: "Thai", code: "th", icon: "th" },
+  { name: "French", code: "fr", icon: "fr" },
+  { name: "Spanish (Mexico)", code: "es-MX", icon: "mx" },
+  { name: "Spanish (Spain)", code: "es-ES", icon: "es" },
+  { name: "Portuguese (Brazil)", code: "pt-BR", icon: "br" },
 ];
 
 export const DEFAULT_OPENROUTER_SETTINGS = (): OpenRouterSettings => ({
@@ -66,6 +83,9 @@ export const languageCodesEqual = (left: string, right: string): boolean =>
 export const isDefaultAutoTranslateLanguageCode = (value: string): boolean =>
   languageCodesEqual(value, DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
 
+export const getDefaultAutoTranslateLanguageIcon = (code: string): string =>
+  DEFAULT_AUTO_TRANSLATE_LANGUAGE_ICONS[normalizeAutoTranslateLanguageCode(code)] ?? DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON;
+
 const normalizeAutoTranslateLanguageName = (value: unknown, fallback = ""): string => {
   if (typeof value !== "string") {
     return fallback;
@@ -73,6 +93,15 @@ const normalizeAutoTranslateLanguageName = (value: unknown, fallback = ""): stri
 
   const trimmed = value.trim().replace(/\s+/g, " ");
   return trimmed || fallback;
+};
+
+export const normalizeAutoTranslateLanguageIcon = (value: unknown, languageCode: string): string => {
+  if (typeof value !== "string") {
+    return getDefaultAutoTranslateLanguageIcon(languageCode);
+  }
+
+  const icon = value.trim().toLowerCase().replace(/^circle-flags:/, "").replace(/_/g, "-");
+  return icon || getDefaultAutoTranslateLanguageIcon(languageCode);
 };
 
 export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLanguage | null => {
@@ -83,6 +112,7 @@ export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLan
   const source = value as Record<string, unknown>;
   const code = normalizeAutoTranslateLanguageCode(source.code);
   const name = normalizeAutoTranslateLanguageName(source.name);
+  const icon = normalizeAutoTranslateLanguageIcon(source.icon, code);
 
   if (!code || !name) {
     return null;
@@ -92,28 +122,34 @@ export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLan
     return {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+      icon,
     };
   }
 
   return {
     name,
     code,
+    icon,
   };
 };
 
 export const normalizeAutoTranslateLanguages = (value: unknown): AutoTranslateLanguage[] => {
   const source = Array.isArray(value) ? value : DEFAULT_AUTO_TRANSLATE_LANGUAGES;
+  const normalizedLanguages = source
+    .map((entry) => normalizeAutoTranslateLanguage(entry))
+    .filter((language): language is AutoTranslateLanguage => language !== null);
+  const defaultLanguage = normalizedLanguages.find((language) => isDefaultAutoTranslateLanguageCode(language.code));
   const languages: AutoTranslateLanguage[] = [
     {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+      icon: defaultLanguage?.icon ?? getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
     },
   ];
   const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
 
-  for (const entry of source) {
-    const language = normalizeAutoTranslateLanguage(entry);
-    if (!language || isDefaultAutoTranslateLanguageCode(language.code)) {
+  for (const language of normalizedLanguages) {
+    if (isDefaultAutoTranslateLanguageCode(language.code)) {
       continue;
     }
 

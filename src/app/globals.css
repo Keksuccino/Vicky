@@ -2148,6 +2148,11 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   gap: 0.58rem;
 }
 
+.translation-language-fields {
+  grid-template-columns: minmax(11rem, 1.05fr) minmax(7rem, 0.7fr) minmax(13rem, 0.95fr);
+  align-items: end;
+}
+
 .translation-language-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2178,6 +2183,125 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .translation-language-request {
   --btn-size: 2.75rem;
   --btn-icon-size: 1.12rem;
+}
+
+.circle-flag-icon {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  display: block;
+}
+
+.circle-flag-picker {
+  position: relative;
+  min-width: 0;
+}
+
+.circle-flag-picker-button {
+  --btn-height: 2.75rem;
+  --btn-gap: 0.48rem;
+  width: 100%;
+  justify-content: flex-start;
+  padding-inline: 0.62rem;
+}
+
+.circle-flag-picker-button .material-icon:last-child {
+  margin-left: auto;
+}
+
+.circle-flag-picker-value {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: grid;
+  gap: 0.08rem;
+  text-align: left;
+}
+
+.circle-flag-picker-value > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.circle-flag-picker-value code,
+.circle-flag-picker-option code {
+  color: var(--text-muted);
+  font-family: var(--font-mono), "Google Sans Code", monospace;
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.2;
+}
+
+.circle-flag-picker-popover {
+  position: absolute;
+  top: calc(100% + 0.45rem);
+  right: 0;
+  z-index: 70;
+  width: min(24rem, calc(100vw - 2rem));
+  padding: 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-elevated));
+}
+
+.circle-flag-picker-search .input {
+  height: 2.5rem;
+}
+
+.circle-flag-picker-options {
+  max-height: 18rem;
+  overflow: auto;
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  padding-right: 0.08rem;
+}
+
+.circle-flag-picker-option {
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.5rem 0.58rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.5;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.circle-flag-picker-option > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.circle-flag-picker-option:hover,
+.circle-flag-picker-option:focus-visible,
+.circle-flag-picker-option-selected {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+}
+
+.circle-flag-picker-empty {
+  margin: 0;
+  padding: 0.65rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
 }
 
 .password-input-row {

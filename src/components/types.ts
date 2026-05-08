@@ -11,6 +11,7 @@ export type ThemeCustomization = {
 export type AutoTranslateLanguage = {
   name: string;
   code: string;
+  icon: string;
 };
 
 export type MarkdownHeading = {

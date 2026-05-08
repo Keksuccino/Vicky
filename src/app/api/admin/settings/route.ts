@@ -15,6 +15,7 @@ import {
 } from "@/lib/auto-translate";
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
+import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { encryptSecret } from "@/lib/encryption";
 import { clearGitHubDocsCache } from "@/lib/github";
@@ -96,6 +97,9 @@ const settingsPatchSchema = z
               .object({
                 name: z.string(),
                 code: z.string(),
+                icon: z
+                  .string()
+                  .refine(isCircleFlagIconId, "Language icon must be a Circle Flags icon ID."),
               })
               .strict(),
           )
