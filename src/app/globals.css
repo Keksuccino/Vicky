@@ -3628,8 +3628,8 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.24rem;
+  gap: 0.5rem;
+  padding: 0.38rem;
   transition:
     border-color 160ms ease,
     background 160ms ease;
@@ -3678,44 +3678,8 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .docs-ai-chat-history-delete {
-  width: 2.2rem;
-  height: 2.2rem;
-  border: 0;
-  border-radius: 999px;
-  background: transparent;
-  color: var(--danger);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    transform 120ms ease;
-}
-
-.docs-ai-chat-history-delete:hover,
-.docs-ai-chat-history-delete:focus-visible {
-  background: color-mix(in srgb, var(--danger) 14%, transparent);
-  color: color-mix(in srgb, var(--danger) 88%, var(--text-primary));
-  transform: scale(1.04);
-}
-
-.docs-ai-chat-history-delete:focus-visible {
-  outline: none;
-}
-
-.docs-ai-chat-history-delete:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-  transform: none;
-}
-
-.docs-ai-chat-history-delete:disabled:hover,
-.docs-ai-chat-history-delete:disabled:focus-visible {
-  background: transparent;
-  color: var(--danger);
-  transform: none;
+  --btn-size: 2.75rem;
+  --btn-icon-size: 1.12rem;
 }
 
 .docs-ai-chat-messages {

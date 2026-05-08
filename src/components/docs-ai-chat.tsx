@@ -721,7 +721,7 @@ export function DocsAiChat() {
                       </button>
                       <button
                         type="button"
-                        className="docs-ai-chat-history-delete"
+                        className="btn btn-icon danger docs-ai-chat-history-delete"
                         onClick={() => handleDeleteConversation(conversation.id)}
                         aria-label={`Delete conversation ${conversation.title}`}
                         title="Delete conversation"
