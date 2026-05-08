@@ -605,12 +605,7 @@ select {
   padding: 0.48rem 0.82rem;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 30%, var(--border));
   border-radius: 999px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface-elevated) 94%, white),
-      color-mix(in srgb, var(--accent-surface-soft) 34%, var(--surface-elevated))
-    );
+  background: color-mix(in srgb, var(--accent-surface-soft) 34%, var(--surface-elevated));
   color: var(--text-primary);
   font-size: 0.77rem;
   font-weight: 650;
