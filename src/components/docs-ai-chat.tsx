@@ -719,16 +719,17 @@ export function DocsAiChat() {
                         <strong>{conversation.title}</strong>
                         <span>{formatUpdatedAt(conversation.updatedAt)}</span>
                       </button>
-                      <button
-                        type="button"
-                        className="btn btn-icon danger docs-ai-chat-history-delete"
-                        onClick={() => handleDeleteConversation(conversation.id)}
-                        aria-label={`Delete conversation ${conversation.title}`}
-                        title="Delete conversation"
-                        disabled={isSending && conversation.id === activeConversation.id}
-                      >
-                        <MaterialIcon name="delete" />
-                      </button>
+                      <span className="docs-ai-chat-history-delete-tooltip ui-tooltip" data-ui-tooltip="Delete chat">
+                        <button
+                          type="button"
+                          className="btn btn-icon danger docs-ai-chat-history-delete"
+                          onClick={() => handleDeleteConversation(conversation.id)}
+                          aria-label={`Delete conversation ${conversation.title}`}
+                          disabled={isSending && conversation.id === activeConversation.id}
+                        >
+                          <MaterialIcon name="delete" />
+                        </button>
+                      </span>
                     </div>
                   ))}
               </div>

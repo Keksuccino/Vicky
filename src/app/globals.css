@@ -3677,6 +3677,10 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   background: var(--chat-history-bg-active);
 }
 
+.docs-ai-chat-history-delete-tooltip {
+  display: inline-flex;
+}
+
 .docs-ai-chat-history-delete {
   --btn-size: 2.75rem;
   --btn-icon-size: 1.12rem;
