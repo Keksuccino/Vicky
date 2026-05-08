@@ -2083,7 +2083,6 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   padding: 0.56rem 0.72rem;
   transition:
     border-color 160ms ease,
-    box-shadow 160ms ease,
     background 160ms ease;
 }
 
@@ -2094,7 +2093,6 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 .input:focus-visible {
   outline: none;
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-soft) 72%, transparent);
 }
 
 .textarea {
@@ -3890,7 +3888,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
 .docs-ai-chat-composer-shell:focus-within {
   border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-soft) 72%, transparent);
 }
 
 .docs-ai-chat-input {
