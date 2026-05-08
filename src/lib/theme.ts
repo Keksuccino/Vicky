@@ -78,11 +78,6 @@ const rgbToHex = ({ r, g, b }: { r: number; g: number; b: number }): string =>
     .map((value) => clampByte(value).toString(16).padStart(2, "0"))
     .join("")}`;
 
-const hexToRgba = (hex: string, alpha: number): string => {
-  const { r, g, b } = hexToRgb(hex);
-  return `rgba(${r}, ${g}, ${b}, ${Math.max(0, Math.min(1, alpha))})`;
-};
-
 const mixHexColors = (baseHex: string, overlayHex: string, overlayWeight: number): string => {
   const base = hexToRgb(baseHex);
   const overlay = hexToRgb(overlayHex);
@@ -160,24 +155,20 @@ const buildAccentContrast = (accent: string): string => (relativeLuminance(accen
 const buildPageGradient = (mode: ThemeMode): string =>
   mode === "dark" ? DARK_THEME_BASE_VARIABLES["--surface"] : LIGHT_THEME_BASE_VARIABLES["--surface"];
 
-const buildMobileFabVariables = (mode: ThemeMode, surfaceAccent: string): ThemeVariables =>
-  mode === "dark"
-    ? {
-        "--mobile-fab-bg": hexToRgba(surfaceAccent, 0.22),
-        "--mobile-fab-bg-hover": hexToRgba(surfaceAccent, 0.33),
-        "--mobile-fab-bg-active": hexToRgba(surfaceAccent, 0.4),
-        "--mobile-fab-border": hexToRgba(surfaceAccent, 0.62),
-        "--mobile-fab-shadow": "rgba(0, 0, 0, 0.56)",
-        "--mobile-fab-icon": "#f2f2f2",
-      }
-    : {
-        "--mobile-fab-bg": hexToRgba(surfaceAccent, 0.24),
-        "--mobile-fab-bg-hover": hexToRgba(surfaceAccent, 0.34),
-        "--mobile-fab-bg-active": hexToRgba(surfaceAccent, 0.42),
-        "--mobile-fab-border": hexToRgba(surfaceAccent, 0.58),
-        "--mobile-fab-shadow": "rgba(26, 62, 110, 0.27)",
-        "--mobile-fab-icon": "#0f5698",
-      };
+const buildMobileFabVariables = (mode: ThemeMode, surfaceAccent: string): ThemeVariables => {
+  const defaults = mode === "dark" ? DARK_THEME_BASE_VARIABLES : LIGHT_THEME_BASE_VARIABLES;
+  const surfaceMuted = defaults["--surface-muted"];
+  const surfaceElevated = defaults["--surface-elevated"];
+  const border = defaults["--border"];
+
+  return {
+    "--mobile-fab-bg": mixHexColors(surfaceMuted, surfaceAccent, mode === "dark" ? 0.24 : 0.2),
+    "--mobile-fab-bg-hover": mixHexColors(surfaceElevated, surfaceAccent, mode === "dark" ? 0.3 : 0.24),
+    "--mobile-fab-bg-active": mixHexColors(surfaceElevated, surfaceAccent, mode === "dark" ? 0.36 : 0.3),
+    "--mobile-fab-border": mixHexColors(border, surfaceAccent, mode === "dark" ? 0.62 : 0.58),
+    "--mobile-fab-icon": mode === "dark" ? "#f2f2f2" : "#0f5698",
+  };
+};
 
 export const buildThemeVariables = (mode: ThemeMode, settings: ThemeCustomizationSettings): ThemeVariables => {
   const defaults = mode === "dark" ? DARK_THEME_BASE_VARIABLES : LIGHT_THEME_BASE_VARIABLES;

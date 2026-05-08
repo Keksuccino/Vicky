@@ -28,11 +28,10 @@
   --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 86%, var(--surface-elevated));
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 42%, #7c8ead);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 58%, #687ea4);
-  --mobile-fab-bg: rgba(39, 132, 215, 0.24);
-  --mobile-fab-bg-hover: rgba(22, 123, 214, 0.34);
-  --mobile-fab-bg-active: rgba(14, 116, 206, 0.42);
-  --mobile-fab-border: rgba(18, 85, 146, 0.58);
-  --mobile-fab-shadow: rgba(26, 62, 110, 0.27);
+  --mobile-fab-bg: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
+  --mobile-fab-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
+  --mobile-fab-bg-active: color-mix(in srgb, var(--accent-surface-soft) 88%, var(--surface-elevated));
+  --mobile-fab-border: color-mix(in srgb, var(--accent-surface) 58%, var(--border));
   --mobile-fab-icon: #0f5698;
   --code-token-plain: #334869;
   --code-token-comment: #5f7393;
@@ -83,11 +82,10 @@ html[data-color-mode="custom"] {
   --sidebar-scrollbar-track-border: color-mix(in srgb, var(--border) 78%, #2d2d2d);
   --sidebar-scrollbar-thumb: color-mix(in srgb, var(--accent) 46%, #8c8c8c);
   --sidebar-scrollbar-thumb-hover: color-mix(in srgb, var(--accent) 62%, #b0b0b0);
-  --mobile-fab-bg: rgba(101, 114, 118, 0.22);
-  --mobile-fab-bg-hover: rgba(101, 114, 118, 0.33);
-  --mobile-fab-bg-active: rgba(101, 114, 118, 0.4);
-  --mobile-fab-border: rgba(101, 114, 118, 0.62);
-  --mobile-fab-shadow: rgba(0, 0, 0, 0.56);
+  --mobile-fab-bg: color-mix(in srgb, var(--accent-surface-soft) 72%, var(--surface-muted));
+  --mobile-fab-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
+  --mobile-fab-bg-active: color-mix(in srgb, var(--accent-surface-soft) 88%, var(--surface-elevated));
+  --mobile-fab-border: color-mix(in srgb, var(--accent-surface) 62%, var(--border));
   --mobile-fab-icon: #f2f2f2;
   --code-token-plain: #c8cfdb;
   --code-token-comment: #93a0b4;
@@ -872,7 +870,6 @@ select {
   border-radius: inherit;
   background: var(--mobile-fab-bg);
   border: 1px solid var(--mobile-fab-border);
-  backdrop-filter: blur(20px);
   z-index: 0;
   pointer-events: none;
   transition:
