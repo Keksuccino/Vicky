@@ -2328,15 +2328,6 @@ export function AdminSettingsPanel() {
                   <strong className="theme-color-section-title">Light mode</strong>
                   <div className="field-inline">
                     <AccentColorField
-                      id="theme-light-accent"
-                      label="Emphasis accent"
-                      value={settings.themeLightAccent}
-                      fallbackColor={THEME_DEFAULTS.lightAccent}
-                      showReset
-                      hint="Used for links, primary actions, active states, focus borders, and strong highlights in Light mode."
-                      onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
-                    />
-                    <AccentColorField
                       id="theme-light-surface-accent"
                       label="Interface accent"
                       value={settings.themeLightSurfaceAccent}
@@ -2345,21 +2336,21 @@ export function AdminSettingsPanel() {
                       hint="Used for default buttons, controls, subtle hover states, panels, page headers, and navigation surfaces in Light mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
                     />
+                    <AccentColorField
+                      id="theme-light-accent"
+                      label="Emphasis accent"
+                      value={settings.themeLightAccent}
+                      fallbackColor={THEME_DEFAULTS.lightAccent}
+                      showReset
+                      hint="Used for links, primary actions, active states, focus borders, and strong highlights in Light mode."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
+                    />
                   </div>
                 </div>
 
                 <div className="theme-color-section">
                   <strong className="theme-color-section-title">Dark mode</strong>
                   <div className="field-inline">
-                    <AccentColorField
-                      id="theme-dark-accent"
-                      label="Emphasis accent"
-                      value={settings.themeDarkAccent}
-                      fallbackColor={THEME_DEFAULTS.darkAccent}
-                      showReset
-                      hint="Used for links, primary actions, active states, focus borders, and strong highlights in Dark mode."
-                      onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
-                    />
                     <AccentColorField
                       id="theme-dark-surface-accent"
                       label="Interface accent"
@@ -2368,6 +2359,15 @@ export function AdminSettingsPanel() {
                       showReset
                       hint="Used for default buttons, controls, subtle hover states, panels, page headers, and navigation surfaces in Dark mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
+                    />
+                    <AccentColorField
+                      id="theme-dark-accent"
+                      label="Emphasis accent"
+                      value={settings.themeDarkAccent}
+                      fallbackColor={THEME_DEFAULTS.darkAccent}
+                      showReset
+                      hint="Used for links, primary actions, active states, focus borders, and strong highlights in Dark mode."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
                     />
                   </div>
                 </div>
