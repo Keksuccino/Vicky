@@ -3591,34 +3591,14 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .docs-ai-chat-icon-button {
-  width: 2.2rem;
-  height: 2.2rem;
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 20%, var(--border));
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--surface-elevated) 78%, var(--accent-surface-soft));
-  color: var(--text-secondary);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  transition:
-    background 160ms ease,
-    color 160ms ease,
-    transform 120ms ease;
+  --btn-size: 2.2rem;
 }
 
-.docs-ai-chat-icon-button:hover,
-.docs-ai-chat-icon-button:focus-visible {
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--surface-elevated) 84%, var(--accent-soft));
-  transform: translateY(-1px);
+.docs-ai-chat-icon-button-new-chat {
+  --btn-icon-size: 1.12rem;
 }
 
-.docs-ai-chat-icon-button-new-chat .material-icon {
-  font-size: 1.12rem;
-}
-
-.docs-ai-chat-history-back-icon {
+.btn .docs-ai-chat-history-back-icon {
   font-size: 1.2rem;
 }
 

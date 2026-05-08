@@ -667,7 +667,7 @@ export function DocsAiChat() {
               <div className="docs-ai-chat-header-actions">
                 <button
                   type="button"
-                  className="docs-ai-chat-icon-button"
+                  className="btn btn-icon btn-pill docs-ai-chat-icon-button"
                   onClick={() => setHistoryOpen((current) => !current)}
                   aria-label={historyOpen ? "Hide chat history" : "Show chat history"}
                 >
@@ -678,7 +678,7 @@ export function DocsAiChat() {
                 </button>
                 <button
                   type="button"
-                  className="docs-ai-chat-icon-button docs-ai-chat-icon-button-new-chat"
+                  className="btn btn-icon btn-pill docs-ai-chat-icon-button docs-ai-chat-icon-button-new-chat"
                   onClick={handleNewChat}
                   aria-label="Start a new chat"
                 >
@@ -686,7 +686,7 @@ export function DocsAiChat() {
                 </button>
                 <button
                   type="button"
-                  className="docs-ai-chat-icon-button"
+                  className="btn btn-icon btn-pill docs-ai-chat-icon-button"
                   onClick={() => setIsOpen(false)}
                   aria-label="Close chat"
                 >
@@ -835,7 +835,7 @@ export function DocsAiChat() {
                 />
                 <button
                   type="button"
-                  className="btn btn-ghost"
+                  className="btn"
                   onClick={() => fileInputRef.current?.click()}
                   disabled={isSending || pendingAttachments.length >= MAX_AI_CHAT_IMAGES_PER_MESSAGE}
                 >
