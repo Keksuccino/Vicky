@@ -2320,7 +2320,7 @@ export function AdminSettingsPanel() {
               <h2>Theme Management</h2>
             </div>
 
-            <p className="panel-description">Customize the Light and Dark mode accent colors.</p>
+            <p className="panel-description">Customize the Light and Dark mode emphasis and interface accent colors.</p>
 
             <div className="theme-editor">
               <div className="theme-color-grid">
@@ -2329,20 +2329,20 @@ export function AdminSettingsPanel() {
                   <div className="field-inline">
                     <AccentColorField
                       id="theme-light-accent"
-                      label="Main accent"
+                      label="Emphasis accent"
                       value={settings.themeLightAccent}
                       fallbackColor={THEME_DEFAULTS.lightAccent}
                       showReset
-                      hint="Used for links, highlights, focus states, and primary action buttons in Light mode."
+                      hint="Used for links, primary actions, active states, focus borders, and strong highlights in Light mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
                     />
                     <AccentColorField
                       id="theme-light-surface-accent"
-                      label="Surface/background accent"
+                      label="Interface accent"
                       value={settings.themeLightSurfaceAccent}
                       fallbackColor={THEME_DEFAULTS.lightSurfaceAccent}
                       showReset
-                      hint="Used for sidebar surfaces, header controls, and page-entry hovers in Light mode."
+                      hint="Used for default buttons, controls, subtle hover states, panels, page headers, and navigation surfaces in Light mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeLightSurfaceAccent: value }))}
                     />
                   </div>
@@ -2353,20 +2353,20 @@ export function AdminSettingsPanel() {
                   <div className="field-inline">
                     <AccentColorField
                       id="theme-dark-accent"
-                      label="Main accent"
+                      label="Emphasis accent"
                       value={settings.themeDarkAccent}
                       fallbackColor={THEME_DEFAULTS.darkAccent}
                       showReset
-                      hint="Used for links, highlights, focus states, and primary action buttons in Dark mode."
+                      hint="Used for links, primary actions, active states, focus borders, and strong highlights in Dark mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
                     />
                     <AccentColorField
                       id="theme-dark-surface-accent"
-                      label="Surface/background accent"
+                      label="Interface accent"
                       value={settings.themeDarkSurfaceAccent}
                       fallbackColor={THEME_DEFAULTS.darkSurfaceAccent}
                       showReset
-                      hint="Used for sidebar surfaces, header controls, and page-entry hovers in Dark mode."
+                      hint="Used for default buttons, controls, subtle hover states, panels, page headers, and navigation surfaces in Dark mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkSurfaceAccent: value }))}
                     />
                   </div>
@@ -2380,13 +2380,13 @@ export function AdminSettingsPanel() {
                     <span className="theme-preview-chip">Preview</span>
                   </div>
                   <p className="theme-preview-copy">
-                    Main accent drives links and primary actions. Surface/background accent drives sidebar and header UI.
+                    Emphasis accent drives links, primary actions, active states, and strong highlights. Interface accent drives controls and navigation surfaces.
                   </p>
                   <div className="theme-preview-actions">
                     <span className="theme-preview-link">Example link</span>
-                    <span className="theme-preview-surface-chip">Sidebar tab</span>
+                    <span className="theme-preview-surface-chip">Interface control</span>
                     <button type="button" className="theme-preview-button">
-                      Primary action
+                      Emphasis action
                     </button>
                   </div>
                 </div>
@@ -2397,13 +2397,13 @@ export function AdminSettingsPanel() {
                     <span className="theme-preview-chip">Preview</span>
                   </div>
                   <p className="theme-preview-copy">
-                    Top-right controls and sidebar surfaces reuse the secondary accent in Dark mode.
+                    Emphasis accent drives links, primary actions, active states, and strong highlights. Interface accent drives controls and navigation surfaces.
                   </p>
                   <div className="theme-preview-actions">
                     <span className="theme-preview-link">Example link</span>
-                    <span className="theme-preview-surface-chip">Header control</span>
+                    <span className="theme-preview-surface-chip">Interface control</span>
                     <button type="button" className="theme-preview-button">
-                      Primary action
+                      Emphasis action
                     </button>
                   </div>
                 </div>
