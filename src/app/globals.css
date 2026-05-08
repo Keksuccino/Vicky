@@ -1027,7 +1027,7 @@ select {
 
 .sidebar-toc-link {
   width: 100%;
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-secondary);
   text-align: left;
@@ -1036,11 +1036,16 @@ select {
   cursor: pointer;
   transition:
     background 150ms ease,
+    border-color 150ms ease,
     color 150ms ease;
 }
 
-.sidebar-toc-link:hover {
-  background: var(--surface-muted);
+.sidebar-toc-link:hover,
+.sidebar-toc-link:focus-visible,
+.sidebar-toc-link-active {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
   color: var(--text-primary);
 }
 

@@ -85,6 +85,27 @@ function normalizeComparableText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function decodeHashAnchor(hash: string): string | null {
+  const rawAnchor = hash.startsWith("#") ? hash.slice(1) : hash;
+  if (!rawAnchor) {
+    return null;
+  }
+
+  try {
+    return decodeURIComponent(rawAnchor);
+  } catch {
+    return rawAnchor;
+  }
+}
+
+function readCurrentHashAnchor(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return decodeHashAnchor(window.location.hash);
+}
+
 function getHeadingTextForMatch(element: HTMLElement): string {
   const clone = element.cloneNode(true) as HTMLElement;
   clone.querySelectorAll(".heading-anchor").forEach((node) => node.remove());
@@ -218,6 +239,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [pageCopied, setPageCopied] = useState(false);
+  const [activeHeadingSlug, setActiveHeadingSlug] = useState<string | null>(null);
   const [selectedLanguageCode, setSelectedLanguageCode] = useState(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
   const [languageReady, setLanguageReady] = useState(false);
   const treeLoadIdRef = useRef(0);
@@ -509,6 +531,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   useEffect(() => {
     const onHashChange = () => {
+      setActiveHeadingSlug(readCurrentHashAnchor());
       scrollToHashTarget();
     };
 
@@ -517,6 +540,10 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       window.removeEventListener("hashchange", onHashChange);
     };
   }, [scrollToHashTarget]);
+
+  useEffect(() => {
+    setActiveHeadingSlug(readCurrentHashAnchor());
+  }, [currentPath]);
 
   useEffect(() => {
     const mainElement = document.getElementById("main-content");
@@ -550,6 +577,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
         window.history.pushState(null, "", href);
       }
 
+      setActiveHeadingSlug(decodeHashAnchor(href));
       scrollToHashTarget();
     };
 
@@ -669,6 +697,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const onSelectPath = (path: string, anchor?: string) => {
     const normalized = normalizePath(path);
     setCurrentPath(normalized);
+    setActiveHeadingSlug(anchor ?? null);
     setSearchQuery("");
     setSearchResults([]);
     setSidebarOpen(false);
@@ -729,6 +758,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
               tree={tree}
               currentPath={currentPath}
               headings={page?.headings ?? []}
+              activeHeadingSlug={activeHeadingSlug}
               searchQuery={searchQuery}
               searching={searching}
               searchResults={searchResults}

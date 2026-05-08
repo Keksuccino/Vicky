@@ -13,6 +13,7 @@ type DocsTreeProps = {
   tree: DocTreeNode[];
   currentPath: string;
   headings: MarkdownHeading[];
+  activeHeadingSlug: string | null;
   searchQuery: string;
   searching: boolean;
   searchResults: DocSearchResult[];
@@ -34,6 +35,11 @@ function normalizePath(path: string): string {
     return "/";
   }
   return path.startsWith("/") ? path : `/${path}`;
+}
+
+function normalizeAnchor(anchor: string | null | undefined): string {
+  const normalized = (anchor ?? "").trim().toLowerCase();
+  return normalized.startsWith("user-content-") ? normalized.slice("user-content-".length) : normalized;
 }
 
 type SearchHighlightMatcher = {
@@ -163,6 +169,7 @@ export function DocsTree({
   tree,
   currentPath,
   headings,
+  activeHeadingSlug,
   searchQuery,
   searching,
   searchResults,
@@ -176,6 +183,7 @@ export function DocsTree({
   const showTree = !hasSearch;
 
   const tocHeadings = useMemo(() => headings.filter((heading) => heading.depth <= 4), [headings]);
+  const normalizedActiveHeadingSlug = useMemo(() => normalizeAnchor(activeHeadingSlug), [activeHeadingSlug]);
   const excerptHighlightMatcher = useMemo(() => buildSearchHighlightMatcher(searchQuery), [searchQuery]);
 
   const onToggle = (id: string) => {
@@ -278,21 +286,26 @@ export function DocsTree({
             <>
               <nav aria-label="Page content">
                 <ul className="sidebar-toc-list">
-                  {tocHeadings.map((heading) => (
-                    <li
-                      key={heading.slug}
-                      className="sidebar-toc-item"
-                      style={{ paddingInlineStart: `${(heading.depth - 1) * 10}px` }}
-                    >
-                      <button
-                        type="button"
-                        className="sidebar-toc-link"
-                        onClick={() => onSelectPath(currentPath, heading.slug)}
+                  {tocHeadings.map((heading) => {
+                    const isActive = normalizedActiveHeadingSlug === normalizeAnchor(heading.slug);
+
+                    return (
+                      <li
+                        key={heading.slug}
+                        className="sidebar-toc-item"
+                        style={{ paddingInlineStart: `${(heading.depth - 1) * 10}px` }}
                       >
-                        {heading.text}
-                      </button>
-                    </li>
-                  ))}
+                        <button
+                          type="button"
+                          className={cn("sidebar-toc-link", isActive && "sidebar-toc-link-active")}
+                          aria-current={isActive ? "location" : undefined}
+                          onClick={() => onSelectPath(currentPath, heading.slug)}
+                        >
+                          {heading.text}
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               </nav>
             </>
