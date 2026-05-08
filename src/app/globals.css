@@ -732,6 +732,10 @@ select {
   padding: 0.34rem 0.65rem;
   background: transparent;
   color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.5;
   cursor: pointer;
   transition:
     background 160ms ease,
