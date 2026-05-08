@@ -2968,17 +2968,30 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
 .theme-color-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.8rem;
+  align-items: start;
 }
 
 .theme-color-section {
   display: grid;
-  gap: 0.55rem;
+  gap: 0.7rem;
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--accent-surface-soft) 42%, var(--surface-muted));
+  padding: 0.82rem;
 }
 
 .theme-color-section-title {
   color: var(--text-primary);
   font-weight: 700;
+}
+
+.theme-accent-fields {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
 }
 
 .theme-color-input-row {
@@ -3992,6 +4005,10 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   }
 
   .theme-preview-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .theme-color-grid {
     grid-template-columns: 1fr;
   }
 }

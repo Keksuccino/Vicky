@@ -2326,7 +2326,7 @@ export function AdminSettingsPanel() {
               <div className="theme-color-grid">
                 <div className="theme-color-section">
                   <strong className="theme-color-section-title">Light mode</strong>
-                  <div className="field-inline">
+                  <div className="theme-accent-fields">
                     <AccentColorField
                       id="theme-light-surface-accent"
                       label="Interface accent"
@@ -2350,7 +2350,7 @@ export function AdminSettingsPanel() {
 
                 <div className="theme-color-section">
                   <strong className="theme-color-section-title">Dark mode</strong>
-                  <div className="field-inline">
+                  <div className="theme-accent-fields">
                     <AccentColorField
                       id="theme-dark-surface-accent"
                       label="Interface accent"
