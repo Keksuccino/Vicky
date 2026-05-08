@@ -296,10 +296,7 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
             throw badRequest(`AI Chat: system prompt must include the ${AI_CHAT_DOCS_PLACEHOLDER} placeholder.`);
           }
 
-          store.settings.aiChat.systemPrompt = normalizeAiChatSystemPromptTemplate(
-            patch.aiChat.systemPrompt,
-            store.settings.aiChat.assistantName,
-          );
+          store.settings.aiChat.systemPrompt = normalizeAiChatSystemPromptTemplate(patch.aiChat.systemPrompt);
         }
 
         if (patch.aiChat.openRouterApiKey !== undefined) {

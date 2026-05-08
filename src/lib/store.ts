@@ -355,7 +355,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
       headerSubtitle,
       welcomeMessage,
       openRouterModel: normalizeString(sourceAiChat.openRouterModel, defaultAiChat.openRouterModel),
-      systemPrompt: normalizeAiChatSystemPromptTemplate(sourceAiChat.systemPrompt, assistantName),
+      systemPrompt: normalizeAiChatSystemPromptTemplate(sourceAiChat.systemPrompt),
     },
     autoTranslate: normalizeAutoTranslateSettings(source.autoTranslate),
     theme: normalizeThemeCustomization(sourceTheme, fallbackTheme),

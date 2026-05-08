@@ -5,7 +5,6 @@ import {
   AI_CHAT_DOCS_PLACEHOLDER,
   DEFAULT_AI_CHAT_SYSTEM_PROMPT,
   DEFAULT_AI_CHAT_WELCOME_MESSAGE,
-  buildDefaultAiChatSystemPrompt,
   normalizeAiChatSystemPromptTemplate,
   normalizeAiChatWelcomeMessage,
   renderAiChatAssistantTemplate,
@@ -49,34 +48,10 @@ describe("ai chat system prompt", () => {
     expect(rendered).toBe("You are Vicky.\n\n# Docs");
   });
 
-  it("upgrades the legacy default prompt to the configured assistant name", () => {
-    const rendered = renderAiChatSystemPrompt(buildDefaultAiChatSystemPrompt("Alice"), "# Docs", "Vicky");
-
-    expect(rendered).toContain("Your name is Vicky.");
-    expect(rendered).not.toContain("Your name is Alice.");
-  });
-
-  it("upgrades the previous built-in default prompt to the new template", () => {
-    const previousTemplate = `You are Alice, a friendly and wholesome AI assistant for this documentation site.
-
-You are trained on the documentation provided below and your job is to answer questions about that documentation clearly, accurately, and helpfully.
-
-Ground your answers in the provided docs whenever possible. If the docs do not contain the answer, say that plainly instead of inventing details.
-
-When helpful, reference the relevant docs page URLs that appear in the documentation context.
-
-Documentation context:
-${AI_CHAT_DOCS_PLACEHOLDER}`;
-    const rendered = renderAiChatSystemPrompt(previousTemplate, "# Docs", "Vicky");
-
-    expect(rendered).toContain("Your name is Vicky.");
-    expect(rendered).not.toContain("friendly and wholesome");
-  });
-
   it("preserves trailing blank lines in custom system prompts", () => {
     const template = `${DEFAULT_AI_CHAT_SYSTEM_PROMPT}\n\n`;
 
-    expect(normalizeAiChatSystemPromptTemplate(template, "Vicky")).toBe(template);
+    expect(normalizeAiChatSystemPromptTemplate(template)).toBe(template);
   });
 });
 
