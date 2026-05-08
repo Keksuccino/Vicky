@@ -196,6 +196,38 @@ describe("auto translate persistent cache", () => {
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(2);
   });
 
+  it("dedupes concurrent page translation requests for the same source key", async () => {
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          page_display_name: "Installationsanleitung",
+          page_description: "Deutsche Einrichtung.",
+          page_content: "## Einrichtung\n\nInstalliere das Paket mit npm.",
+        },
+      ]),
+    );
+
+    const translations = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        translateGitHubDocPage({
+          apiKey: "key",
+          config,
+          language,
+          model: settings.openRouterModel,
+          origin: "https://example.com",
+          settings,
+          siteTitle: "Vicky Docs",
+          sourcePage,
+        }),
+      ),
+    );
+
+    expect(translations.map((translation) => translation.title)).toEqual(
+      Array.from({ length: 5 }, () => "Installationsanleitung"),
+    );
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
   it("reuses persisted sidebar title translations after the in-memory cache is cleared", async () => {
     mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
       JSON.stringify([
@@ -232,6 +264,35 @@ describe("auto translate persistent cache", () => {
 
     expect(first[0]?.name).toBe("Installation");
     expect(second[0]?.name).toBe("Installation");
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("dedupes concurrent sidebar title translation requests for the same title key", async () => {
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          page_slug: "install",
+          page_display_name: "Installation",
+        },
+      ]),
+    );
+
+    const translatedTrees = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        loadTranslatedDocTreeTitles({
+          apiKey: "key",
+          config,
+          items: treeItems,
+          language,
+          model: settings.openRouterModel,
+          origin: "https://example.com",
+          settings,
+          siteTitle: "Vicky Docs",
+        }),
+      ),
+    );
+
+    expect(translatedTrees.map((tree) => tree[0]?.name)).toEqual(Array.from({ length: 5 }, () => "Installation"));
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
   });
 });

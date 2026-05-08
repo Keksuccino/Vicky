@@ -233,39 +233,39 @@ const loadTitleOnlyTranslations = async ({
     return pending;
   }
 
-  const persisted = await readPersistentTitleTranslations(key);
-  if (persisted) {
-    translatedDocsTitleCache.set(key, persisted);
-    return persisted;
-  }
+  const loadPromise = (async () => {
+    const persisted = await readPersistentTitleTranslations(key);
+    if (persisted) {
+      translatedDocsTitleCache.set(key, persisted);
+      return persisted;
+    }
 
-  const loadPromise = requestOpenRouterChatCompletion({
-    apiKey,
-    model,
-    origin,
-    siteTitle,
-    messages: [
-      {
-        role: "system",
-        content: AUTO_TRANSLATE_SYSTEM_PROMPT,
-      },
-      {
-        role: "user",
-        content: buildTitleTranslationPrompt(language.name, items),
-      },
-    ],
-  })
-    .then(async (text) => {
-      const translations = normalizeTitleTranslationResponse(text, items);
-      translatedDocsTitleCache.set(key, translations);
-      await writePersistentTitleTranslations(key, translations);
-      return translations;
-    })
-    .finally(() => {
-      if (titleTranslationLoads.get(key) === loadPromise) {
-        titleTranslationLoads.delete(key);
-      }
+    const text = await requestOpenRouterChatCompletion({
+      apiKey,
+      model,
+      origin,
+      siteTitle,
+      messages: [
+        {
+          role: "system",
+          content: AUTO_TRANSLATE_SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: buildTitleTranslationPrompt(language.name, items),
+        },
+      ],
     });
+
+    const translations = normalizeTitleTranslationResponse(text, items);
+    translatedDocsTitleCache.set(key, translations);
+    await writePersistentTitleTranslations(key, translations);
+    return translations;
+  })().finally(() => {
+    if (titleTranslationLoads.get(key) === loadPromise) {
+      titleTranslationLoads.delete(key);
+    }
+  });
 
   titleTranslationLoads.set(key, loadPromise);
   return loadPromise;
@@ -503,42 +503,42 @@ export const translateGitHubDocPage = async ({
     return pending.then((translatedPage) => withSourcePageRuntimeFields(translatedPage, sourcePage));
   }
 
-  const persisted = await readPersistentTranslatedPage(key);
-  if (persisted) {
-    translatedDocsPageCache.set(key, persisted);
-    return withSourcePageRuntimeFields(persisted, sourcePage);
-  }
+  const loadPromise = (async () => {
+    const persisted = await readPersistentTranslatedPage(key);
+    if (persisted) {
+      translatedDocsPageCache.set(key, persisted);
+      return persisted;
+    }
 
-  const loadPromise = requestOpenRouterChatCompletion({
-    apiKey,
-    model,
-    origin,
-    siteTitle,
-    messages: [
-      {
-        role: "system",
-        content: AUTO_TRANSLATE_SYSTEM_PROMPT,
-      },
-      {
-        role: "user",
-        content: buildPageTranslationPrompt(language.name, sourcePage),
-      },
-    ],
-  })
-    .then(async (text) => {
-      const translatedPage = createTranslatedDocPage(sourcePage, normalizePageTranslationResponse(text));
-      translatedDocsPageCache.set(key, translatedPage);
-      await writePersistentTranslatedPage(key, translatedPage);
-      return translatedPage;
-    })
-    .finally(() => {
-      if (pageTranslationLoads.get(key) === loadPromise) {
-        pageTranslationLoads.delete(key);
-      }
+    const text = await requestOpenRouterChatCompletion({
+      apiKey,
+      model,
+      origin,
+      siteTitle,
+      messages: [
+        {
+          role: "system",
+          content: AUTO_TRANSLATE_SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: buildPageTranslationPrompt(language.name, sourcePage),
+        },
+      ],
     });
 
+    const translatedPage = createTranslatedDocPage(sourcePage, normalizePageTranslationResponse(text));
+    translatedDocsPageCache.set(key, translatedPage);
+    await writePersistentTranslatedPage(key, translatedPage);
+    return translatedPage;
+  })().finally(() => {
+    if (pageTranslationLoads.get(key) === loadPromise) {
+      pageTranslationLoads.delete(key);
+    }
+  });
+
   pageTranslationLoads.set(key, loadPromise);
-  return loadPromise;
+  return loadPromise.then((translatedPage) => withSourcePageRuntimeFields(translatedPage, sourcePage));
 };
 
 export const translateMissingGitHubDocPages = async ({
