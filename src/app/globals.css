@@ -2227,14 +2227,8 @@ html[data-color-mode="light"] .page-copy-menu {
 }
 
 .password-toggle-button {
-  width: 2.75rem;
-  min-width: 2.75rem;
-  min-height: 2.75rem;
-  padding: 0;
-}
-
-.password-toggle-button .material-icon {
-  font-size: 1.22rem;
+  --btn-size: 2.75rem;
+  --btn-icon-size: 1.22rem;
 }
 
 .checkbox-row {

@@ -1740,7 +1740,7 @@ export function AdminSettingsPanel() {
                     />
                     <button
                       type="button"
-                      className="btn btn-ghost password-toggle-button"
+                      className="btn btn-icon btn-ghost password-toggle-button"
                       aria-label={showModeratorPassword ? "Hide password" : "Show password"}
                       aria-pressed={showModeratorPassword}
                       onClick={() => setShowModeratorPassword((current) => !current)}
@@ -1806,7 +1806,7 @@ export function AdminSettingsPanel() {
                                 />
                                 <button
                                   type="button"
-                                  className="btn btn-ghost password-toggle-button"
+                                  className="btn btn-icon btn-ghost password-toggle-button"
                                   aria-label={showEditingModeratorPassword ? "Hide password" : "Show password"}
                                   aria-pressed={showEditingModeratorPassword}
                                   onClick={() => setShowEditingModeratorPassword((current) => !current)}
