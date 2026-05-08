@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { CircleFlagIcon } from "@/components/circle-flag-icon";
 import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import type { AutoTranslateLanguage } from "@/components/types";
@@ -9,10 +10,12 @@ import {
   AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT,
   AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+  getDefaultAutoTranslateLanguageIcon,
   isDefaultAutoTranslateLanguageCode,
   languageCodesEqual,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
+import { normalizeCircleFlagIconId } from "@/lib/circle-flags";
 
 const LANGUAGE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const ICON_ONLY_LANGUAGE_SELECTOR_QUERY = "(max-width: 760px)";
@@ -71,6 +74,12 @@ const resolveLanguageCode = (languages: AutoTranslateLanguage[], value: string):
   return languages.find((language) => languageCodesEqual(language.code, normalized))?.code ?? fallback;
 };
 
+const getLanguageIconId = (language: AutoTranslateLanguage): string =>
+  normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(language.code);
+
+const getLanguageSearchText = (language: AutoTranslateLanguage): string =>
+  `${language.name} ${language.code} ${language.icon}`.toLowerCase();
+
 export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) {
   const availableLanguages = useMemo(
     () =>
@@ -90,11 +99,22 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
   );
   const [menuOpen, setMenuOpen] = useState(false);
   const [isIconOnly, setIsIconOnly] = useState(false);
+  const [query, setQuery] = useState("");
   const selectorRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const resolvedSelectedLanguageCode = resolveLanguageCode(availableLanguages, selectedLanguageCode);
   const selectedLanguage =
     availableLanguages.find((language) => languageCodesEqual(language.code, resolvedSelectedLanguageCode)) ??
     availableLanguages[0];
+  const selectedIconId = getLanguageIconId(selectedLanguage);
+  const normalizedQuery = query.trim().toLowerCase();
+  const visibleLanguages = useMemo(
+    () =>
+      normalizedQuery
+        ? availableLanguages.filter((language) => getLanguageSearchText(language).includes(normalizedQuery))
+        : availableLanguages,
+    [availableLanguages, normalizedQuery],
+  );
 
   useEffect(() => {
     const nextLanguageCode = enabled
@@ -119,8 +139,13 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
 
   useEffect(() => {
     if (!menuOpen) {
+      setQuery("");
       return;
     }
+
+    window.requestAnimationFrame(() => {
+      searchInputRef.current?.focus();
+    });
 
     const onPointerDown = (event: MouseEvent) => {
       const eventTarget = event.target;
@@ -155,41 +180,68 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
         type="button"
         className={cn("btn btn-pill language-selector-button", isIconOnly && "ui-tooltip")}
         aria-label={`Docs language: ${selectedLanguage.name}`}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
         aria-expanded={menuOpen}
         data-ui-tooltip={isIconOnly ? `Docs language: ${selectedLanguage.name}` : undefined}
         onClick={() => {
           setMenuOpen((previous) => !previous);
         }}
       >
-        <MaterialIcon name="translate" />
+        <CircleFlagIcon iconId={selectedIconId} />
         <span className="language-selector-label">{selectedLanguage.name}</span>
         <MaterialIcon name="arrow_drop_down" />
       </button>
 
       {menuOpen ? (
-        <div className="language-selector-menu" role="menu" aria-label="Docs language">
-          {availableLanguages.map((language) => {
-            const selected = languageCodesEqual(language.code, resolvedSelectedLanguageCode);
+        <div className="language-selector-menu circle-flag-picker-popover" role="dialog" aria-label="Docs language">
+          <div className="search-input-wrap circle-flag-picker-search language-selector-search">
+            <MaterialIcon name="search" className="search-icon" />
+            <input
+              ref={searchInputRef}
+              className="input"
+              value={query}
+              aria-label="Search languages"
+              placeholder="Search language or ID"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
 
-            return (
-              <button
-                key={language.code}
-                type="button"
-                className="language-selector-menu-item"
-                role="menuitemradio"
-                aria-checked={selected}
-                onClick={() => {
-                  const nextLanguageCode = resolveLanguageCode(availableLanguages, language.code);
-                  setSelectedLanguageCode(nextLanguageCode);
-                  setMenuOpen(false);
-                }}
-              >
-                <MaterialIcon name={selected ? "check" : "language"} />
-                <span>{language.name}</span>
-              </button>
-            );
-          })}
+          <div
+            className="circle-flag-picker-options language-selector-options"
+            role="listbox"
+            aria-label="Available docs languages"
+          >
+            {visibleLanguages.length > 0 ? (
+              visibleLanguages.map((language) => {
+                const selected = languageCodesEqual(language.code, resolvedSelectedLanguageCode);
+                const languageIconId = getLanguageIconId(language);
+
+                return (
+                  <button
+                    key={language.code}
+                    type="button"
+                    className={cn(
+                      "circle-flag-picker-option language-selector-menu-item",
+                      selected && "circle-flag-picker-option-selected",
+                    )}
+                    role="option"
+                    aria-selected={selected}
+                    onClick={() => {
+                      const nextLanguageCode = resolveLanguageCode(availableLanguages, language.code);
+                      setSelectedLanguageCode(nextLanguageCode);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    <CircleFlagIcon iconId={languageIconId} />
+                    <span>{language.name}</span>
+                    <code>{language.code}</code>
+                  </button>
+                );
+              })
+            ) : (
+              <p className="circle-flag-picker-empty">No languages found</p>
+            )}
+          </div>
         </div>
       ) : null}
     </div>
