@@ -729,7 +729,7 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 999px;
   padding: 0.34rem 0.65rem;
   background: transparent;
@@ -741,10 +741,12 @@ select {
   cursor: pointer;
   transition:
     background 160ms ease,
+    border-color 160ms ease,
     color 160ms ease;
 }
 
 .mode-button-active {
+  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   color: var(--text-primary);
 }
@@ -953,7 +955,7 @@ select {
 }
 
 .sidebar-view-button {
-  border: 0;
+  border: 1px solid transparent;
   border-radius: 10px;
   background: transparent;
   color: var(--text-secondary);
@@ -969,6 +971,7 @@ select {
   cursor: pointer;
   transition:
     background 150ms ease,
+    border-color 150ms ease,
     color 150ms ease;
 }
 
@@ -977,6 +980,7 @@ select {
 }
 
 .sidebar-view-button-active {
+  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   background: color-mix(in srgb, var(--accent-surface-soft) 84%, var(--surface-elevated));
   color: var(--text-primary);
 }
