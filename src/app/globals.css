@@ -585,20 +585,10 @@ select {
   position: relative;
 }
 
-.ui-tooltip::after {
-  position: absolute;
-  inset-inline-start: 50%;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    opacity 160ms ease,
-    transform 160ms ease;
-  z-index: 120;
-}
-
-.ui-tooltip::after {
-  content: attr(data-ui-tooltip);
-  inset-block-start: calc(100% + 0.78rem);
+.ui-tooltip-portal {
+  position: fixed;
+  top: var(--ui-tooltip-top);
+  left: var(--ui-tooltip-left);
   min-width: max-content;
   max-width: min(18rem, calc(100vw - 2rem));
   padding: 0.48rem 0.82rem;
@@ -612,27 +602,32 @@ select {
   line-height: 1.2;
   white-space: nowrap;
   backdrop-filter: blur(16px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+  z-index: 10000;
+}
+
+.ui-tooltip-portal-bottom {
   transform: translate(-50%, -0.22rem) scale(0.96);
 }
 
-.ui-tooltip:hover::after,
-.ui-tooltip:focus-visible::after {
+.ui-tooltip-portal-top {
+  transform: translate(-50%, calc(-100% + 0.22rem)) scale(0.96);
+}
+
+.ui-tooltip-portal-visible {
   opacity: 1;
 }
 
-.ui-tooltip:hover::after,
-.ui-tooltip:focus-visible::after {
+.ui-tooltip-portal-bottom.ui-tooltip-portal-visible {
   transform: translate(-50%, 0) scale(1);
 }
 
-@media (hover: none) and (pointer: coarse) {
-  .ui-tooltip:hover::after {
-    opacity: 0;
-  }
-
-  .ui-tooltip:hover::after {
-    transform: translate(-50%, -0.22rem) scale(0.96);
-  }
+.ui-tooltip-portal-top.ui-tooltip-portal-visible {
+  transform: translate(-50%, -100%) scale(1);
 }
 
 .mode-toggle {

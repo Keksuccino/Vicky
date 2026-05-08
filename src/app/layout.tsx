@@ -6,6 +6,7 @@ import { Fragment } from "react";
 
 import { LazyAppHeader } from "@/components/lazy-app-header";
 import { ThemeProvider } from "@/components/theme-provider";
+import { UiTooltipLayer } from "@/components/ui-tooltip-layer";
 import { normalizeCustomDomain } from "@/lib/domain-settings";
 import { DEFAULT_FOOTER_TEXT, FALLBACK_FOOTER_OWNER, resolveFooterTemplateParts, VICKY_REPO_URL } from "@/lib/footer";
 import { createThemeBootstrapScript, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
@@ -154,6 +155,7 @@ export default async function RootLayout({
               </footer>
             </div>
           </div>
+          <UiTooltipLayer />
         </ThemeProvider>
       </body>
     </html>
