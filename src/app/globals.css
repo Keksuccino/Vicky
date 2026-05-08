@@ -3493,6 +3493,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   content: "";
   position: absolute;
   inset: 0;
+  opacity: 0.4;
   background: color-mix(in srgb, var(--accent) 74%, var(--text-muted));
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--surface-elevated) 82%, transparent);
   -webkit-mask:
@@ -3501,14 +3502,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   mask:
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='M4 8L8 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3Cpath d='M4 12L12 4' stroke='black' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E")
       center / contain no-repeat;
-  transition:
-    background 160ms ease,
-    transform 120ms ease;
-}
-
-.docs-ai-chat-resize-handle:hover,
-.docs-ai-chat-resize-handle:active {
-  transform: translate(-1px, -1px);
+  transition: background 160ms ease;
 }
 
 .docs-ai-chat-resize-handle:hover::before,
