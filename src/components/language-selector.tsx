@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { cn } from "@/components/cn";
 import { MaterialIcon } from "@/components/material-icon";
 import type { AutoTranslateLanguage } from "@/components/types";
 import {
@@ -14,6 +15,7 @@ import {
 } from "@/lib/auto-translate";
 
 const LANGUAGE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
+const ICON_ONLY_LANGUAGE_SELECTOR_QUERY = "(max-width: 760px)";
 
 type LanguageSelectorProps = {
   enabled: boolean;
@@ -86,6 +88,7 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
     resolveLanguageCode(availableLanguages, readCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)),
   );
   const [menuOpen, setMenuOpen] = useState(false);
+  const [isIconOnly, setIsIconOnly] = useState(false);
   const selectorRef = useRef<HTMLDivElement | null>(null);
   const resolvedSelectedLanguageCode = resolveLanguageCode(availableLanguages, selectedLanguageCode);
   const selectedLanguage =
@@ -100,6 +103,18 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
     writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, nextLanguageCode);
     dispatchLanguageChange(nextLanguageCode);
   }, [availableLanguages, enabled, selectedLanguageCode]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia(ICON_ONLY_LANGUAGE_SELECTOR_QUERY);
+    const updateIconOnlyState = () => setIsIconOnly(mediaQuery.matches);
+
+    updateIconOnlyState();
+    mediaQuery.addEventListener("change", updateIconOnlyState);
+
+    return () => {
+      mediaQuery.removeEventListener("change", updateIconOnlyState);
+    };
+  }, []);
 
   useEffect(() => {
     if (!menuOpen) {
@@ -137,10 +152,11 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
     <div className="language-selector" ref={selectorRef}>
       <button
         type="button"
-        className="btn btn-pill language-selector-button"
+        className={cn("btn btn-pill language-selector-button", isIconOnly && "ui-tooltip")}
         aria-label={`Docs language: ${selectedLanguage.name}`}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
+        data-ui-tooltip={isIconOnly ? `Docs language: ${selectedLanguage.name}` : undefined}
         onClick={() => {
           setMenuOpen((previous) => !previous);
         }}
