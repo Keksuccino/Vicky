@@ -3241,7 +3241,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   padding: 0.82rem;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 24%, var(--border));
   border-radius: 18px;
-  background: color-mix(in srgb, var(--accent-surface-soft) 76%, var(--surface-elevated));
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
   color: var(--text-primary);
 }
 
