@@ -34,7 +34,6 @@ export function UiTooltipLayer() {
   const activeTriggerRef = useRef<HTMLElement | null>(null);
   const frameRef = useRef<number | null>(null);
   const mutationObserverRef = useRef<MutationObserver | null>(null);
-  const [mounted, setMounted] = useState(false);
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [position, setPosition] = useState<TooltipPosition | null>(null);
 
@@ -114,8 +113,6 @@ export function UiTooltipLayer() {
   );
 
   useEffect(() => {
-    setMounted(true);
-
     return () => {
       if (frameRef.current !== null) {
         window.cancelAnimationFrame(frameRef.current);
@@ -204,7 +201,7 @@ export function UiTooltipLayer() {
     }
   }, [tooltip, updatePosition]);
 
-  if (!mounted || !tooltip || !position) {
+  if (!tooltip || !position) {
     return null;
   }
 

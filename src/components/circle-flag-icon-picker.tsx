@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
 import { CircleFlagIcon } from "@/components/circle-flag-icon";
 import { cn } from "@/components/cn";
@@ -38,6 +38,7 @@ export function CircleFlagIconPicker({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const isOpen = open && !disabled;
 
   const selectedIconId = normalizeCircleFlagIconId(value) || DEFAULT_CIRCLE_FLAG_ICON_ID;
   const selectedOption = getCircleFlagIconOption(selectedIconId);
@@ -52,25 +53,36 @@ export function CircleFlagIconPicker({
     return matches.slice(0, MAX_VISIBLE_ICON_OPTIONS);
   }, [normalizedQuery]);
 
+  const closePicker = useCallback(() => {
+    setOpen(false);
+    setQuery("");
+  }, []);
+
   useEffect(() => {
     if (disabled) {
-      setOpen(false);
-      return;
+      const frameId = window.requestAnimationFrame(closePicker);
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
     }
 
-    if (!open) {
+    return undefined;
+  }, [closePicker, disabled]);
+
+  useEffect(() => {
+    if (!isOpen) {
       return;
     }
 
     const handlePointerDown = (event: MouseEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) {
-        setOpen(false);
+        closePicker();
       }
     };
 
     const handleKeyDown = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") {
-        setOpen(false);
+        closePicker();
       }
     };
 
@@ -81,18 +93,21 @@ export function CircleFlagIconPicker({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [disabled, open]);
+  }, [closePicker, isOpen]);
 
   useEffect(() => {
-    if (!open) {
-      setQuery("");
+    if (!isOpen) {
       return;
     }
 
-    window.requestAnimationFrame(() => {
+    const frameId = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
-  }, [open]);
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [isOpen]);
 
   return (
     <div className="circle-flag-picker" ref={rootRef}>
@@ -104,9 +119,16 @@ export function CircleFlagIconPicker({
           className="btn circle-flag-picker-button"
           aria-label={showLabel ? undefined : `${label}: ${selectedLabel} (${selectedIconId})`}
           aria-haspopup="dialog"
-          aria-expanded={open}
+          aria-expanded={isOpen}
           disabled={disabled}
-          onClick={() => setOpen((previous) => !previous)}
+          onClick={() => {
+            if (isOpen) {
+              closePicker();
+              return;
+            }
+
+            setOpen(true);
+          }}
         >
           <CircleFlagIcon iconId={selectedIconId} />
           <span className="circle-flag-picker-value">
@@ -117,7 +139,7 @@ export function CircleFlagIconPicker({
         </button>
       </label>
 
-      {open ? (
+      {isOpen ? (
         <div className="circle-flag-picker-popover" role="dialog" aria-label="Pick language icon">
           <div className="search-input-wrap circle-flag-picker-search">
             <MaterialIcon name="search" className="search-icon" />
@@ -144,7 +166,7 @@ export function CircleFlagIconPicker({
                   )}
                   onClick={() => {
                     onChange(option.id);
-                    setOpen(false);
+                    closePicker();
                   }}
                 >
                   <CircleFlagIcon iconId={option.id} />

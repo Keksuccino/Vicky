@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CircleFlagIcon } from "@/components/circle-flag-icon";
 import { cn } from "@/components/cn";
@@ -116,6 +116,11 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
     [availableLanguages, normalizedQuery],
   );
 
+  const closeMenu = useCallback(() => {
+    setMenuOpen(false);
+    setQuery("");
+  }, []);
+
   useEffect(() => {
     const nextLanguageCode = enabled
       ? resolveLanguageCode(availableLanguages, selectedLanguageCode)
@@ -139,11 +144,10 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
 
   useEffect(() => {
     if (!menuOpen) {
-      setQuery("");
       return;
     }
 
-    window.requestAnimationFrame(() => {
+    const frameId = window.requestAnimationFrame(() => {
       searchInputRef.current?.focus();
     });
 
@@ -153,22 +157,23 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
         return;
       }
 
-      setMenuOpen(false);
+      closeMenu();
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setMenuOpen(false);
+        closeMenu();
       }
     };
 
     document.addEventListener("mousedown", onPointerDown);
     document.addEventListener("keydown", onKeyDown);
     return () => {
+      window.cancelAnimationFrame(frameId);
       document.removeEventListener("mousedown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [menuOpen]);
+  }, [closeMenu, menuOpen]);
 
   if (!enabled) {
     return null;
@@ -184,7 +189,12 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
         aria-expanded={menuOpen}
         data-ui-tooltip={isIconOnly ? `Docs language: ${selectedLanguage.name}` : undefined}
         onClick={() => {
-          setMenuOpen((previous) => !previous);
+          if (menuOpen) {
+            closeMenu();
+            return;
+          }
+
+          setMenuOpen(true);
         }}
       >
         <CircleFlagIcon iconId={selectedIconId} />
@@ -229,7 +239,7 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
                     onClick={() => {
                       const nextLanguageCode = resolveLanguageCode(availableLanguages, language.code);
                       setSelectedLanguageCode(nextLanguageCode);
-                      setMenuOpen(false);
+                      closeMenu();
                     }}
                   >
                     <CircleFlagIcon iconId={languageIconId} />

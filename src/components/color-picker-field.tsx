@@ -166,6 +166,8 @@ export function ColorPickerField({
   const canReset = showReset && normalizedPickerValue !== normalizedFallbackColor;
   const activePickerHex = normalizeCompleteHexDraft(hexDraft) ?? normalizedPickerValue;
   const activePickerHsv = useMemo(() => pickerHexToHsv(activePickerHex), [activePickerHex]);
+  const activePickerSaturationPercent = Math.round(activePickerHsv.s * 100);
+  const activePickerBrightnessPercent = Math.round(activePickerHsv.v * 100);
   const activeHueHex = pickerHsvToHex({ h: activePickerHsv.h, s: 1, v: 1 });
   const previewStyle = trimmedValue
     ? ({
@@ -331,7 +333,10 @@ export function ColorPickerField({
                 role="slider"
                 tabIndex={0}
                 aria-label={`${label} saturation and brightness`}
-                aria-valuetext={`Saturation ${Math.round(activePickerHsv.s * 100)}%, brightness ${Math.round(activePickerHsv.v * 100)}%`}
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={activePickerBrightnessPercent}
+                aria-valuetext={`Saturation ${activePickerSaturationPercent}%, brightness ${activePickerBrightnessPercent}%`}
                 onKeyDown={handleSpectrumKeyDown}
                 onPointerDown={handleSpectrumPointer}
                 onPointerMove={(event) => {

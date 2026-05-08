@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import {
   type CSSProperties,
   type ChangeEvent,
@@ -262,7 +263,7 @@ export function DocsAiChat() {
     () => initialStateRef.current?.activeConversationId ?? null,
   );
   const [cookiesHydrated, setCookiesHydrated] = useState(false);
-  const [avatarLoadFailed, setAvatarLoadFailed] = useState(false);
+  const [failedAvatarUrl, setFailedAvatarUrl] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const messageListRef = useRef<HTMLDivElement | null>(null);
@@ -277,10 +278,28 @@ export function DocsAiChat() {
     DEFAULT_AI_CHAT_HEADER_SUBTITLE,
   );
   const resolvedAssistantAvatarUrl = assistantAvatarUrl.trim();
-  const showAssistantAvatar = resolvedAssistantAvatarUrl.length > 0 && !avatarLoadFailed;
+  const showAssistantAvatar = resolvedAssistantAvatarUrl.length > 0 && failedAvatarUrl !== resolvedAssistantAvatarUrl;
 
   useEffect(() => {
     let mounted = true;
+
+    const hydrateStoredChat = (nextAssistantName: string, nextWelcomeMessage: string) => {
+      const restored = restoreAiChatConversationsWithSettings(
+        loadStoredChatState(),
+        nextAssistantName,
+        nextWelcomeMessage,
+      );
+      const storedSize = loadStoredWindowSize();
+
+      setConversations(restored.conversations);
+      setActiveConversationId(restored.activeConversationId);
+
+      if (storedSize) {
+        setWindowSize(storedSize);
+      }
+
+      setCookiesHydrated(true);
+    };
 
     const run = async () => {
       try {
@@ -289,18 +308,23 @@ export function DocsAiChat() {
           return;
         }
 
+        const nextAssistantName = settings.aiChatAssistantName;
+        const nextWelcomeMessage = settings.aiChatWelcomeMessage;
+
         setFeatureEnabled(settings.aiChatEnabled);
-        setAssistantName(settings.aiChatAssistantName);
+        setAssistantName(nextAssistantName);
         setAssistantAvatarUrl(settings.aiChatAvatarUrl);
         setHeaderSubtitle(settings.aiChatHeaderSubtitle);
-        setWelcomeMessage(settings.aiChatWelcomeMessage);
-        setAvatarLoadFailed(false);
+        setWelcomeMessage(nextWelcomeMessage);
+        setFailedAvatarUrl("");
+        hydrateStoredChat(nextAssistantName, nextWelcomeMessage);
       } catch {
         if (!mounted) {
           return;
         }
 
         setFeatureEnabled(false);
+        hydrateStoredChat(DEFAULT_AI_CHAT_ASSISTANT_NAME, DEFAULT_AI_CHAT_WELCOME_MESSAGE);
       } finally {
         if (mounted) {
           setFeatureReady(true);
@@ -313,24 +337,6 @@ export function DocsAiChat() {
     return () => {
       mounted = false;
     };
-  }, []);
-
-  useEffect(() => {
-    setAvatarLoadFailed(false);
-  }, [resolvedAssistantAvatarUrl]);
-
-  useEffect(() => {
-    const restored = restoreAiChatConversationsWithSettings(loadStoredChatState(), assistantName, welcomeMessage);
-    const storedSize = loadStoredWindowSize();
-
-    setConversations(restored.conversations);
-    setActiveConversationId(restored.activeConversationId);
-
-    if (storedSize) {
-      setWindowSize(storedSize);
-    }
-
-    setCookiesHydrated(true);
   }, []);
 
   useEffect(() => {
@@ -648,11 +654,14 @@ export function DocsAiChat() {
                   className={cn("docs-ai-chat-title-badge", showAssistantAvatar && "docs-ai-chat-title-badge-image")}
                 >
                   {showAssistantAvatar ? (
-                    <img
+                    <Image
                       src={resolvedAssistantAvatarUrl}
                       alt=""
+                      width={40}
+                      height={40}
                       className="docs-ai-chat-title-avatar"
-                      onError={() => setAvatarLoadFailed(true)}
+                      unoptimized
+                      onError={() => setFailedAvatarUrl(resolvedAssistantAvatarUrl)}
                     />
                   ) : (
                     <MaterialIcon name="auto_awesome" />
