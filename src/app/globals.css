@@ -2161,7 +2161,7 @@ select {
 }
 
 .translation-language-label-actions {
-  width: 5.32rem;
+  width: 10.35rem;
 }
 
 .translation-language-actions {
@@ -2173,6 +2173,44 @@ select {
 
 .translation-language-action-tooltip {
   display: inline-flex;
+}
+
+.translation-language-cache-status {
+  min-width: 4.35rem;
+  min-height: 2.5rem;
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 0.58rem;
+  font-family: var(--font-mono), "Google Sans Code", monospace;
+  font-size: 0.78rem;
+  font-weight: 760;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.translation-language-cache-status-loading {
+  color: var(--text-muted);
+}
+
+.translation-language-cache-status-empty {
+  color: var(--danger);
+}
+
+.translation-language-cache-status-partial {
+  color: #b85f00;
+}
+
+html[data-color-mode="dark"] .translation-language-cache-status-partial,
+html[data-color-mode="custom"] .translation-language-cache-status-partial {
+  color: #ffb14a;
+}
+
+.translation-language-cache-status-complete {
+  color: var(--success);
 }
 
 .translation-language-remove,

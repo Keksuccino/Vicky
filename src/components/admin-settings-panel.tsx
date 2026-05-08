@@ -20,6 +20,7 @@ import {
   createAdminModerator,
   deleteAdminModerator,
   fetchAdminDomainSslStatus,
+  fetchAdminLanguageTranslationCacheStatuses,
   fetchAdminModerators,
   fetchAdminSettings,
   fetchAdminVisitorStats,
@@ -57,6 +58,7 @@ import {
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
 import type {
+  AdminLanguageTranslationCacheStatus,
   AdminSettings,
   AutoTranslateLanguage,
   DomainSslRuntimeStatus,
@@ -909,6 +911,55 @@ type TranslationRequestStatus = {
   message: string;
 };
 
+type TranslationCacheStatusTone = "loading" | "empty" | "partial" | "complete";
+
+const translationCacheStatusKey = (languageCode: string): string =>
+  normalizeAutoTranslateLanguageCode(languageCode).toLowerCase();
+
+const createTranslationCacheStatusMap = (
+  statuses: AdminLanguageTranslationCacheStatus[],
+): Record<string, AdminLanguageTranslationCacheStatus> => {
+  const output: Record<string, AdminLanguageTranslationCacheStatus> = {};
+
+  for (const status of statuses) {
+    const key = translationCacheStatusKey(status.languageCode);
+    if (key) {
+      output[key] = status;
+    }
+  }
+
+  return output;
+};
+
+const getTranslationCacheStatusTone = (
+  status: AdminLanguageTranslationCacheStatus | undefined,
+): TranslationCacheStatusTone => {
+  if (!status) {
+    return "loading";
+  }
+
+  if (status.totalPages === 0 || status.cachedPages >= status.totalPages) {
+    return "complete";
+  }
+
+  return status.cachedPages === 0 ? "empty" : "partial";
+};
+
+const getTranslationCacheStatusLabel = (status: AdminLanguageTranslationCacheStatus | undefined): string =>
+  status ? `${status.cachedPages}/${status.totalPages}` : "...";
+
+const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheStatus | undefined): string => {
+  if (!status) {
+    return "Checking page translation cache";
+  }
+
+  if (status.sourceLanguage) {
+    return "Source language does not need cached translations";
+  }
+
+  return `${status.cachedPages}/${status.totalPages} page translations cached`;
+};
+
 const formatStatusTimestamp = (value: string): string => {
   const parsed = new Date(value);
 
@@ -946,6 +997,11 @@ export function AdminSettingsPanel() {
     () => new Set(),
   );
   const [translationRequestStatus, setTranslationRequestStatus] = useState<TranslationRequestStatus | null>(null);
+  const [translationCacheStatuses, setTranslationCacheStatuses] = useState<
+    Record<string, AdminLanguageTranslationCacheStatus>
+  >({});
+  const [translationCacheStatusLoading, setTranslationCacheStatusLoading] = useState(false);
+  const [translationCacheStatusError, setTranslationCacheStatusError] = useState<string | null>(null);
 
   const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
@@ -973,6 +1029,7 @@ export function AdminSettingsPanel() {
   const autoSaveQueuedRef = useRef(false);
   const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
   const lastSavedSnapshotRef = useRef<string | null>(null);
+  const translationCacheStatusRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
     letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
@@ -986,6 +1043,17 @@ export function AdminSettingsPanel() {
   const darkPreviewStyle = useMemo(
     () => createThemePreviewStyle("dark", themeCustomization),
     [themeCustomization],
+  );
+  const translationCacheStatusSignature = useMemo(
+    () =>
+      JSON.stringify({
+        model: settings.autoTranslateOpenRouterModel.trim(),
+        languages: settings.autoTranslateLanguages.map((language) => ({
+          code: normalizeAutoTranslateLanguageCode(language.code),
+          name: language.name.trim(),
+        })),
+      }),
+    [settings.autoTranslateLanguages, settings.autoTranslateOpenRouterModel],
   );
 
   const refreshSslStatus = useCallback(async () => {
@@ -1272,6 +1340,35 @@ export function AdminSettingsPanel() {
     [createSaveSnapshot, getLatestSaveSnapshot, persistLatestSettings, setThemeSettings],
   );
 
+  const refreshTranslationCacheStatuses = useCallback(async () => {
+    const requestId = translationCacheStatusRequestRef.current + 1;
+    translationCacheStatusRequestRef.current = requestId;
+    setTranslationCacheStatusLoading(true);
+    setTranslationCacheStatusError(null);
+
+    try {
+      const draft = latestSettingsRef.current;
+      const statuses = await fetchAdminLanguageTranslationCacheStatuses(
+        draft.autoTranslateLanguages,
+        draft.autoTranslateOpenRouterModel,
+      );
+
+      if (translationCacheStatusRequestRef.current !== requestId) {
+        return;
+      }
+
+      setTranslationCacheStatuses(createTranslationCacheStatusMap(statuses));
+    } catch (error) {
+      if (translationCacheStatusRequestRef.current === requestId) {
+        setTranslationCacheStatusError(formatApiError(error));
+      }
+    } finally {
+      if (translationCacheStatusRequestRef.current === requestId) {
+        setTranslationCacheStatusLoading(false);
+      }
+    }
+  }, []);
+
   const refreshDocsCache = useCallback(async () => {
     setRefreshingDocs(true);
     setDocsRefreshMessage(null);
@@ -1283,12 +1380,13 @@ export function AdminSettingsPanel() {
       setDocsRefreshMessage(
         `Fetched ${formatVisitorCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
       );
+      void refreshTranslationCacheStatuses();
     } catch (error) {
       setDocsRefreshError(formatApiError(error));
     } finally {
       setRefreshingDocs(false);
     }
-  }, [persistLatestSettings]);
+  }, [persistLatestSettings, refreshTranslationCacheStatuses]);
 
   const requestLanguageTranslations = useCallback(
     async (language: AutoTranslateLanguage) => {
@@ -1326,6 +1424,7 @@ export function AdminSettingsPanel() {
         const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
         const result = await requestAdminLanguageTranslations({ name, code, icon });
         const pageLabel = result.totalPages === 1 ? "page" : "pages";
+        void refreshTranslationCacheStatuses();
 
         if (result.failedPages > 0) {
           setTranslationRequestStatus({
@@ -1360,12 +1459,26 @@ export function AdminSettingsPanel() {
         });
       }
     },
-    [persistLatestSettings],
+    [persistLatestSettings, refreshTranslationCacheStatuses],
   );
 
   useEffect(() => {
     latestSettingsRef.current = settings;
   }, [settings]);
+
+  useEffect(() => {
+    if (loading || loadError || !autoSaveReadyRef.current) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      void refreshTranslationCacheStatuses();
+    }, 650);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [loadError, loading, refreshTranslationCacheStatuses, translationCacheStatusSignature]);
 
   useEffect(() => {
     if (!autoSaveReadyRef.current) {
@@ -2531,6 +2644,17 @@ export function AdminSettingsPanel() {
                       (normalizedLanguageCode
                         ? requestedTranslationLanguageCodes.has(normalizedLanguageCode.toLowerCase())
                         : false);
+                    const translationCacheStatus = normalizedLanguageCode
+                      ? translationCacheStatuses[translationCacheStatusKey(normalizedLanguageCode)]
+                      : undefined;
+                    const translationCacheStatusTone = getTranslationCacheStatusTone(translationCacheStatus);
+                    const translationCacheStatusLabel = getTranslationCacheStatusLabel(translationCacheStatus);
+                    const translationCacheStatusTooltip =
+                      !translationCacheStatus && translationCacheStatusError
+                        ? translationCacheStatusError
+                        : !translationCacheStatus && translationCacheStatusLoading
+                          ? "Checking page translation cache"
+                        : getTranslationCacheStatusTooltip(translationCacheStatus);
                     const languageKey = `${language.code || "language"}-${index}`;
 
                     return (
@@ -2614,6 +2738,13 @@ export function AdminSettingsPanel() {
                         </div>
 
                         <div className="translation-language-actions">
+                          <span
+                            className={`translation-language-cache-status translation-language-cache-status-${translationCacheStatusTone} ui-tooltip`}
+                            data-ui-tooltip={translationCacheStatusTooltip}
+                            aria-label={translationCacheStatusTooltip}
+                          >
+                            {translationCacheStatusLabel}
+                          </span>
                           <span
                             className="translation-language-action-tooltip ui-tooltip"
                             data-ui-tooltip="Request Translations for All Pages"

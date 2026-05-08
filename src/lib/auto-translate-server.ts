@@ -55,6 +55,11 @@ export type GitHubDocPageTranslationRequestResult = {
   }>;
 };
 
+export type GitHubDocPageTranslationCacheStatus = {
+  totalPages: number;
+  cachedPages: number;
+};
+
 const hashValue = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
 
@@ -467,6 +472,35 @@ export const getCachedTranslatedDocPage = (
 
   translatedDocsPageCache.set(key, persisted);
   return withSourcePageRuntimeFields(persisted, sourcePage);
+};
+
+export const getGitHubDocPageTranslationCacheStatus = ({
+  config,
+  language,
+  model,
+  pages,
+}: {
+  config: GitHubRuntimeConfig;
+  language: AutoTranslateLanguage;
+  model: string;
+  pages: GitHubDocPage[];
+}): GitHubDocPageTranslationCacheStatus => {
+  const normalizedModel = model.trim();
+
+  if (!normalizedModel || pages.length === 0) {
+    return {
+      totalPages: pages.length,
+      cachedPages: 0,
+    };
+  }
+
+  return {
+    totalPages: pages.length,
+    cachedPages: pages.reduce(
+      (count, page) => count + (getCachedTranslatedDocPage(config, page, language, normalizedModel) ? 1 : 0),
+      0,
+    ),
+  };
 };
 
 export const translateGitHubDocPage = async ({

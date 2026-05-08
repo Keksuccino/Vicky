@@ -1,5 +1,6 @@
 import {
   type AdminSettings,
+  type AdminLanguageTranslationCacheStatus,
   type AiChatReply,
   type AuthUser,
   type AutoTranslateLanguage,
@@ -696,6 +697,31 @@ function normalizeAdminTranslationRequestResult(source: unknown): AdminTranslati
   };
 }
 
+function normalizeAdminLanguageTranslationCacheStatuses(source: unknown): AdminLanguageTranslationCacheStatus[] {
+  const rawStatuses = asRecord(source).statuses;
+  if (!Array.isArray(rawStatuses)) {
+    return [];
+  }
+
+  return rawStatuses
+    .map((entry) => {
+      const payload = asRecord(entry);
+      const languageCode = asString(payload.languageCode).trim();
+
+      if (!languageCode) {
+        return null;
+      }
+
+      return {
+        languageCode,
+        cachedPages: Math.max(0, Math.round(asNumber(payload.cachedPages, 0))),
+        totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
+        sourceLanguage: asBoolean(payload.sourceLanguage, false),
+      };
+    })
+    .filter((entry): entry is AdminLanguageTranslationCacheStatus => Boolean(entry));
+}
+
 function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
@@ -1041,6 +1067,18 @@ export async function requestAdminLanguageTranslations(
   });
 
   return normalizeAdminTranslationRequestResult(response);
+}
+
+export async function fetchAdminLanguageTranslationCacheStatuses(
+  languages: AutoTranslateLanguage[],
+  model: string,
+): Promise<AdminLanguageTranslationCacheStatus[]> {
+  const response = await requestJson<unknown>("/api/admin/translations/status", {
+    method: "POST",
+    body: JSON.stringify({ languages, model }),
+  });
+
+  return normalizeAdminLanguageTranslationCacheStatuses(response);
 }
 
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {

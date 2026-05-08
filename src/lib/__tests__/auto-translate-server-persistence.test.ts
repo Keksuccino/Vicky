@@ -15,6 +15,7 @@ vi.mock("@/lib/openrouter", () => ({
 import { translatedDocsPageCache, translatedDocsTitleCache } from "@/lib/cache";
 
 import {
+  getGitHubDocPageTranslationCacheStatus,
   loadTranslatedDocTreeTitles,
   translateGitHubDocPage,
 } from "../auto-translate-server";
@@ -194,6 +195,48 @@ describe("auto translate persistent cache", () => {
 
     expect(changed.title).toBe("Neue Installationsanleitung");
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(2);
+  });
+
+  it("counts only cached page translations matching the current source sha", async () => {
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          page_display_name: "Installationsanleitung",
+          page_description: "Deutsche Einrichtung.",
+          page_content: "## Einrichtung\n\nInstalliere das Paket mit npm.",
+        },
+      ]),
+    );
+
+    await translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage,
+    });
+
+    expect(
+      getGitHubDocPageTranslationCacheStatus({
+        config,
+        language,
+        model: settings.openRouterModel,
+        pages: [sourcePage],
+      }),
+    ).toEqual({ totalPages: 1, cachedPages: 1 });
+
+    expect(
+      getGitHubDocPageTranslationCacheStatus({
+        config,
+        language,
+        model: settings.openRouterModel,
+        pages: [{ ...sourcePage, sha: "source-sha-2" }],
+      }),
+    ).toEqual({ totalPages: 1, cachedPages: 0 });
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
   });
 
   it("dedupes concurrent page translation requests for the same source key", async () => {

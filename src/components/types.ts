@@ -115,6 +115,13 @@ export type AdminTranslationRequestResult = {
   }>;
 };
 
+export type AdminLanguageTranslationCacheStatus = {
+  languageCode: string;
+  cachedPages: number;
+  totalPages: number;
+  sourceLanguage: boolean;
+};
+
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
