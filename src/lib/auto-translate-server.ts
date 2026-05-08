@@ -197,6 +197,137 @@ const buildTitleTranslationPrompt = (targetLanguageDisplayName: string, items: G
 ${JSON.stringify(payload, null, 2)}`;
 };
 
+const loadTitleOnlyTranslations = async ({
+  apiKey,
+  config,
+  items,
+  language,
+  model,
+  origin,
+  siteTitle,
+}: {
+  apiKey: string;
+  config: GitHubRuntimeConfig;
+  items: GitHubDocTreeItem[];
+  language: AutoTranslateLanguage;
+  model: string;
+  origin: string;
+  siteTitle: string;
+}): Promise<Map<string, string>> => {
+  const key = titleTranslationCacheKey(config, items, language, model);
+  const cached = translatedDocsTitleCache.get(key) as Map<string, string> | undefined;
+  if (cached) {
+    return cached;
+  }
+
+  const pending = titleTranslationLoads.get(key);
+  if (pending) {
+    return pending;
+  }
+
+  const loadPromise = requestOpenRouterChatCompletion({
+    apiKey,
+    model,
+    origin,
+    siteTitle,
+    messages: [
+      {
+        role: "system",
+        content: AUTO_TRANSLATE_SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: buildTitleTranslationPrompt(language.name, items),
+      },
+    ],
+  })
+    .then((text) => {
+      const translations = normalizeTitleTranslationResponse(text, items);
+      translatedDocsTitleCache.set(key, translations);
+      return translations;
+    })
+    .finally(() => {
+      if (titleTranslationLoads.get(key) === loadPromise) {
+        titleTranslationLoads.delete(key);
+      }
+    });
+
+  titleTranslationLoads.set(key, loadPromise);
+  return loadPromise;
+};
+
+const applyTreeTitleTranslations = (
+  items: GitHubDocTreeItem[],
+  translations: Map<string, string>,
+): GitHubDocTreeItem[] =>
+  items.map((item) => ({
+    ...item,
+    name: translations.get(item.slug) ?? item.name,
+  }));
+
+export const applyCachedTranslatedDocTreeTitles = ({
+  config,
+  items,
+  language,
+  model,
+  settings,
+}: {
+  config: GitHubRuntimeConfig;
+  items: GitHubDocTreeItem[];
+  language: AutoTranslateLanguage;
+  model: string;
+  settings: AutoTranslateSettings;
+}): GitHubDocTreeItem[] => {
+  if (!shouldTranslateAutoTranslateLanguage(settings, language) || items.length === 0 || !model.trim()) {
+    return items;
+  }
+
+  const cached = translatedDocsTitleCache.get(titleTranslationCacheKey(config, items, language, model)) as
+    | Map<string, string>
+    | undefined;
+
+  return cached ? applyTreeTitleTranslations(items, cached) : items;
+};
+
+export const warmTranslatedDocTreeTitles = ({
+  apiKey,
+  config,
+  items,
+  language,
+  model,
+  origin,
+  settings,
+  siteTitle,
+}: {
+  apiKey: string;
+  config: GitHubRuntimeConfig;
+  items: GitHubDocTreeItem[];
+  language: AutoTranslateLanguage;
+  model: string;
+  origin: string;
+  settings: AutoTranslateSettings;
+  siteTitle: string;
+}): void => {
+  if (!shouldTranslateAutoTranslateLanguage(settings, language) || items.length === 0 || !apiKey.trim() || !model.trim()) {
+    return;
+  }
+
+  void loadTitleOnlyTranslations({
+    apiKey,
+    config,
+    items,
+    language,
+    model,
+    origin,
+    siteTitle,
+  }).catch((error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(
+      `[auto-translate] Failed to warm docs sidebar title translations for ${language.name} (${language.code}): ${message}`,
+    );
+  });
+};
+
 const createTranslatedDocPage = (sourcePage: GitHubDocPage, translation: PageTranslationPayload): GitHubDocPage => {
   const translatedMarkdown = serializeMarkdownDocument({
     title: translation.page_display_name || sourcePage.title,
@@ -391,48 +522,15 @@ export const translateGitHubDocTreeTitles = async ({
     }
   }
 
-  let titleOnlyTranslations = new Map<string, string>();
-  const key = titleTranslationCacheKey(config, items, language, model);
-  const cached = translatedDocsTitleCache.get(key) as Map<string, string> | undefined;
-
-  if (cached) {
-    titleOnlyTranslations = cached;
-  } else {
-    const pending = titleTranslationLoads.get(key);
-    if (pending) {
-      titleOnlyTranslations = await pending;
-    } else {
-      const loadPromise = requestOpenRouterChatCompletion({
-        apiKey,
-        model,
-        origin,
-        siteTitle,
-        messages: [
-          {
-            role: "system",
-            content: AUTO_TRANSLATE_SYSTEM_PROMPT,
-          },
-          {
-            role: "user",
-            content: buildTitleTranslationPrompt(language.name, items),
-          },
-        ],
-      })
-        .then((text) => {
-          const translations = normalizeTitleTranslationResponse(text, items);
-          translatedDocsTitleCache.set(key, translations);
-          return translations;
-        })
-        .finally(() => {
-          if (titleTranslationLoads.get(key) === loadPromise) {
-            titleTranslationLoads.delete(key);
-          }
-        });
-
-      titleTranslationLoads.set(key, loadPromise);
-      titleOnlyTranslations = await loadPromise;
-    }
-  }
+  const titleOnlyTranslations = await loadTitleOnlyTranslations({
+    apiKey,
+    config,
+    items,
+    language,
+    model,
+    origin,
+    siteTitle,
+  });
 
   return items.map((item) => ({
     ...item,

@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- Markdown images can point to arbitrary remote hosts. */
+
 import { isValidElement, useCallback, useEffect, useMemo, useState, type ComponentPropsWithoutRef, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
@@ -194,6 +196,9 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
               </a>
             );
           },
+          img: ({ alt, ...props }) => (
+            <img alt={alt ?? ""} loading="lazy" decoding="async" {...props} />
+          ),
           pre: ({ children, className, ...props }) => (
             <CodeBlock className={className} {...props}>
               {children}

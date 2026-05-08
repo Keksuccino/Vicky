@@ -8,6 +8,7 @@ import {
   fetchDocsTree,
   firstLeafPath,
   formatApiError,
+  recordDisplayedDocPageVisit,
   searchDocs,
   toAbsoluteDocPath,
 } from "@/components/api";
@@ -28,6 +29,11 @@ import type { DocPage, DocSearchResult, DocTreeNode, MarkdownHeading } from "@/c
 
 type DocsClientProps = {
   initialPath: string;
+  initialTree?: DocTreeNode[];
+  initialPage?: DocPage | null;
+  initialLanguageCode?: string;
+  initialTreeLanguageCode?: string;
+  initialPageLanguageCode?: string;
 };
 
 const COPIED_STATE_DURATION_MS = 1400;
@@ -220,18 +226,38 @@ function DocsPageUnresolved() {
   );
 }
 
-export function DocsClient({ initialPath }: DocsClientProps) {
+export function DocsClient({
+  initialPath,
+  initialTree,
+  initialPage,
+  initialLanguageCode,
+  initialTreeLanguageCode,
+  initialPageLanguageCode,
+}: DocsClientProps) {
   const router = useRouter();
-  const [tree, setTree] = useState<DocTreeNode[]>([]);
-  const [treeLoading, setTreeLoading] = useState(true);
+  const normalizedInitialPath = normalizePath(initialPath);
+  const normalizedInitialLanguageCode =
+    normalizeAutoTranslateLanguageCode(initialLanguageCode) || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
+  const normalizedInitialTreeLanguageCode =
+    normalizeAutoTranslateLanguageCode(initialTreeLanguageCode) || normalizedInitialLanguageCode;
+  const normalizedInitialPageLanguageCode =
+    normalizeAutoTranslateLanguageCode(initialPageLanguageCode) || normalizedInitialLanguageCode;
+  const initialDisplayPath = initialPage ? normalizePath(initialPage.path) : normalizedInitialPath;
+  const hasInitialTree = initialTree !== undefined && normalizedInitialTreeLanguageCode === normalizedInitialLanguageCode;
+  const hasInitialPage =
+    Boolean(initialPage) &&
+    normalizedInitialPageLanguageCode === normalizedInitialLanguageCode &&
+    normalizePath(initialPage?.path ?? "") === initialDisplayPath;
+  const [tree, setTree] = useState<DocTreeNode[]>(hasInitialTree ? initialTree ?? [] : []);
+  const [treeLoading, setTreeLoading] = useState(!hasInitialTree);
   const [treeError, setTreeError] = useState<string | null>(null);
 
-  const [currentPath, setCurrentPath] = useState<string>(normalizePath(initialPath));
-  const [page, setPage] = useState<DocPage | null>(null);
-  const [pageLoading, setPageLoading] = useState(true);
+  const [currentPath, setCurrentPath] = useState<string>(initialDisplayPath);
+  const [page, setPage] = useState<DocPage | null>(hasInitialPage ? initialPage ?? null : null);
+  const [pageLoading, setPageLoading] = useState(!hasInitialPage);
   const [pageError, setPageError] = useState<string | null>(null);
-  const [markdownAssetsResolved, setMarkdownAssetsResolved] = useState(false);
   const lastInitialHashScrollKeyRef = useRef<string | null>(null);
+  const rootPathNeedsReplaceRef = useRef(normalizedInitialPath === "/" && initialDisplayPath !== "/");
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
@@ -240,10 +266,15 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   const [copyMenuOpen, setCopyMenuOpen] = useState(false);
   const [pageCopied, setPageCopied] = useState(false);
   const [activeHeadingSlug, setActiveHeadingSlug] = useState<string | null>(null);
-  const [selectedLanguageCode, setSelectedLanguageCode] = useState(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
-  const [languageReady, setLanguageReady] = useState(false);
+  const [selectedLanguageCode, setSelectedLanguageCode] = useState(normalizedInitialLanguageCode);
+  const [languageReady, setLanguageReady] = useState(Boolean(initialLanguageCode));
   const treeLoadIdRef = useRef(0);
   const pageLoadIdRef = useRef(0);
+  const loadedTreeLanguageRef = useRef<string | null>(hasInitialTree ? normalizedInitialTreeLanguageCode : null);
+  const loadedPageKeyRef = useRef<string | null>(
+    hasInitialPage && initialPage ? `${normalizePath(initialPage.path)}::${normalizedInitialPageLanguageCode}` : null,
+  );
+  const recordedVisitKeyRef = useRef<string | null>(null);
   const copyMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -330,20 +361,25 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [page?.headings, page?.sourceHeadings]);
 
   useEffect(() => {
-    setCurrentPath(normalizePath(initialPath));
-  }, [initialPath]);
+    const nextInitialPath = normalizePath(initialPath);
+    const nextDisplayPath = initialPage ? normalizePath(initialPage.path) : nextInitialPath;
+    rootPathNeedsReplaceRef.current = nextInitialPath === "/" && nextDisplayPath !== "/";
+    setCurrentPath(nextDisplayPath);
+  }, [initialPath, initialPage]);
 
   const loadTree = useCallback(async () => {
     const loadId = treeLoadIdRef.current + 1;
     treeLoadIdRef.current = loadId;
     setTreeLoading(true);
     setTreeError(null);
+    loadedTreeLanguageRef.current = null;
     try {
       const nextTree = await fetchDocsTree(selectedLanguageCode);
       if (treeLoadIdRef.current !== loadId) {
         return;
       }
       setTree(nextTree);
+      loadedTreeLanguageRef.current = selectedLanguageCode;
     } catch (error) {
       if (treeLoadIdRef.current !== loadId) {
         return;
@@ -361,6 +397,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     pageLoadIdRef.current = loadId;
     setPageLoading(true);
     setPageError(null);
+    loadedPageKeyRef.current = null;
 
     try {
       const nextPage = await fetchDocPage(path, selectedLanguageCode);
@@ -368,6 +405,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
         return;
       }
       setPage(nextPage);
+      loadedPageKeyRef.current = `${normalizePath(nextPage.path)}::${selectedLanguageCode}`;
     } catch (error) {
       if (pageLoadIdRef.current !== loadId) {
         return;
@@ -385,10 +423,20 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     if (!languageReady) {
       return;
     }
+    if (loadedTreeLanguageRef.current === selectedLanguageCode) {
+      setTreeLoading(false);
+      return;
+    }
     void loadTree();
-  }, [languageReady, loadTree]);
+  }, [languageReady, loadTree, selectedLanguageCode]);
 
   useEffect(() => {
+    if (rootPathNeedsReplaceRef.current && currentPath !== "/") {
+      rootPathNeedsReplaceRef.current = false;
+      router.replace(toDocsHref(currentPath));
+      return;
+    }
+
     if (!treeLoading && currentPath === "/") {
       const firstPath = firstLeafPath(tree);
       if (firstPath && firstPath !== currentPath) {
@@ -399,11 +447,15 @@ export function DocsClient({ initialPath }: DocsClientProps) {
   }, [tree, treeLoading, currentPath, router]);
 
   useEffect(() => {
-    if (!languageReady || !currentPath) {
+    if (!languageReady || !currentPath || currentPath === "/") {
+      return;
+    }
+    if (loadedPageKeyRef.current === `${currentPath}::${selectedLanguageCode}`) {
+      setPageLoading(false);
       return;
     }
     void loadPage(currentPath);
-  }, [languageReady, currentPath, loadPage]);
+  }, [languageReady, currentPath, loadPage, selectedLanguageCode]);
 
   useEffect(() => {
     lastInitialHashScrollKeyRef.current = null;
@@ -416,25 +468,44 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
   useEffect(() => {
     if (pageLoading || pageError || !page) {
-      setMarkdownAssetsResolved(false);
       return;
     }
 
-    setMarkdownAssetsResolved(false);
+    const initialHash = window.location.hash;
+    if (!initialHash || initialHash === "#") {
+      return;
+    }
 
-    let cancelled = false;
+    const scrollKey = `${page.slug}::${initialHash}`;
+    if (lastInitialHashScrollKeyRef.current === scrollKey) {
+      return;
+    }
+
+    lastInitialHashScrollKeyRef.current = scrollKey;
+
+    let correctionCancelled = false;
     let frameId: number | null = null;
+    let ignoreScrollUntil = 0;
     const removeListeners: Array<() => void> = [];
 
-    const resolveAssets = () => {
-      if (cancelled) {
+    const canCorrectScroll = () => !correctionCancelled && window.location.hash === initialHash;
+
+    const correctScroll = () => {
+      if (!canCorrectScroll()) {
         return;
       }
-      setMarkdownAssetsResolved(true);
+
+      if (scrollToHashTarget()) {
+        ignoreScrollUntil = performance.now() + 150;
+      }
+    };
+
+    const cancelCorrection = () => {
+      correctionCancelled = true;
     };
 
     const trackMarkdownImages = () => {
-      if (cancelled) {
+      if (!canCorrectScroll()) {
         return;
       }
 
@@ -444,6 +515,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       if (!markdownRoot) {
         frameId = window.requestAnimationFrame(() => {
           frameId = null;
+          correctScroll();
           trackMarkdownImages();
         });
         return;
@@ -451,7 +523,6 @@ export function DocsClient({ initialPath }: DocsClientProps) {
 
       const markdownImages = Array.from(markdownRoot.querySelectorAll<HTMLImageElement>("img"));
       if (markdownImages.length === 0) {
-        resolveAssets();
         return;
       }
 
@@ -459,7 +530,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       const onImageSettled = () => {
         pendingImages -= 1;
         if (pendingImages <= 0) {
-          resolveAssets();
+          correctScroll();
         }
       };
 
@@ -484,14 +555,36 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       }
 
       if (pendingImages === 0) {
-        resolveAssets();
+        correctScroll();
       }
     };
 
-    trackMarkdownImages();
+    const onScroll = () => {
+      if (performance.now() > ignoreScrollUntil) {
+        cancelCorrection();
+      }
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (["ArrowDown", "ArrowUp", "End", "Home", "PageDown", "PageUp", " "].includes(event.key)) {
+        cancelCorrection();
+      }
+    };
+
+    window.addEventListener("wheel", cancelCorrection, { passive: true });
+    window.addEventListener("touchstart", cancelCorrection, { passive: true });
+    window.addEventListener("pointerdown", cancelCorrection, { passive: true });
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("hashchange", cancelCorrection);
+
+    frameId = window.requestAnimationFrame(() => {
+      frameId = null;
+      correctScroll();
+      trackMarkdownImages();
+    });
 
     return () => {
-      cancelled = true;
+      correctionCancelled = true;
 
       if (frameId !== null) {
         window.cancelAnimationFrame(frameId);
@@ -500,34 +593,15 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       for (const removeListener of removeListeners) {
         removeListener();
       }
+
+      window.removeEventListener("wheel", cancelCorrection);
+      window.removeEventListener("touchstart", cancelCorrection);
+      window.removeEventListener("pointerdown", cancelCorrection);
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("hashchange", cancelCorrection);
     };
-  }, [pageLoading, pageError, page]);
-
-  useEffect(() => {
-    if (!page || !markdownAssetsResolved || pageLoading || pageError) {
-      return;
-    }
-
-    const initialHash = window.location.hash;
-    if (!initialHash || initialHash === "#") {
-      return;
-    }
-
-    const scrollKey = `${page.slug}::${initialHash}`;
-    if (lastInitialHashScrollKeyRef.current === scrollKey) {
-      return;
-    }
-
-    lastInitialHashScrollKeyRef.current = scrollKey;
-
-    const frameId = window.requestAnimationFrame(() => {
-      scrollToHashTarget();
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [markdownAssetsResolved, pageLoading, pageError, page, scrollToHashTarget]);
+  }, [pageLoading, pageError, page, scrollToHashTarget]);
 
   useEffect(() => {
     const onHashChange = () => {
@@ -540,6 +614,23 @@ export function DocsClient({ initialPath }: DocsClientProps) {
       window.removeEventListener("hashchange", onHashChange);
     };
   }, [scrollToHashTarget]);
+
+  useEffect(() => {
+    if (pageLoading || pageError || !page || normalizePath(page.path) !== currentPath) {
+      return;
+    }
+
+    const visitKey = page.slug;
+    if (!visitKey || recordedVisitKeyRef.current === visitKey) {
+      return;
+    }
+
+    recordedVisitKeyRef.current = visitKey;
+    void recordDisplayedDocPageVisit(page).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[visitors] Failed to queue docs page visit: ${message}`);
+    });
+  }, [currentPath, pageLoading, pageError, page]);
 
   useEffect(() => {
     setActiveHeadingSlug(readCurrentHashAnchor());
@@ -705,8 +796,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
     router.push(`${toDocsHref(normalized)}${hash}`);
   };
 
-  const pageReadyForDisplay = !pageLoading && !pageError && Boolean(page) && markdownAssetsResolved;
-  const showPagePlaceholder = pageLoading || (!pageLoading && !pageError && Boolean(page) && !markdownAssetsResolved);
+  const showPagePlaceholder = pageLoading;
   const rawPageHref = page ? toRawDocsHref(page.path) : null;
   const sidebarToggleButton = (
     <button
@@ -783,7 +873,7 @@ export function DocsClient({ initialPath }: DocsClientProps) {
           ) : null}
 
           {!pageLoading && !pageError && page ? (
-            <div className={cn("docs-main-content", !pageReadyForDisplay && "docs-main-content-pending")} aria-hidden={!pageReadyForDisplay || undefined}>
+            <div className="docs-main-content">
               <section className="page-header-card" aria-label="Page header">
                 <header className="page-heading">
                   <h1>{page.title}</h1>

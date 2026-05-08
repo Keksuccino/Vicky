@@ -17,6 +17,16 @@ import type {
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ALL_TIME_CHART_PERIOD_LIMIT = 150;
+const MAX_VISIT_RECORD_ATTEMPTS = 3;
+
+type QueuedDocPageVisit = {
+  ipAddress: string;
+  page: VisitorPageIdentity;
+  attempts: number;
+};
+
+const visitQueue: QueuedDocPageVisit[] = [];
+let visitQueueFlushing = false;
 
 const normalizeStatsSlug = (value: string): string =>
   value
@@ -264,17 +274,74 @@ export const recordVisitorInStats = (
   return true;
 };
 
-export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPage): Promise<void> => {
-  const pageIdentity = normalizeVisitorPageIdentity(page);
-  const ipAddress = getRequestIpAddress(request);
-
+const recordPageIdentityVisitForIp = async (ipAddress: string, page: VisitorPageIdentity): Promise<void> => {
   await updateStore(
     (store) => {
       const visitorId = hashVisitorIp(ipAddress, store.visitorStats.salt);
-      return recordVisitorInStats(store.visitorStats, pageIdentity, visitorId);
+      return recordVisitorInStats(store.visitorStats, page, visitorId);
     },
     { touchSettings: false },
   );
+};
+
+const flushQueuedVisits = async (): Promise<void> => {
+  if (visitQueueFlushing) {
+    return;
+  }
+
+  visitQueueFlushing = true;
+
+  try {
+    while (visitQueue.length > 0) {
+      const visit = visitQueue.shift();
+      if (!visit) {
+        continue;
+      }
+
+      try {
+        await recordPageIdentityVisitForIp(visit.ipAddress, visit.page);
+      } catch (error: unknown) {
+        const nextAttempts = visit.attempts + 1;
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(
+          `[visitors] Failed to record docs page visit for ${visit.page.slug} (attempt ${nextAttempts}/${MAX_VISIT_RECORD_ATTEMPTS}): ${message}`,
+        );
+
+        if (nextAttempts < MAX_VISIT_RECORD_ATTEMPTS) {
+          visitQueue.push({
+            ...visit,
+            attempts: nextAttempts,
+          });
+        }
+      }
+    }
+  } finally {
+    visitQueueFlushing = false;
+
+    if (visitQueue.length > 0) {
+      void flushQueuedVisits();
+    }
+  }
+};
+
+export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPage): Promise<void> => {
+  await recordPageIdentityVisitForIp(getRequestIpAddress(request), normalizeVisitorPageIdentity(page));
+};
+
+export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdentity): boolean => {
+  const normalizedPage = normalizeVisitPage(page);
+  if (!normalizedPage.slug) {
+    return false;
+  }
+
+  visitQueue.push({
+    ipAddress: getRequestIpAddress(request),
+    page: normalizedPage,
+    attempts: 0,
+  });
+  void flushQueuedVisits();
+
+  return true;
 };
 
 const summarizePages = (

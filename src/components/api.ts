@@ -35,11 +35,13 @@ import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 
 type JsonRecord = Record<string, unknown>;
 
-type RawTreeItem = {
+export type RawDocTreeItem = {
   path: string;
   slug: string;
   name: string;
 };
+
+type RawTreeItem = RawDocTreeItem;
 
 export type PublicSiteSettings = {
   siteTitle: string;
@@ -414,6 +416,10 @@ function buildTree(items: RawTreeItem[]): DocTreeNode[] {
   return sortTree(root);
 }
 
+export function buildDocTree(items: RawDocTreeItem[]): DocTreeNode[] {
+  return buildTree(items);
+}
+
 function normalizeSearchResults(source: unknown): DocSearchResult[] {
   const payload = asRecord(source).results;
 
@@ -755,6 +761,18 @@ export async function fetchDocPage(pathOrSlug: string, languageCode?: string): P
   });
   const response = await requestJson<unknown>(`/api/docs/page?${query.toString()}`);
   return normalizePage(response, slugToPath(slug));
+}
+
+export async function recordDisplayedDocPageVisit(page: Pick<DocPage, "path" | "slug" | "title">): Promise<void> {
+  await requestJson<unknown>("/api/docs/visit", {
+    method: "POST",
+    keepalive: true,
+    body: JSON.stringify({
+      path: page.path,
+      slug: page.slug,
+      title: page.title,
+    }),
+  });
 }
 
 export async function fetchAdminDocPage(pathOrSlug: string): Promise<DocPage> {
