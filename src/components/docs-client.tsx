@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import {
   fetchDocPage,
+  fetchDocPageMetadata,
   fetchDocsTree,
   firstLeafPath,
   formatApiError,
@@ -270,6 +271,7 @@ export function DocsClient({
   const [languageReady, setLanguageReady] = useState(Boolean(initialLanguageCode));
   const treeLoadIdRef = useRef(0);
   const pageLoadIdRef = useRef(0);
+  const metadataRequestKeyRef = useRef<string | null>(null);
   const loadedTreeLanguageRef = useRef<string | null>(hasInitialTree ? normalizedInitialTreeLanguageCode : null);
   const loadedPageKeyRef = useRef<string | null>(
     hasInitialPage && initialPage ? `${normalizePath(initialPage.path)}::${normalizedInitialPageLanguageCode}` : null,
@@ -456,6 +458,49 @@ export function DocsClient({
     }
     void loadPage(currentPath);
   }, [languageReady, currentPath, loadPage, selectedLanguageCode]);
+
+  useEffect(() => {
+    if (pageLoading || pageError || !page || (page.updatedAt && page.updatedBy)) {
+      return;
+    }
+
+    const requestKey = `${page.slug}::${page.updatedAt ?? ""}::${page.updatedBy ?? ""}`;
+    if (metadataRequestKeyRef.current === requestKey) {
+      return;
+    }
+
+    metadataRequestKeyRef.current = requestKey;
+
+    void fetchDocPageMetadata(page.path)
+      .then((metadata) => {
+        setPage((currentPage) => {
+          if (!currentPage || currentPage.slug !== metadata.slug) {
+            return currentPage;
+          }
+
+          const updatedAt = metadata.updatedAt ?? currentPage.updatedAt;
+          const updatedBy = metadata.updatedBy ?? currentPage.updatedBy;
+          if (currentPage.updatedAt === updatedAt && currentPage.updatedBy === updatedBy) {
+            return currentPage;
+          }
+
+          return {
+            ...currentPage,
+            updatedAt,
+            updatedBy,
+          };
+        });
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[docs] Failed to load docs page metadata: ${message}`);
+      })
+      .finally(() => {
+        if (metadataRequestKeyRef.current === requestKey) {
+          metadataRequestKeyRef.current = null;
+        }
+      });
+  }, [pageLoading, pageError, page]);
 
   useEffect(() => {
     lastInitialHashScrollKeyRef.current = null;

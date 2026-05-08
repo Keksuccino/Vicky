@@ -300,6 +300,22 @@ function normalizePage(source: unknown, fallbackPath = "/"): DocPage {
   };
 }
 
+function normalizePageMetadata(
+  source: unknown,
+  fallbackPath = "/",
+): Pick<DocPage, "path" | "slug" | "updatedAt" | "updatedBy"> {
+  const payload = asRecord(asRecord(source).metadata ?? source);
+  const slug = asString(payload.slug) || toDocSlug(asString(payload.path));
+  const path = slug ? slugToPath(slug) : toAbsoluteDocPath(asString(payload.path, fallbackPath));
+
+  return {
+    path,
+    slug: slug || toDocSlug(path),
+    updatedAt: asString(payload.updatedAt || payload.lastUpdatedAt).trim() || undefined,
+    updatedBy: asString(payload.updatedBy || payload.lastUpdatedBy).trim() || undefined,
+  };
+}
+
 function normalizeTreeItems(source: unknown): RawTreeItem[] {
   const payload = asRecord(source).items;
 
@@ -761,6 +777,15 @@ export async function fetchDocPage(pathOrSlug: string, languageCode?: string): P
   });
   const response = await requestJson<unknown>(`/api/docs/page?${query.toString()}`);
   return normalizePage(response, slugToPath(slug));
+}
+
+export async function fetchDocPageMetadata(
+  pathOrSlug: string,
+): Promise<Pick<DocPage, "path" | "slug" | "updatedAt" | "updatedBy">> {
+  const slug = toDocSlug(pathOrSlug);
+  const query = new URLSearchParams({ slug });
+  const response = await requestJson<unknown>(`/api/docs/page-metadata?${query.toString()}`);
+  return normalizePageMetadata(response, slugToPath(slug));
 }
 
 export async function recordDisplayedDocPageVisit(page: Pick<DocPage, "path" | "slug" | "title">): Promise<void> {

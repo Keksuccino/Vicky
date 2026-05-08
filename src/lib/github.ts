@@ -1087,6 +1087,57 @@ export const loadGitHubDoc = async (
   return loadPromise;
 };
 
+export const loadGitHubDocMetadata = async (
+  config: GitHubRuntimeConfig,
+  locator: { slug?: string; path?: string },
+  options?: { bypassCache?: boolean },
+): Promise<Pick<GitHubDocPage, "path" | "slug" | "updatedAt" | "updatedBy">> => {
+  const validation = validateGitHubRuntimeConfig(config);
+
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  const target = await resolveGitHubDocReadTarget(config, locator, options);
+  const cachedPage = options?.bypassCache ? null : readPageFromCache(config, target);
+  let sha = cachedPage?.sha;
+
+  if (!sha) {
+    const file = await fetchFileFromGitHub(config, target.fullPath);
+    sha = file.sha;
+  }
+
+  const cachedCommitMeta = options?.bypassCache ? null : getCachedCommitMetadata(config, target.fullPath, sha);
+  const commitMeta = cachedCommitMeta ?? (await fetchLatestCommitMetadata(config, target.fullPath));
+
+  if (!cachedCommitMeta) {
+    cacheCommitMetadata(config, target.fullPath, sha, commitMeta);
+  }
+
+  if (cachedPage) {
+    const enrichedPage = {
+      ...cachedPage,
+      updatedAt: commitMeta.updatedAt ?? cachedPage.updatedAt,
+      updatedBy: commitMeta.updatedBy ?? cachedPage.updatedBy,
+    };
+    cacheGitHubDocPage(config, enrichedPage);
+
+    return {
+      path: enrichedPage.path,
+      slug: enrichedPage.slug,
+      updatedAt: enrichedPage.updatedAt,
+      updatedBy: enrichedPage.updatedBy,
+    };
+  }
+
+  return {
+    path: target.relativePath,
+    slug: target.slug,
+    updatedAt: commitMeta.updatedAt,
+    updatedBy: commitMeta.updatedBy,
+  };
+};
+
 export const listGitHubDocsForPlaintextExport = async (
   config: GitHubRuntimeConfig,
   options?: { bypassCache?: boolean },
