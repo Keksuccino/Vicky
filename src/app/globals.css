@@ -1199,7 +1199,6 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   --page-header-control-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
   --page-header-control-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
   --page-header-menu-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
-  --page-header-menu-hover: color-mix(in srgb, var(--accent-surface) 18%, var(--surface-elevated));
   border: 1px solid var(--page-header-border);
   border-radius: var(--radius-md);
   background: var(--page-header-bg);
@@ -1349,8 +1348,8 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
 
 .page-copy-menu-item {
   width: 100%;
-  border: 0;
-  border-radius: 12px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
@@ -1363,12 +1362,17 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   gap: 0.55rem;
   padding: 0.68rem 0.78rem;
   cursor: pointer;
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
 }
 
 .page-copy-menu-item:hover,
 .page-copy-menu-item:focus-visible {
   outline: none;
-  background: var(--page-header-menu-hover);
+  border-color: color-mix(in srgb, var(--accent-surface) 24%, var(--border));
+  background: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
 }
 
 .markdown-body {
