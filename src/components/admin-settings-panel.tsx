@@ -2616,6 +2616,22 @@ export function AdminSettingsPanel() {
                         <div className="translation-language-actions">
                           <span
                             className="translation-language-action-tooltip ui-tooltip"
+                            data-ui-tooltip="Request Translations for All Pages"
+                          >
+                            <button
+                              type="button"
+                              className="btn btn-icon translation-language-request"
+                              aria-label="Request Translations for All Pages"
+                              disabled={translationRequestDisabled}
+                              onClick={() => {
+                                void requestLanguageTranslations(language);
+                              }}
+                            >
+                              <MaterialIcon name="download" />
+                            </button>
+                          </span>
+                          <span
+                            className="translation-language-action-tooltip ui-tooltip"
                             data-ui-tooltip="Remove"
                           >
                             <button
@@ -2633,22 +2649,6 @@ export function AdminSettingsPanel() {
                               }}
                             >
                               <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
-                            </button>
-                          </span>
-                          <span
-                            className="translation-language-action-tooltip ui-tooltip"
-                            data-ui-tooltip="Request Translations for All Pages"
-                          >
-                            <button
-                              type="button"
-                              className="btn btn-icon translation-language-request"
-                              aria-label="Request Translations for All Pages"
-                              disabled={translationRequestDisabled}
-                              onClick={() => {
-                                void requestLanguageTranslations(language);
-                              }}
-                            >
-                              <MaterialIcon name="download" />
                             </button>
                           </span>
                         </div>
