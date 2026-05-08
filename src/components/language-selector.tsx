@@ -137,7 +137,7 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
     <div className="language-selector" ref={selectorRef}>
       <button
         type="button"
-        className="language-selector-button"
+        className="btn btn-pill language-selector-button"
         aria-label={`Docs language: ${selectedLanguage.name}`}
         aria-haspopup="menu"
         aria-expanded={menuOpen}

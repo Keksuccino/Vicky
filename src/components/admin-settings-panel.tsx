@@ -865,7 +865,7 @@ function VisitorStatsCard({
         </div>
         <button
           type="button"
-          className="btn btn-secondary visitor-refresh-button"
+          className="btn btn-icon visitor-refresh-button"
           disabled={loading}
           aria-label={loading ? "Refreshing analytics" : "Refresh analytics"}
           title={loading ? "Refreshing analytics" : "Refresh analytics"}
@@ -1658,14 +1658,14 @@ export function AdminSettingsPanel() {
             </div>
 
             <div className="action-row">
-              <button type="button" className="btn btn-primary" disabled={refreshingDocs} onClick={refreshDocsCache}>
+              <button type="button" className="btn" disabled={refreshingDocs} onClick={refreshDocsCache}>
                 <MaterialIcon name={refreshingDocs ? "sync" : "cloud_sync"} />
                 <span>{refreshingDocs ? "Fetching..." : "Fetch pages now"}</span>
               </button>
 
               <button
                 type="button"
-                className="btn btn-secondary"
+                className="btn"
                 disabled={testingConnection}
                 onClick={async () => {
                   setTestingConnection(true);
@@ -1752,7 +1752,7 @@ export function AdminSettingsPanel() {
               </div>
 
               <div className="action-row">
-                <button type="submit" className="btn btn-primary" disabled={moderatorSaving}>
+                <button type="submit" className="btn" disabled={moderatorSaving}>
                   <MaterialIcon name={moderatorSaving ? "hourglass_top" : "person_add"} />
                   <span>{moderatorSaving ? "Adding..." : "Add moderator"}</span>
                 </button>
@@ -1839,7 +1839,7 @@ export function AdminSettingsPanel() {
                             <span className="moderator-action-tooltip ui-tooltip" data-ui-tooltip="Edit">
                               <button
                                 type="button"
-                                className="btn btn-secondary moderator-action-button"
+                                className="btn btn-icon moderator-action-button"
                                 aria-label="Edit"
                                 disabled={Boolean(moderatorActionId)}
                                 onClick={() => {
@@ -1859,7 +1859,7 @@ export function AdminSettingsPanel() {
                             >
                               <button
                                 type="button"
-                                className="btn btn-ghost danger moderator-action-button"
+                                className="btn btn-icon btn-ghost danger moderator-action-button"
                                 aria-label="Remove"
                                 disabled={Boolean(moderatorActionId)}
                                 onClick={() => {

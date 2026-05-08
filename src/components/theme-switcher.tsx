@@ -48,7 +48,7 @@ export function ThemeSwitcher() {
 
       <button
         type="button"
-        className="mode-toggle-compact ui-tooltip"
+        className="btn btn-icon btn-pill mode-toggle-compact ui-tooltip"
         onClick={() => setMode(compactTargetMode)}
         aria-label={compactLabel}
         data-ui-tooltip={compactLabel}

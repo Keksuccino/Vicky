@@ -187,7 +187,7 @@ export function AppHeader() {
 
           <Link
             href={PLAINTEXT_EXPORT_NAVIGATION.href}
-            className="admin-icon-link ui-tooltip"
+            className="btn btn-icon btn-pill admin-icon-link ui-tooltip"
             aria-label={PLAINTEXT_EXPORT_NAVIGATION.label}
             data-ui-tooltip={PLAINTEXT_EXPORT_NAVIGATION.label}
             target="_blank"
@@ -200,7 +200,7 @@ export function AppHeader() {
           {isAuthenticated ? (
             <Link
               href={editorHref}
-              className={cn("admin-icon-link ui-tooltip", editorIsActive && "admin-icon-link-active")}
+              className={cn("btn btn-icon btn-pill admin-icon-link ui-tooltip", editorIsActive && "btn-active")}
               aria-label={EDITOR_NAVIGATION.label}
               data-ui-tooltip={EDITOR_NAVIGATION.label}
             >
@@ -211,7 +211,7 @@ export function AppHeader() {
           {isAdminAuthenticated ? (
             <Link
               href={ADMIN_NAVIGATION.settingsHref}
-              className={cn("admin-icon-link ui-tooltip", adminIsActive && "admin-icon-link-active")}
+              className={cn("btn btn-icon btn-pill admin-icon-link ui-tooltip", adminIsActive && "btn-active")}
               aria-label={ADMIN_NAVIGATION.label}
               data-ui-tooltip={ADMIN_NAVIGATION.label}
             >
@@ -222,7 +222,7 @@ export function AppHeader() {
           {isAuthenticated ? (
             <button
               type="button"
-              className="admin-icon-link ui-tooltip"
+              className="btn btn-icon btn-pill admin-icon-link ui-tooltip"
               aria-label="Logout"
               data-ui-tooltip="Logout"
               disabled={isLoggingOut}
@@ -244,7 +244,7 @@ export function AppHeader() {
               <MaterialIcon name={isLoggingOut ? "hourglass_top" : "logout"} />
             </button>
           ) : (
-            <Link href={loginHref} className="admin-icon-link ui-tooltip" aria-label="Login" data-ui-tooltip="Login">
+            <Link href={loginHref} className="btn btn-icon btn-pill admin-icon-link ui-tooltip" aria-label="Login" data-ui-tooltip="Login">
               <MaterialIcon name="login" />
             </Link>
           )}
