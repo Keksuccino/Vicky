@@ -269,6 +269,11 @@ Vicky uses Google's Material Symbols Outlined icon font for UI icons via `@fonts
 - Source: <https://github.com/google/material-design-icons>
 - License: Apache-2.0
 
+Vicky uses Circle Flags for language flag icons via `@iconify-json/circle-flags`.
+
+- Source: <https://github.com/HatScripts/circle-flags>
+- License: MIT
+
 ## Copyright & License
 
 Vicky Copyright © 2026 Keksuccino.<br>
