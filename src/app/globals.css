@@ -322,13 +322,6 @@ select {
   --btn-radius: 999px;
 }
 
-.btn-active {
-  border-color: var(--btn-border-color-hover);
-  background: var(--btn-bg-active);
-  color: var(--btn-color-hover);
-  box-shadow: 0 4px 14px rgba(22, 38, 66, 0.14);
-}
-
 .btn-primary {
   --btn-bg: var(--accent);
   --btn-bg-hover: color-mix(in srgb, var(--accent) 86%, white 10%);

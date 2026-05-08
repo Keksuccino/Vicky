@@ -141,13 +141,7 @@ export function AppHeader() {
     : undefined;
   const useCustomIcon = brandingReady && hasConfiguredIcon && !iconLoadFailed;
   const showFallbackIcon = brandingReady && !useCustomIcon;
-  const editorIsActive =
-    pathname === EDITOR_NAVIGATION.activePrefix ||
-    pathname.startsWith(`${EDITOR_NAVIGATION.activePrefix}/`) ||
-    pathname === EDITOR_NAVIGATION.href ||
-    pathname.startsWith(`${EDITOR_NAVIGATION.href}/`);
   const editorHref = editorHrefForPathname(pathname);
-  const adminIsActive = pathname === ADMIN_NAVIGATION.activePrefix || pathname.startsWith(`${ADMIN_NAVIGATION.activePrefix}/`);
   const isAuthenticated = Boolean(currentUser);
   const isAdminAuthenticated = currentUser?.role === "admin";
   const loginHref = ADMIN_NAVIGATION.loginHref;
@@ -200,7 +194,7 @@ export function AppHeader() {
           {isAuthenticated ? (
             <Link
               href={editorHref}
-              className={cn("btn btn-icon btn-pill admin-icon-link ui-tooltip", editorIsActive && "btn-active")}
+              className="btn btn-icon btn-pill admin-icon-link ui-tooltip"
               aria-label={EDITOR_NAVIGATION.label}
               data-ui-tooltip={EDITOR_NAVIGATION.label}
             >
@@ -211,7 +205,7 @@ export function AppHeader() {
           {isAdminAuthenticated ? (
             <Link
               href={ADMIN_NAVIGATION.settingsHref}
-              className={cn("btn btn-icon btn-pill admin-icon-link ui-tooltip", adminIsActive && "btn-active")}
+              className="btn btn-icon btn-pill admin-icon-link ui-tooltip"
               aria-label={ADMIN_NAVIGATION.label}
               data-ui-tooltip={ADMIN_NAVIGATION.label}
             >
