@@ -91,7 +91,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   aiChatHeaderSubtitle: "An actually useful AI chat assistant.",
   aiChatWelcomeMessage: "Hi, I'm {{assistant_name}}! 🌸 Ask me anything about these docs and I'll try to help you as best as possible! 😤",
   aiChatSystemPrompt: "System prompt with {{docs_content}}",
-  openRouterModel: "openai/gpt-5.1-codex-mini",
+  openRouterModel: "openai/gpt-5.4-mini",
   openRouterApiKey: "",
   openRouterApiKeyConfigured: false,
   autoTranslateEnabled: false,

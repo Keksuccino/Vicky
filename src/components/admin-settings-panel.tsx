@@ -2255,7 +2255,7 @@ export function AdminSettingsPanel() {
                   />
                 </div>
                 <span className="field-hint">
-                  Example: <code>openai/gpt-5.1-codex-mini</code>. Use a vision-capable model if you want image uploads.
+                  Example: <code>openai/gpt-5.4-mini</code>. Use a vision-capable model if you want image uploads.
                 </span>
                 {aiChatFieldErrors.openRouterModel ? <span className="error-text">{aiChatFieldErrors.openRouterModel}</span> : null}
               </div>
