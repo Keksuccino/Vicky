@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -25,6 +26,8 @@ const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
 const MODE_STORAGE_KEY = "wiki-theme-mode";
 const CUSTOM_STYLE_ID = "wiki-custom-theme-style";
+const THEME_TRANSITION_CLASS = "theme-color-transitioning";
+const THEME_TRANSITION_MS = 180;
 
 function upsertCustomStyle(cssText: string): void {
   const existing = document.getElementById(CUSTOM_STYLE_ID);
@@ -58,6 +61,8 @@ export function ThemeProvider({
   const [themeSettings, setThemeSettings] = useState<ThemeCustomization>(initialThemeSettings);
   const [storageHydrated, setStorageHydrated] = useState(false);
   const appliedCustomVariablesRef = useRef<string[]>([]);
+  const hasAppliedThemeRef = useRef(false);
+  const transitionTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     setThemeSettings(initialThemeSettings);
@@ -84,12 +89,25 @@ export function ThemeProvider({
     window.localStorage.setItem(MODE_STORAGE_KEY, mode);
   }, [mode, storageHydrated]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!storageHydrated) {
       return;
     }
 
     const root = document.documentElement;
+    const shouldTransition =
+      hasAppliedThemeRef.current && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+      transitionTimeoutRef.current = null;
+    }
+
+    if (shouldTransition) {
+      root.classList.add(THEME_TRANSITION_CLASS);
+      root.getBoundingClientRect();
+    }
+
     root.dataset.colorMode = mode;
 
     for (const key of appliedCustomVariablesRef.current) {
@@ -107,7 +125,26 @@ export function ThemeProvider({
 
     appliedCustomVariablesRef.current = keys;
     upsertCustomStyle(themeSettings.customCss);
+    hasAppliedThemeRef.current = true;
+
+    if (shouldTransition) {
+      transitionTimeoutRef.current = window.setTimeout(() => {
+        root.classList.remove(THEME_TRANSITION_CLASS);
+        transitionTimeoutRef.current = null;
+      }, THEME_TRANSITION_MS);
+    } else {
+      root.classList.remove(THEME_TRANSITION_CLASS);
+    }
   }, [mode, storageHydrated, themeSettings]);
+
+  useEffect(() => {
+    return () => {
+      if (transitionTimeoutRef.current !== null) {
+        window.clearTimeout(transitionTimeoutRef.current);
+      }
+      document.documentElement.classList.remove(THEME_TRANSITION_CLASS);
+    };
+  }, []);
 
   const value = useMemo<ThemeContextValue>(
     () => ({

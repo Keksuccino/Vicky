@@ -123,6 +123,16 @@ body {
     background 280ms ease;
 }
 
+html.theme-color-transitioning,
+html.theme-color-transitioning *,
+html.theme-color-transitioning *::before,
+html.theme-color-transitioning *::after {
+  transition-duration: 180ms !important;
+  transition-property: background-color, border-color, color, fill, stroke !important;
+  transition-delay: 0ms !important;
+  transition-timing-function: ease !important;
+}
+
 /* Shared scrollbar treatment across app surfaces, excluding the browser page scrollbar. */
 @supports selector(::-webkit-scrollbar) {
   *:not(html):not(body) {
