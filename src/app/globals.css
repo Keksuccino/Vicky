@@ -698,8 +698,10 @@ select {
   border-radius: 12px;
   background: transparent;
   color: var(--text-primary);
-  font: inherit;
-  font-size: 0.9rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.5;
   text-align: left;
   display: flex;
   align-items: center;
@@ -1383,8 +1385,10 @@ html[data-color-mode="custom"] .sidebar-view-button-active {
   border-radius: 12px;
   background: transparent;
   color: var(--text-primary);
-  font: inherit;
-  font-size: 0.9rem;
+  font-family: inherit;
+  font-size: 0.88rem;
+  font-weight: 650;
+  line-height: 1.5;
   text-decoration: none;
   display: flex;
   align-items: center;
