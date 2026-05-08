@@ -3617,9 +3617,14 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .docs-ai-chat-history-item {
-  border: 1px solid color-mix(in srgb, var(--accent-surface) 16%, var(--border));
+  --chat-history-bg: color-mix(in srgb, var(--accent-surface-soft) 70%, var(--surface-muted));
+  --chat-history-bg-hover: color-mix(in srgb, var(--accent-surface-soft) 82%, var(--surface-elevated));
+  --chat-history-bg-active: color-mix(in srgb, var(--accent-surface-soft) 88%, var(--surface-elevated));
+  --chat-history-border: color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  --chat-history-border-hover: color-mix(in srgb, var(--accent-surface) 30%, var(--border));
+  border: 1px solid var(--chat-history-border);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--surface-elevated) 86%, var(--accent-surface-soft));
+  background: var(--chat-history-bg);
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
@@ -3627,14 +3632,13 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   padding: 0.24rem;
   transition:
     border-color 160ms ease,
-    background 160ms ease,
-    transform 120ms ease;
+    background 160ms ease;
 }
 
 .docs-ai-chat-history-item:hover,
 .docs-ai-chat-history-item:focus-within {
-  transform: translateY(-1px);
-  border-color: color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-color: var(--chat-history-border-hover);
+  background: var(--chat-history-bg-hover);
 }
 
 .docs-ai-chat-history-select {
@@ -3653,7 +3657,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 
 .docs-ai-chat-history-select:focus-visible {
   outline: none;
-  background: color-mix(in srgb, var(--surface-muted) 82%, transparent);
+  background: transparent;
 }
 
 .docs-ai-chat-history-select strong {
@@ -3669,8 +3673,8 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .docs-ai-chat-history-item-active {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
-  background: color-mix(in srgb, var(--accent-soft) 54%, var(--surface-elevated));
+  border-color: var(--chat-history-border-hover);
+  background: var(--chat-history-bg-active);
 }
 
 .docs-ai-chat-history-delete {
