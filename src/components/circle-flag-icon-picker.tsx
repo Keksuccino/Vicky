@@ -21,7 +21,7 @@ type CircleFlagIconPickerProps = {
   value: string;
 };
 
-export function CircleFlagIconPicker({ id, label = "Language icon", onChange, value }: CircleFlagIconPickerProps) {
+export function CircleFlagIconPicker({ id, label = "Icon", onChange, value }: CircleFlagIconPickerProps) {
   const generatedId = useId();
   const buttonId = id ?? generatedId;
   const searchId = `${buttonId}-search`;

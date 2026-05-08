@@ -2554,7 +2554,7 @@ export function AdminSettingsPanel() {
                           </label>
 
                           <label className="field-row" htmlFor={`auto-translate-language-code-${index}`}>
-                            <span className="field-label">Language code</span>
+                            <span className="field-label">ID</span>
                             <input
                               id={`auto-translate-language-code-${index}`}
                               className="input"
