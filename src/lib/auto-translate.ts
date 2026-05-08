@@ -122,7 +122,7 @@ export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLan
     return {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-      icon,
+      icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
     };
   }
 
@@ -138,12 +138,11 @@ export const normalizeAutoTranslateLanguages = (value: unknown): AutoTranslateLa
   const normalizedLanguages = source
     .map((entry) => normalizeAutoTranslateLanguage(entry))
     .filter((language): language is AutoTranslateLanguage => language !== null);
-  const defaultLanguage = normalizedLanguages.find((language) => isDefaultAutoTranslateLanguageCode(language.code));
   const languages: AutoTranslateLanguage[] = [
     {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-      icon: defaultLanguage?.icon ?? getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
+      icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
     },
   ];
   const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);

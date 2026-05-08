@@ -15,6 +15,7 @@ import {
 const MAX_VISIBLE_ICON_OPTIONS = 96;
 
 type CircleFlagIconPickerProps = {
+  disabled?: boolean;
   id?: string;
   label?: string;
   onChange: (iconId: string) => void;
@@ -23,6 +24,7 @@ type CircleFlagIconPickerProps = {
 };
 
 export function CircleFlagIconPicker({
+  disabled = false,
   id,
   label = "Icon",
   onChange,
@@ -51,6 +53,11 @@ export function CircleFlagIconPicker({
   }, [normalizedQuery]);
 
   useEffect(() => {
+    if (disabled) {
+      setOpen(false);
+      return;
+    }
+
     if (!open) {
       return;
     }
@@ -74,7 +81,7 @@ export function CircleFlagIconPicker({
       document.removeEventListener("mousedown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [open]);
+  }, [disabled, open]);
 
   useEffect(() => {
     if (!open) {
@@ -98,6 +105,7 @@ export function CircleFlagIconPicker({
           aria-label={showLabel ? undefined : `${label}: ${selectedLabel} (${selectedIconId})`}
           aria-haspopup="dialog"
           aria-expanded={open}
+          disabled={disabled}
           onClick={() => setOpen((previous) => !previous)}
         >
           <CircleFlagIcon iconId={selectedIconId} />

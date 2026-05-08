@@ -15,7 +15,7 @@ describe("auto translate settings", () => {
   it("keeps English US fixed as the first fallback language", () => {
     const languages = normalizeAutoTranslateLanguages([
       { name: "German", code: "de" },
-      { name: "Renamed English", code: "en-us" },
+      { name: "Renamed English", code: "en-us", icon: "gb" },
       { name: "Duplicate German", code: "DE" },
       { name: "Portuguese (Brazil)", code: "pt_br" },
     ]);

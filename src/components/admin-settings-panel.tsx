@@ -266,14 +266,11 @@ const hasAutoTranslateFieldErrors = (errors: AutoTranslateFieldErrors): boolean 
   Boolean(errors.openRouterModel || errors.languages);
 
 const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
-  const defaultLanguage = languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code));
   const output: AutoTranslateLanguage[] = [
     {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-      icon:
-        normalizeCircleFlagIconId(defaultLanguage?.icon) ||
-        getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
+      icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
     },
   ];
   const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
@@ -2525,9 +2522,10 @@ export function AdminSettingsPanel() {
                   {settings.autoTranslateLanguages.map((language, index) => {
                     const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
                     const normalizedLanguageCode = normalizeAutoTranslateLanguageCode(language.code);
-                    const languageIcon =
-                      normalizeCircleFlagIconId(language.icon) ||
-                      getDefaultAutoTranslateLanguageIcon(normalizedLanguageCode || language.code);
+                    const languageIcon = isDefaultLanguage
+                      ? getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE)
+                      : normalizeCircleFlagIconId(language.icon) ||
+                        getDefaultAutoTranslateLanguageIcon(normalizedLanguageCode || language.code);
                     const translationRequestDisabled =
                       isDefaultLanguage ||
                       (normalizedLanguageCode
@@ -2599,6 +2597,7 @@ export function AdminSettingsPanel() {
                           <CircleFlagIconPicker
                             id={`auto-translate-language-icon-${index}`}
                             value={languageIcon}
+                            disabled={isDefaultLanguage}
                             showLabel={false}
                             onChange={(icon) => {
                               const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
