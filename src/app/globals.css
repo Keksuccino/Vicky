@@ -3629,7 +3629,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 0.5rem;
-  padding: 0.38rem 0.54rem 0.38rem 0.38rem;
+  padding: 0.38rem 1rem 0.38rem 0.38rem;
   transition:
     border-color 160ms ease,
     background 160ms ease;
