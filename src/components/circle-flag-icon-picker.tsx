@@ -19,6 +19,7 @@ type CircleFlagIconPickerProps = {
   id?: string;
   label?: string;
   onChange: (iconId: string) => void;
+  selectedDisplay?: "full" | "icon";
   showLabel?: boolean;
   value: string;
 };
@@ -28,6 +29,7 @@ export function CircleFlagIconPicker({
   id,
   label = "Icon",
   onChange,
+  selectedDisplay = "full",
   showLabel = true,
   value,
 }: CircleFlagIconPickerProps) {
@@ -43,6 +45,7 @@ export function CircleFlagIconPicker({
   const selectedIconId = normalizeCircleFlagIconId(value) || DEFAULT_CIRCLE_FLAG_ICON_ID;
   const selectedOption = getCircleFlagIconOption(selectedIconId);
   const selectedLabel = selectedOption?.label ?? selectedIconId;
+  const showSelectedDetails = selectedDisplay === "full";
   const normalizedQuery = query.trim().toLowerCase();
 
   const visibleOptions = useMemo(() => {
@@ -116,8 +119,8 @@ export function CircleFlagIconPicker({
         <button
           id={buttonId}
           type="button"
-          className="btn circle-flag-picker-button"
-          aria-label={showLabel ? undefined : `${label}: ${selectedLabel} (${selectedIconId})`}
+          className={cn("btn circle-flag-picker-button", !showSelectedDetails && "circle-flag-picker-button-icon-only")}
+          aria-label={showLabel && showSelectedDetails ? undefined : `${label}: ${selectedLabel} (${selectedIconId})`}
           aria-haspopup="dialog"
           aria-expanded={isOpen}
           disabled={disabled}
@@ -131,10 +134,12 @@ export function CircleFlagIconPicker({
           }}
         >
           <CircleFlagIcon iconId={selectedIconId} />
-          <span className="circle-flag-picker-value">
-            <span>{selectedLabel}</span>
-            <code>{selectedIconId}</code>
-          </span>
+          {showSelectedDetails ? (
+            <span className="circle-flag-picker-value">
+              <span>{selectedLabel}</span>
+              <code>{selectedIconId}</code>
+            </span>
+          ) : null}
           <MaterialIcon name="arrow_drop_down" />
         </button>
       </label>

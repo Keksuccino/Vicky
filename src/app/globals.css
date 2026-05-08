@@ -2132,7 +2132,7 @@ select {
 }
 
 .field-inline.translation-language-fields {
-  grid-template-columns: minmax(8.8rem, 1.05fr) minmax(5.4rem, 0.58fr) minmax(8.8rem, 0.88fr);
+  grid-template-columns: minmax(8.8rem, 1.05fr) minmax(5.4rem, 0.58fr) minmax(4.35rem, 0.28fr);
   align-items: end;
   gap: 0.42rem;
 }
@@ -2208,6 +2208,10 @@ select {
 
 .circle-flag-picker-button .material-icon:last-child {
   margin-left: auto;
+}
+
+.circle-flag-picker-button-icon-only {
+  max-width: 5rem;
 }
 
 .circle-flag-picker-value {

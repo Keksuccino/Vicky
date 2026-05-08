@@ -2598,6 +2598,7 @@ export function AdminSettingsPanel() {
                             id={`auto-translate-language-icon-${index}`}
                             value={languageIcon}
                             disabled={isDefaultLanguage}
+                            selectedDisplay="icon"
                             showLabel={false}
                             onChange={(icon) => {
                               const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
