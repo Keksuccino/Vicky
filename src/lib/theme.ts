@@ -26,7 +26,7 @@ export const LIGHT_THEME_BASE_VARIABLES: ThemeVariables = {
   "--accent-surface-contrast": DARK_CONTRAST,
   "--success": "#0f8a58",
   "--danger": "#ca3f54",
-  "--header-bg": "rgba(248, 251, 255, 0.88)",
+  "--header-bg": "#f8fbff",
   "--page-gradient": "#f8fbff",
 };
 
@@ -46,7 +46,7 @@ export const DARK_THEME_BASE_VARIABLES: ThemeVariables = {
   "--accent-surface-contrast": LIGHT_CONTRAST,
   "--success": "#2bd08a",
   "--danger": "#ff6a7f",
-  "--header-bg": "rgba(28, 28, 28, 0.86)",
+  "--header-bg": "#1c1c1c",
   "--page-gradient": "#1c1c1c",
 };
 

@@ -17,7 +17,7 @@
   --info-accent: #2f7fd8;
   --success: #0f8a58;
   --danger: #ca3f54;
-  --header-bg: rgba(248, 251, 255, 0.88);
+  --header-bg: #f8fbff;
   --page-gradient: #f8fbff;
   --shadow-soft: 0 16px 40px rgba(25, 53, 98, 0.12);
   --shadow-strong: 0 24px 60px rgba(16, 36, 67, 0.18);
@@ -71,7 +71,7 @@ html[data-color-mode="custom"] {
   --info-accent: #79b9ff;
   --success: #2bd08a;
   --danger: #ff6a7f;
-  --header-bg: rgba(28, 28, 28, 0.86);
+  --header-bg: #1c1c1c;
   --page-gradient: #1c1c1c;
   --shadow-soft: 0 16px 44px rgba(0, 0, 0, 0.38);
   --shadow-strong: 0 30px 65px rgba(0, 0, 0, 0.58);
@@ -435,7 +435,6 @@ select {
   position: sticky;
   top: 0;
   z-index: 80;
-  backdrop-filter: blur(12px);
   background: var(--header-bg);
   border-bottom: 1px solid var(--border);
 }
