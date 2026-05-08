@@ -3136,6 +3136,11 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   color: var(--text-primary);
 }
 
+.theme-color-popover-top {
+  top: auto;
+  bottom: calc(100% + 0.5rem);
+}
+
 .theme-color-spectrum {
   position: relative;
   height: 10rem;

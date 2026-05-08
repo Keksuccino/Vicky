@@ -451,6 +451,7 @@ type AccentColorFieldProps = {
   hint: string;
   id: string;
   label: string;
+  pickerPlacement?: "bottom" | "top";
   resetLabel?: string;
   showReset?: boolean;
   value: string;
@@ -464,6 +465,7 @@ function AccentColorField({
   hint,
   id,
   label,
+  pickerPlacement = "bottom",
   resetLabel = "Reset",
   showReset = false,
   value,
@@ -628,7 +630,13 @@ function AccentColorField({
             </span>
           </button>
           {isPickerOpen ? (
-            <div id={pickerDialogId} className="theme-color-popover" role="dialog" aria-label={`${label} color picker`} style={pickerStyle}>
+            <div
+              id={pickerDialogId}
+              className={`theme-color-popover theme-color-popover-${pickerPlacement}`}
+              role="dialog"
+              aria-label={`${label} color picker`}
+              style={pickerStyle}
+            >
               <div
                 className="theme-color-spectrum"
                 role="slider"
@@ -2645,6 +2653,7 @@ export function AdminSettingsPanel() {
                       label="Emphasis accent"
                       value={settings.themeLightAccent}
                       fallbackColor={THEME_DEFAULTS.lightAccent}
+                      pickerPlacement="top"
                       showReset
                       hint="Used for links, primary actions, active states, focus borders, and strong highlights in Light mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeLightAccent: value }))}
@@ -2669,6 +2678,7 @@ export function AdminSettingsPanel() {
                       label="Emphasis accent"
                       value={settings.themeDarkAccent}
                       fallbackColor={THEME_DEFAULTS.darkAccent}
+                      pickerPlacement="top"
                       showReset
                       hint="Used for links, primary actions, active states, focus borders, and strong highlights in Dark mode."
                       onChange={(value) => setSettings((prev) => ({ ...prev, themeDarkAccent: value }))}
