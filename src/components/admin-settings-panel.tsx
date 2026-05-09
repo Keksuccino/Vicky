@@ -2899,75 +2899,84 @@ export function AdminSettingsPanel() {
             </p>
 
             <div className="form-grid">
-              <div className="field-row">
-                <span className="field-label">Enable auto-translate</span>
-                <label className="toggle-row" htmlFor="auto-translate-enabled">
-                  <input
-                    id="auto-translate-enabled"
-                    className="toggle-input"
-                    type="checkbox"
-                    checked={settings.autoTranslateEnabled}
-                    onChange={(event) => {
-                      const enabled = event.target.checked;
-                      setSettings((prev) => ({ ...prev, autoTranslateEnabled: enabled }));
-                      setOpenRouterFieldErrors((prev) => ({
-                        ...prev,
-                        apiKey:
-                          enabled || settings.aiChatEnabled
-                            ? settings.openRouterApiKey.trim() || settings.openRouterApiKeyConfigured
-                              ? null
-                              : "Enter an OpenRouter API key before enabling AI features."
-                            : null,
-                      }));
-                    }}
-                  />
-                  <span className="toggle-control" aria-hidden="true">
-                    <span className="toggle-thumb" />
-                  </span>
-                  <span>{settings.autoTranslateEnabled ? "Enabled" : "Disabled"}</span>
-                </label>
-                <span className="field-hint">
-                  Shows the language selector in the docs header and translates selected non-English pages.
-                </span>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-row">
+                    <span className="field-label">Enable auto-translate</span>
+                    <label className="toggle-row" htmlFor="auto-translate-enabled">
+                      <input
+                        id="auto-translate-enabled"
+                        className="toggle-input"
+                        type="checkbox"
+                        checked={settings.autoTranslateEnabled}
+                        onChange={(event) => {
+                          const enabled = event.target.checked;
+                          setSettings((prev) => ({ ...prev, autoTranslateEnabled: enabled }));
+                          setOpenRouterFieldErrors((prev) => ({
+                            ...prev,
+                            apiKey:
+                              enabled || settings.aiChatEnabled
+                                ? settings.openRouterApiKey.trim() || settings.openRouterApiKeyConfigured
+                                  ? null
+                                  : "Enter an OpenRouter API key before enabling AI features."
+                                : null,
+                          }));
+                        }}
+                      />
+                      <span className="toggle-control" aria-hidden="true">
+                        <span className="toggle-thumb" />
+                      </span>
+                      <span>{settings.autoTranslateEnabled ? "Enabled" : "Disabled"}</span>
+                    </label>
+                    <span className="field-hint">
+                      Shows the language selector in the docs header and translates selected non-English pages.
+                    </span>
+                  </div>
+                </div>
               </div>
 
-              <div className="field-row">
-                <label className="field-label" htmlFor="auto-translate-openrouter-model">
-                  Translation model
-                </label>
-                <div className="field-control-row">
-                  <input
-                    id="auto-translate-openrouter-model"
-                    className="input"
-                    value={settings.autoTranslateOpenRouterModel}
-                    aria-invalid={Boolean(autoTranslateFieldErrors.openRouterModel)}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setSettings((prev) => ({ ...prev, autoTranslateOpenRouterModel: value }));
-                      setAutoTranslateFieldErrors((prev) => ({
-                        ...prev,
-                        openRouterModel: value.trim() || !settings.autoTranslateEnabled ? null : "Enter an OpenRouter model identifier.",
-                      }));
-                    }}
-                    placeholder={DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
-                  />
-                  <ResetToDefaultButton
-                    disabled={settings.autoTranslateOpenRouterModel === DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
-                    onClick={() => {
-                      setSettings((prev) => ({
-                        ...prev,
-                        autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
-                      }));
-                      setAutoTranslateFieldErrors((prev) => ({ ...prev, openRouterModel: null }));
-                    }}
-                  />
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-row">
+                    <label className="field-label" htmlFor="auto-translate-openrouter-model">
+                      Translation model
+                    </label>
+                    <div className="field-control-row">
+                      <input
+                        id="auto-translate-openrouter-model"
+                        className="input"
+                        value={settings.autoTranslateOpenRouterModel}
+                        aria-invalid={Boolean(autoTranslateFieldErrors.openRouterModel)}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSettings((prev) => ({ ...prev, autoTranslateOpenRouterModel: value }));
+                          setAutoTranslateFieldErrors((prev) => ({
+                            ...prev,
+                            openRouterModel:
+                              value.trim() || !settings.autoTranslateEnabled ? null : "Enter an OpenRouter model identifier.",
+                          }));
+                        }}
+                        placeholder={DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
+                      />
+                      <ResetToDefaultButton
+                        disabled={settings.autoTranslateOpenRouterModel === DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
+                        onClick={() => {
+                          setSettings((prev) => ({
+                            ...prev,
+                            autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+                          }));
+                          setAutoTranslateFieldErrors((prev) => ({ ...prev, openRouterModel: null }));
+                        }}
+                      />
+                    </div>
+                    <span className="field-hint">
+                      Default: <code>{DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}</code>.
+                    </span>
+                    {autoTranslateFieldErrors.openRouterModel ? (
+                      <span className="error-text">{autoTranslateFieldErrors.openRouterModel}</span>
+                    ) : null}
+                  </div>
                 </div>
-                <span className="field-hint">
-                  Default: <code>{DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}</code>.
-                </span>
-                {autoTranslateFieldErrors.openRouterModel ? (
-                  <span className="error-text">{autoTranslateFieldErrors.openRouterModel}</span>
-                ) : null}
               </div>
 
               <div className="field-row">
