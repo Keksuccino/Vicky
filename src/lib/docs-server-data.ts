@@ -3,6 +3,11 @@ import {
   shouldTranslateAutoTranslateLanguage,
 } from "@/lib/auto-translate";
 import {
+  formatAutoTranslateLanguageForLog,
+  getAutoTranslateErrorMessage,
+  logAutoTranslateInfo,
+} from "@/lib/auto-translate-logging";
+import {
   applyCachedTranslatedDocTreeTitles,
   hasCachedTranslatedDocTreeTitles,
   loadTranslatedDocTreeTitles,
@@ -35,14 +40,22 @@ export type DocsLanguageData<T> = {
 };
 
 const warnPageFallback = (language: AutoTranslateLanguage, error: unknown): void => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = getAutoTranslateErrorMessage(error);
+  logAutoTranslateInfo("Serving source page because page translation failed", {
+    language: formatAutoTranslateLanguageForLog(language),
+    error: message,
+  });
   console.warn(
     `[auto-translate] Failed to translate docs page to ${language.name} (${language.code}); serving source English page. ${message}`,
   );
 };
 
 const warnTreeFallback = (language: AutoTranslateLanguage, error: unknown): void => {
-  const message = error instanceof Error ? error.message : String(error);
+  const message = getAutoTranslateErrorMessage(error);
+  logAutoTranslateInfo("Serving source sidebar titles because title translation failed", {
+    language: formatAutoTranslateLanguageForLog(language),
+    error: message,
+  });
   console.warn(
     `[auto-translate] Failed to translate docs sidebar titles to ${language.name} (${language.code}); serving source English titles. ${message}`,
   );

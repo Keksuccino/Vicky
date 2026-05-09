@@ -76,6 +76,7 @@ const treeItems: GitHubDocTreeItem[] = [
 
 const previousTranslationCacheDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
 let tempDir = "";
+let consoleInfoSpy: ReturnType<typeof vi.spyOn> | null = null;
 
 const legacyHashValue = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
@@ -108,10 +109,13 @@ describe("auto translate persistent cache", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-translations-test-"));
     process.env.WIKI_TRANSLATION_CACHE_DIR = tempDir;
+    consoleInfoSpy = vi.spyOn(console, "info").mockImplementation(() => undefined);
     resetTranslationState();
   });
 
   afterEach(async () => {
+    consoleInfoSpy?.mockRestore();
+    consoleInfoSpy = null;
     resetTranslationState();
     if (previousTranslationCacheDir === undefined) {
       delete process.env.WIKI_TRANSLATION_CACHE_DIR;

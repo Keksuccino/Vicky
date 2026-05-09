@@ -10,9 +10,14 @@ import {
   normalizeAiChatWelcomeMessage,
 } from "@/lib/ai-chat";
 import {
+  isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguages,
   normalizeAutoTranslateOpenRouterModel,
 } from "@/lib/auto-translate";
+import {
+  formatAutoTranslateLanguageForLog,
+  logAutoTranslateInfo,
+} from "@/lib/auto-translate-logging";
 import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { isCircleFlagIconId } from "@/lib/circle-flags";
@@ -22,6 +27,7 @@ import { clearGitHubDocsCache } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { normalizeStartPage } from "@/lib/start-page";
 import { getPublicSettings, getStore, updateStore } from "@/lib/store";
+import type { AutoTranslateLanguage } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -109,6 +115,11 @@ const settingsPatchSchema = z
   })
   .strict();
 
+const autoTranslateLanguageKey = (language: AutoTranslateLanguage): string => language.code.toLowerCase();
+
+const autoTranslateLanguageMap = (languages: AutoTranslateLanguage[]): Map<string, AutoTranslateLanguage> =>
+  new Map(languages.map((language) => [autoTranslateLanguageKey(language), language]));
+
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const unauthorizedResponse = await requireAdminRequest(request);
@@ -136,6 +147,7 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
     const body = await parseJsonBody<unknown>(request);
     const patch = settingsPatchSchema.parse(body);
     let shouldClearDocsCache = false;
+    const autoTranslateSettingLogs: Array<() => void> = [];
 
     const updatedStore = await updateStore(async (store) => {
       if (patch.siteTitle !== undefined) {
@@ -318,17 +330,80 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (patch.autoTranslate) {
         if (patch.autoTranslate.enabled !== undefined) {
-          store.settings.autoTranslate.enabled = patch.autoTranslate.enabled;
+          const nextEnabled = patch.autoTranslate.enabled;
+          if (store.settings.autoTranslate.enabled !== nextEnabled) {
+            autoTranslateSettingLogs.push(() => {
+              logAutoTranslateInfo(nextEnabled ? "Auto-translate enabled" : "Auto-translate disabled");
+            });
+          }
+          store.settings.autoTranslate.enabled = nextEnabled;
         }
 
         if (patch.autoTranslate.openRouterModel !== undefined) {
-          store.settings.autoTranslate.openRouterModel = normalizeAutoTranslateOpenRouterModel(
+          const previousModel = store.settings.autoTranslate.openRouterModel;
+          const nextModel = normalizeAutoTranslateOpenRouterModel(
             patch.autoTranslate.openRouterModel,
           );
+          if (previousModel !== nextModel) {
+            autoTranslateSettingLogs.push(() => {
+              logAutoTranslateInfo("Auto-translate model changed", {
+                previousModel,
+                nextModel,
+              });
+            });
+          }
+          store.settings.autoTranslate.openRouterModel = nextModel;
         }
 
         if (patch.autoTranslate.languages !== undefined) {
-          store.settings.autoTranslate.languages = normalizeAutoTranslateLanguages(patch.autoTranslate.languages);
+          const previousLanguages = store.settings.autoTranslate.languages;
+          const previousLanguageMap = autoTranslateLanguageMap(previousLanguages);
+          const nextLanguages = normalizeAutoTranslateLanguages(patch.autoTranslate.languages);
+          const nextLanguageMap = autoTranslateLanguageMap(nextLanguages);
+
+          for (const [key, nextLanguage] of nextLanguageMap) {
+            if (isDefaultAutoTranslateLanguageCode(nextLanguage.code) || previousLanguageMap.has(key)) {
+              continue;
+            }
+
+            autoTranslateSettingLogs.push(() => {
+              logAutoTranslateInfo("Auto-translate language added", {
+                language: formatAutoTranslateLanguageForLog(nextLanguage),
+              });
+            });
+          }
+
+          for (const [key, previousLanguage] of previousLanguageMap) {
+            if (isDefaultAutoTranslateLanguageCode(previousLanguage.code) || nextLanguageMap.has(key)) {
+              continue;
+            }
+
+            autoTranslateSettingLogs.push(() => {
+              logAutoTranslateInfo("Auto-translate language removed", {
+                language: formatAutoTranslateLanguageForLog(previousLanguage),
+              });
+            });
+          }
+
+          for (const [key, nextLanguage] of nextLanguageMap) {
+            const previousLanguage = previousLanguageMap.get(key);
+            if (
+              !previousLanguage ||
+              isDefaultAutoTranslateLanguageCode(nextLanguage.code) ||
+              previousLanguage.name === nextLanguage.name
+            ) {
+              continue;
+            }
+
+            autoTranslateSettingLogs.push(() => {
+              logAutoTranslateInfo("Auto-translate language renamed", {
+                language: formatAutoTranslateLanguageForLog(nextLanguage),
+                previousName: previousLanguage.name,
+              });
+            });
+          }
+
+          store.settings.autoTranslate.languages = nextLanguages;
         }
       }
 
@@ -361,6 +436,7 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
     if (shouldClearDocsCache) {
       clearGitHubDocsCache();
     }
+    autoTranslateSettingLogs.forEach((writeLog) => writeLog());
 
     return NextResponse.json({
       settings: getPublicSettings(updatedStore.settings),

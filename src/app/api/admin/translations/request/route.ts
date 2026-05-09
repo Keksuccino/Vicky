@@ -5,6 +5,11 @@ import {
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguage,
 } from "@/lib/auto-translate";
+import {
+  formatAutoTranslateLanguageForLog,
+  getAutoTranslateErrorMessage,
+  logAutoTranslateInfo,
+} from "@/lib/auto-translate-logging";
 import { translateMissingGitHubDocPages } from "@/lib/auto-translate-server";
 import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
@@ -13,6 +18,7 @@ import { decryptSecret } from "@/lib/encryption";
 import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { getStore } from "@/lib/store";
+import type { AutoTranslateLanguage } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,6 +50,8 @@ const resolveRequestOrigin = (request: NextRequest): string => {
 };
 
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
+  let requestLanguage: AutoTranslateLanguage | null = null;
+
   try {
     const unauthorizedResponse = await requireAdminRequest(request);
     if (unauthorizedResponse) {
@@ -53,6 +61,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     const body = await parseJsonBody<unknown>(request);
     const payload = requestTranslationsSchema.parse(body);
     const language = normalizeAutoTranslateLanguage(payload.language);
+    requestLanguage = language;
 
     if (!language) {
       throw badRequest("A valid auto-translate language is required.");
@@ -78,6 +87,12 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const { pages } = await listMarkdownDocsTreePagesWithTitles(config, { bypassCache: true });
+    logAutoTranslateInfo("Admin requested all-pages translation", {
+      language: formatAutoTranslateLanguageForLog(language),
+      totalPages: pages.length,
+      model,
+    });
+
     const result = await translateMissingGitHubDocPages({
       apiKey,
       config,
@@ -92,8 +107,22 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       siteTitle: store.settings.siteTitle || "Vicky Docs",
     });
 
+    logAutoTranslateInfo("Admin all-pages translation request finished", {
+      language: formatAutoTranslateLanguageForLog(language),
+      totalPages: result.totalPages,
+      cachedPages: result.cachedPages,
+      requestedPages: result.requestedPages,
+      translatedPages: result.translatedPages,
+      failedPages: result.failedPages,
+      model,
+    });
+
     return NextResponse.json({ result }, { status: result.failedPages > 0 ? 207 : 200 });
   } catch (error: unknown) {
+    logAutoTranslateInfo("Admin all-pages translation request failed", {
+      language: requestLanguage ? formatAutoTranslateLanguageForLog(requestLanguage) : undefined,
+      error: getAutoTranslateErrorMessage(error),
+    });
     return errorResponse(error);
   }
 };

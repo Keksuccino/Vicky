@@ -11,6 +11,7 @@ import {
   translatedDocsPageCache,
   translatedDocsTitleCache,
 } from "@/lib/cache";
+import { logAutoTranslateInfo } from "@/lib/auto-translate-logging";
 import { decryptSecret } from "@/lib/encryption";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
@@ -135,6 +136,13 @@ const translatedDocsTitleCachePrefix = (config: GitHubRuntimeConfig): string =>
 const titleSourceSignature = (items: GitHubDocTreeItem[]): string =>
   JSON.stringify(items.map((item) => ({ slug: item.slug, path: item.path, name: item.name })));
 
+const docsSourceLogContext = (config: GitHubRuntimeConfig): Record<string, string> => ({
+  owner: config.owner,
+  repo: config.repo,
+  branch: config.branch,
+  docsPath: normalizeDocsPath(config.docsPath),
+});
+
 const pruneTranslatedDocsCacheForSnapshotChange = (
   config: GitHubRuntimeConfig,
   previous: GitHubDocsSnapshot,
@@ -146,7 +154,7 @@ const pruneTranslatedDocsCacheForSnapshotChange = (
 
   for (const previousPage of previous.pages) {
     const nextPage = nextPagesBySlug.get(previousPage.slug);
-    if (nextPage && nextPage.sha === previousPage.sha) {
+    if (nextPage && nextPage.markdown === previousPage.markdown) {
       continue;
     }
 
@@ -154,6 +162,12 @@ const pruneTranslatedDocsCacheForSnapshotChange = (
   }
 
   if (stalePageSlugs.size > 0) {
+    logAutoTranslateInfo("Source content changed; existing page translation caches are stale", {
+      ...docsSourceLogContext(config),
+      pages: stalePageSlugs.size,
+      slugs: Array.from(stalePageSlugs).join(","),
+    });
+
     const stalePageSlugPrefixes = Array.from(stalePageSlugs, (slug) => `${slug}|`);
     translatedDocsPageCache.deleteWhere((key) => {
       if (!key.startsWith(pageCachePrefix)) {
@@ -172,6 +186,11 @@ const pruneTranslatedDocsCacheForSnapshotChange = (
 
   if (titleSourceSignature(previous.tree) !== titleSourceSignature(next.tree)) {
     const titleCachePrefix = translatedDocsTitleCachePrefix(config);
+    logAutoTranslateInfo("Source tree changed; existing sidebar title translation cache is stale", {
+      ...docsSourceLogContext(config),
+      previousPages: previous.tree.length,
+      nextPages: next.tree.length,
+    });
     translatedDocsTitleCache.deleteWhere((key) => key.startsWith(titleCachePrefix));
   }
 };
@@ -336,6 +355,7 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
     aiPlaintextDocsCache.clear();
     translatedDocsPageCache.clear();
     translatedDocsTitleCache.clear();
+    logAutoTranslateInfo("Cleared all in-memory translation caches after docs cache reset");
     return;
   }
 
@@ -347,6 +367,7 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
+  logAutoTranslateInfo("Cleared in-memory translation caches for docs source", docsSourceLogContext(config));
 };
 
 const clearDerivedGitHubDocsCache = (
@@ -367,6 +388,7 @@ const clearDerivedGitHubDocsCache = (
 
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(translatedDocsPageCachePrefix(config)));
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(translatedDocsTitleCachePrefix(config)));
+  logAutoTranslateInfo("Cleared derived in-memory translation caches for docs source", docsSourceLogContext(config));
 };
 
 export const testGitHubConnection = async (
@@ -823,7 +845,12 @@ const cacheGitHubDocPage = (config: GitHubRuntimeConfig, page: GitHubDocPage): v
     sha: page.sha,
   } satisfies GitHubDocPageLocatorCacheEntry);
 
-  if (previousPage && previousPage.sha !== page.sha) {
+  if (previousPage && previousPage.markdown !== page.markdown) {
+    logAutoTranslateInfo("Source page content changed; existing page translation cache is stale", {
+      ...docsSourceLogContext(config),
+      slug: page.slug,
+      path: page.path,
+    });
     clearDerivedGitHubDocsCache(config);
     pruneTranslatedPageCacheForSlug(config, page.slug);
   }
