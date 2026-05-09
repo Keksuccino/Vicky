@@ -3260,6 +3260,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   align-items: start;
 }
 
+.settings-subcard,
 .theme-color-section {
   display: grid;
   gap: 0.7rem;
@@ -3270,9 +3271,16 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   padding: 0.82rem;
 }
 
+.settings-subcard-title,
 .theme-color-section-title {
   color: var(--text-primary);
   font-weight: 700;
+}
+
+.settings-subcard-fields {
+  display: grid;
+  gap: 0.65rem;
+  min-width: 0;
 }
 
 .theme-accent-fields {

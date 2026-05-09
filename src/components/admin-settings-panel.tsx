@@ -2245,49 +2245,54 @@ export function AdminSettingsPanel() {
             <p className="panel-description">Configure site branding, footer text, start page behavior, and icon assets.</p>
 
             <div className="form-grid">
-              <div className="field-inline">
-                <label className="field-row" htmlFor="site-title">
-                  <span className="field-label">Site title</span>
-                  <input
-                    id="site-title"
-                    className="input"
-                    value={settings.siteTitle}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, siteTitle: event.target.value }))}
-                    required
-                  />
-                  <span className="field-hint">Shown in the header and browser metadata.</span>
-                </label>
+              <div className="settings-subcard">
+                <strong className="settings-subcard-title">Site copy</strong>
+                <div className="settings-subcard-fields">
+                  <div className="field-inline">
+                    <label className="field-row" htmlFor="site-title">
+                      <span className="field-label">Site title</span>
+                      <input
+                        id="site-title"
+                        className="input"
+                        value={settings.siteTitle}
+                        onChange={(event) => setSettings((prev) => ({ ...prev, siteTitle: event.target.value }))}
+                        required
+                      />
+                      <span className="field-hint">Shown in the header and browser metadata.</span>
+                    </label>
 
-                <label className="field-row" htmlFor="site-description">
-                  <span className="field-label">Site description</span>
-                  <input
-                    id="site-description"
-                    className="input"
-                    value={settings.siteDescription}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, siteDescription: event.target.value }))}
-                    required
-                  />
-                  <span className="field-hint">Short summary used in metadata and previews.</span>
-                </label>
+                    <label className="field-row" htmlFor="site-description">
+                      <span className="field-label">Site description</span>
+                      <input
+                        id="site-description"
+                        className="input"
+                        value={settings.siteDescription}
+                        onChange={(event) => setSettings((prev) => ({ ...prev, siteDescription: event.target.value }))}
+                        required
+                      />
+                      <span className="field-hint">Short summary used in metadata and previews.</span>
+                    </label>
+                  </div>
+
+                  <label className="field-row" htmlFor="site-footer-text">
+                    <span className="field-label">
+                      Footer Text
+                    </span>
+                    <input
+                      id="site-footer-text"
+                      className="input"
+                      value={settings.footerText}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, footerText: event.target.value }))}
+                      placeholder={DEFAULT_FOOTER_TEXT}
+                      required
+                    />
+                    <span className="field-hint">
+                      <code>{`{{year}}`}</code>, <code>{`{{owner}}`}</code>, and <code>{`{{vicky}}`}</code> are replaced
+                      automatically. <code>{`{{vicky}}`}</code> becomes a clickable link to the Vicky repository.
+                    </span>
+                  </label>
+                </div>
               </div>
-
-              <label className="field-row" htmlFor="site-footer-text">
-                <span className="field-label">
-                  Footer Text
-                </span>
-                <input
-                  id="site-footer-text"
-                  className="input"
-                  value={settings.footerText}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, footerText: event.target.value }))}
-                  placeholder={DEFAULT_FOOTER_TEXT}
-                  required
-                />
-                <span className="field-hint">
-                  <code>{`{{year}}`}</code>, <code>{`{{owner}}`}</code>, and <code>{`{{vicky}}`}</code> are replaced
-                  automatically. <code>{`{{vicky}}`}</code> becomes a clickable link to the Vicky repository.
-                </span>
-              </label>
 
               <div className="field-inline">
                 <ColorPickerField
