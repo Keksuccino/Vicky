@@ -2337,45 +2337,49 @@ export function AdminSettingsPanel() {
 
               <div className="form-separator" role="separator" aria-hidden="true" />
 
-              <div className="field-inline">
-                <label className="field-row" htmlFor="docs-icon-png-16">
-                  <span className="field-label">Docs icon 16x16 PNG URL</span>
-                  <input
-                    id="docs-icon-png-16"
-                    className="input"
-                    value={settings.docsIconPng16Url}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng16Url: event.target.value }))}
-                    placeholder="https://example.com/docs-icon-16.png"
-                  />
-                  <span className="field-hint">Public absolute URL to a PNG file, exactly 16x16 recommended.</span>
-                </label>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-inline">
+                    <label className="field-row" htmlFor="docs-icon-png-16">
+                      <span className="field-label">Docs icon 16x16 PNG URL</span>
+                      <input
+                        id="docs-icon-png-16"
+                        className="input"
+                        value={settings.docsIconPng16Url}
+                        onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng16Url: event.target.value }))}
+                        placeholder="https://example.com/docs-icon-16.png"
+                      />
+                      <span className="field-hint">Public absolute URL to a PNG file, exactly 16x16 recommended.</span>
+                    </label>
 
-                <label className="field-row" htmlFor="docs-icon-png-32">
-                  <span className="field-label">Docs icon 32x32 PNG URL</span>
-                  <input
-                    id="docs-icon-png-32"
-                    className="input"
-                    value={settings.docsIconPng32Url}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng32Url: event.target.value }))}
-                    placeholder="https://example.com/docs-icon-32.png"
-                  />
-                  <span className="field-hint">Public absolute URL to a PNG file, exactly 32x32 recommended.</span>
-                </label>
+                    <label className="field-row" htmlFor="docs-icon-png-32">
+                      <span className="field-label">Docs icon 32x32 PNG URL</span>
+                      <input
+                        id="docs-icon-png-32"
+                        className="input"
+                        value={settings.docsIconPng32Url}
+                        onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng32Url: event.target.value }))}
+                        placeholder="https://example.com/docs-icon-32.png"
+                      />
+                      <span className="field-hint">Public absolute URL to a PNG file, exactly 32x32 recommended.</span>
+                    </label>
+                  </div>
+
+                  <label className="field-row" htmlFor="docs-icon-png-180">
+                    <span className="field-label">Docs icon 180x180 PNG URL</span>
+                    <input
+                      id="docs-icon-png-180"
+                      className="input"
+                      value={settings.docsIconPng180Url}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng180Url: event.target.value }))}
+                      placeholder="https://example.com/docs-icon-180.png"
+                    />
+                    <span className="field-hint">
+                      Public absolute URL to a PNG file, exactly 180x180 recommended (Apple touch icon).
+                    </span>
+                  </label>
+                </div>
               </div>
-
-              <label className="field-row" htmlFor="docs-icon-png-180">
-                <span className="field-label">Docs icon 180x180 PNG URL</span>
-                <input
-                  id="docs-icon-png-180"
-                  className="input"
-                  value={settings.docsIconPng180Url}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, docsIconPng180Url: event.target.value }))}
-                  placeholder="https://example.com/docs-icon-180.png"
-                />
-                <span className="field-hint">
-                  Public absolute URL to a PNG file, exactly 180x180 recommended (Apple touch icon).
-                </span>
-              </label>
 
             </div>
           </section>
