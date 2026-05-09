@@ -3271,7 +3271,6 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   padding: 0.82rem;
 }
 
-.settings-subcard-title,
 .theme-color-section-title {
   color: var(--text-primary);
   font-weight: 700;

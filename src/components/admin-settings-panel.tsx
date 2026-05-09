@@ -2293,26 +2293,30 @@ export function AdminSettingsPanel() {
                 </div>
               </div>
 
-              <div className="field-inline">
-                <ColorPickerField
-                  id="site-title-gradient-from"
-                  label="Site title gradient from (optional)"
-                  value={settings.siteTitleGradientFrom}
-                  allowEmpty
-                  fallbackColor={DEFAULT_SITE_TITLE_GRADIENT_FROM}
-                  hint="Pick the start color for the site title gradient. Clear both gradient colors to disable it."
-                  onChange={(value) => setSettings((prev) => ({ ...prev, siteTitleGradientFrom: value }))}
-                />
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-inline">
+                    <ColorPickerField
+                      id="site-title-gradient-from"
+                      label="Site title gradient from (optional)"
+                      value={settings.siteTitleGradientFrom}
+                      allowEmpty
+                      fallbackColor={DEFAULT_SITE_TITLE_GRADIENT_FROM}
+                      hint="Pick the start color for the site title gradient. Clear both gradient colors to disable it."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, siteTitleGradientFrom: value }))}
+                    />
 
-                <ColorPickerField
-                  id="site-title-gradient-to"
-                  label="Site title gradient to (optional)"
-                  value={settings.siteTitleGradientTo}
-                  allowEmpty
-                  fallbackColor={DEFAULT_SITE_TITLE_GRADIENT_TO}
-                  hint="Pick the end color for the site title gradient. Clear both gradient colors to disable it."
-                  onChange={(value) => setSettings((prev) => ({ ...prev, siteTitleGradientTo: value }))}
-                />
+                    <ColorPickerField
+                      id="site-title-gradient-to"
+                      label="Site title gradient to (optional)"
+                      value={settings.siteTitleGradientTo}
+                      allowEmpty
+                      fallbackColor={DEFAULT_SITE_TITLE_GRADIENT_TO}
+                      hint="Pick the end color for the site title gradient. Clear both gradient colors to disable it."
+                      onChange={(value) => setSettings((prev) => ({ ...prev, siteTitleGradientTo: value }))}
+                    />
+                  </div>
+                </div>
               </div>
 
               <label className="field-row" htmlFor="site-start-page">
