@@ -2396,80 +2396,90 @@ export function AdminSettingsPanel() {
             </p>
 
             <div className="form-grid">
-              <label className="field-row" htmlFor="domain-custom-domain">
-                <span className="field-label">Custom domain</span>
-                <input
-                  id="domain-custom-domain"
-                  className="input"
-                  value={settings.customDomain}
-                  aria-invalid={Boolean(domainFieldErrors.customDomain)}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSettings((prev) => ({ ...prev, customDomain: value }));
-                    setDomainFieldErrors((prev) => ({
-                      ...prev,
-                      customDomain: validateCustomDomainInput(value),
-                    }));
-                  }}
-                  placeholder="docs.example.com"
-                />
-                <span className="field-hint">
-                  Hostname only (no protocol or path). Example: <code>example.com</code> or{" "}
-                  <code>docs.example.com</code>.
-                </span>
-                {domainFieldErrors.customDomain ? <span className="error-text">{domainFieldErrors.customDomain}</span> : null}
-              </label>
-
-              <label className="field-row" htmlFor="domain-letsencrypt-email">
-                <span className="field-label">Let&apos;s Encrypt email</span>
-                <input
-                  id="domain-letsencrypt-email"
-                  className="input"
-                  type="email"
-                  value={settings.letsEncryptEmail}
-                  aria-invalid={Boolean(domainFieldErrors.letsEncryptEmail)}
-                  onChange={(event) => {
-                    const value = event.target.value;
-                    setSettings((prev) => ({ ...prev, letsEncryptEmail: value }));
-                    setDomainFieldErrors((prev) => ({
-                      ...prev,
-                      letsEncryptEmail: validateLetsEncryptEmailInput(value),
-                    }));
-                  }}
-                  placeholder="admin@example.com"
-                />
-                <span className="field-hint">
-                  Required for automatic certificate registration and renewal notifications.
-                </span>
-                {domainFieldErrors.letsEncryptEmail ? (
-                  <span className="error-text">{domainFieldErrors.letsEncryptEmail}</span>
-                ) : null}
-              </label>
-
-              <div className="field-row">
-                <span className="field-label">SSL runtime status</span>
-                {sslStatusLoading ? <span className="field-hint">Checking certificate runtime status...</span> : null}
-                {!sslStatusLoading && sslStatus ? (
-                  <>
-                    <p className={statusToneClassName(sslStatus)}>{sslStatus.message}</p>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <label className="field-row" htmlFor="domain-custom-domain">
+                    <span className="field-label">Custom domain</span>
+                    <input
+                      id="domain-custom-domain"
+                      className="input"
+                      value={settings.customDomain}
+                      aria-invalid={Boolean(domainFieldErrors.customDomain)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSettings((prev) => ({ ...prev, customDomain: value }));
+                        setDomainFieldErrors((prev) => ({
+                          ...prev,
+                          customDomain: validateCustomDomainInput(value),
+                        }));
+                      }}
+                      placeholder="docs.example.com"
+                    />
                     <span className="field-hint">
-                      Source:{" "}
-                      {sslStatus.source === "runtime" ? "runtime status endpoint" : "best-effort check (settings + local cert files)"}.
+                      Hostname only (no protocol or path). Example: <code>example.com</code> or{" "}
+                      <code>docs.example.com</code>.
                     </span>
-                    {sslStatus.certificateExpiresAt ? (
-                      <span className="field-hint">
-                        Certificate expiry: {formatStatusTimestamp(sslStatus.certificateExpiresAt)}.
-                      </span>
+                    {domainFieldErrors.customDomain ? <span className="error-text">{domainFieldErrors.customDomain}</span> : null}
+                  </label>
+
+                  <label className="field-row" htmlFor="domain-letsencrypt-email">
+                    <span className="field-label">Let&apos;s Encrypt email</span>
+                    <input
+                      id="domain-letsencrypt-email"
+                      className="input"
+                      type="email"
+                      value={settings.letsEncryptEmail}
+                      aria-invalid={Boolean(domainFieldErrors.letsEncryptEmail)}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSettings((prev) => ({ ...prev, letsEncryptEmail: value }));
+                        setDomainFieldErrors((prev) => ({
+                          ...prev,
+                          letsEncryptEmail: validateLetsEncryptEmailInput(value),
+                        }));
+                      }}
+                      placeholder="admin@example.com"
+                    />
+                    <span className="field-hint">
+                      Required for automatic certificate registration and renewal notifications.
+                    </span>
+                    {domainFieldErrors.letsEncryptEmail ? (
+                      <span className="error-text">{domainFieldErrors.letsEncryptEmail}</span>
                     ) : null}
-                    <span className="field-hint">Last checked: {formatStatusTimestamp(sslStatus.checkedAt)}.</span>
-                  </>
-                ) : null}
-                {sslStatusError ? <p className="warning-text">Could not load SSL runtime status: {sslStatusError}</p> : null}
+                  </label>
+                </div>
               </div>
 
-              <p className="warning-text">
-                Automatic SSL runs only when both values are set and DNS points this domain to your server.
-              </p>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-row">
+                    <span className="field-label">SSL runtime status</span>
+                    {sslStatusLoading ? <span className="field-hint">Checking certificate runtime status...</span> : null}
+                    {!sslStatusLoading && sslStatus ? (
+                      <>
+                        <p className={statusToneClassName(sslStatus)}>{sslStatus.message}</p>
+                        <span className="field-hint">
+                          Source:{" "}
+                          {sslStatus.source === "runtime"
+                            ? "runtime status endpoint."
+                            : "best-effort check (settings + local cert files)."}
+                        </span>
+                        {sslStatus.certificateExpiresAt ? (
+                          <span className="field-hint">
+                            Certificate expiry: {formatStatusTimestamp(sslStatus.certificateExpiresAt)}.
+                          </span>
+                        ) : null}
+                        <span className="field-hint">Last checked: {formatStatusTimestamp(sslStatus.checkedAt)}.</span>
+                      </>
+                    ) : null}
+                    {sslStatusError ? <p className="warning-text">Could not load SSL runtime status: {sslStatusError}</p> : null}
+                  </div>
+
+                  <p className="warning-text">
+                    Automatic SSL runs only when both values are set and DNS points this domain to your server.
+                  </p>
+                </div>
+              </div>
 
             </div>
           </section>
