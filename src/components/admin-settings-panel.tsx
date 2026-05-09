@@ -1893,152 +1893,164 @@ export function AdminSettingsPanel() {
           </p>
 
           <div className="form-grid">
-            <label className="field-row" htmlFor="docs-refresh-interval-minutes">
-              <span className="field-label">Docs refresh interval (minutes)</span>
-              <input
-                id="docs-refresh-interval-minutes"
-                className="input"
-                type="number"
-                min={1}
-                max={1440}
-                step={1}
-                value={settings.docsRefreshIntervalMinutes}
-                onChange={(event) => {
-                  const parsed = Number.parseInt(event.target.value, 10);
-                  const normalized = Number.isFinite(parsed) ? Math.min(1440, Math.max(1, parsed)) : 1;
-                  setSettings((prev) => ({ ...prev, docsRefreshIntervalMinutes: normalized }));
-                }}
-                required
-              />
-              <span className="field-hint">
-                Allowed range: 1-1440. Vicky fetches the full docs set once per interval.
-              </span>
-            </label>
-
-            <div className="field-row">
-              <label className="field-label" htmlFor="github-token">
-                GitHub token
-              </label>
-              <div className="secret-input-row">
-                <input
-                  id="github-token"
-                  className="input"
-                  type="text"
-                  autoComplete="off"
-                  value={settings.githubToken}
-                  onChange={(event) => {
-                    setSettings((prev) => ({ ...prev, githubToken: event.target.value }));
-                  }}
-                  placeholder={
-                    settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "github_pat_... or ghp_..."
-                  }
-                />
-                <button
-                  type="button"
-                  className="btn secret-clear-button"
-                  disabled={
-                    settingsSaving ||
-                    clearingSecret !== null ||
-                    (!settings.githubToken.trim() && !settings.tokenConfigured)
-                  }
-                  onClick={() => {
-                    void clearSavedSecret("githubToken");
-                  }}
-                >
-                  {clearingSecret === "githubToken" ? "Clearing..." : "Clear"}
-                </button>
+            <div className="settings-subcard">
+              <div className="settings-subcard-fields">
+                <label className="field-row" htmlFor="docs-refresh-interval-minutes">
+                  <span className="field-label">Docs refresh interval (minutes)</span>
+                  <input
+                    id="docs-refresh-interval-minutes"
+                    className="input"
+                    type="number"
+                    min={1}
+                    max={1440}
+                    step={1}
+                    value={settings.docsRefreshIntervalMinutes}
+                    onChange={(event) => {
+                      const parsed = Number.parseInt(event.target.value, 10);
+                      const normalized = Number.isFinite(parsed) ? Math.min(1440, Math.max(1, parsed)) : 1;
+                      setSettings((prev) => ({ ...prev, docsRefreshIntervalMinutes: normalized }));
+                    }}
+                    required
+                  />
+                  <span className="field-hint">
+                    Allowed range: 1-1440. Vicky fetches the full docs set once per interval.
+                  </span>
+                </label>
               </div>
-              <span className="field-hint">
-                Use a PAT for this repo. Minimum permissions: Contents (read/write) and Metadata (read-only).
-              </span>
             </div>
 
-            <div className="field-inline">
-              <label className="field-row" htmlFor="repo-owner">
-                <span className="field-label">Owner</span>
-                <input
-                  id="repo-owner"
-                  className="input"
-                  value={settings.githubOwner}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, githubOwner: event.target.value }))}
-                  required
-                />
-                <span className="field-hint">
-                  GitHub user or org name only. Example: <code>Keksuccino</code>.
-                </span>
-              </label>
-              <label className="field-row" htmlFor="repo-name">
-                <span className="field-label">Repository</span>
-                <input
-                  id="repo-name"
-                  className="input"
-                  value={settings.githubRepo}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, githubRepo: event.target.value }))}
-                  required
-                />
-                <span className="field-hint">
-                  Repository name only. Example: <code>Vicky</code> (no owner, no <code>.git</code>).
-                </span>
-              </label>
+            <div className="settings-subcard">
+              <div className="settings-subcard-fields">
+                <div className="field-row">
+                  <label className="field-label" htmlFor="github-token">
+                    GitHub token
+                  </label>
+                  <div className="secret-input-row">
+                    <input
+                      id="github-token"
+                      className="input"
+                      type="text"
+                      autoComplete="off"
+                      value={settings.githubToken}
+                      onChange={(event) => {
+                        setSettings((prev) => ({ ...prev, githubToken: event.target.value }));
+                      }}
+                      placeholder={
+                        settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "github_pat_... or ghp_..."
+                      }
+                    />
+                    <button
+                      type="button"
+                      className="btn secret-clear-button"
+                      disabled={
+                        settingsSaving ||
+                        clearingSecret !== null ||
+                        (!settings.githubToken.trim() && !settings.tokenConfigured)
+                      }
+                      onClick={() => {
+                        void clearSavedSecret("githubToken");
+                      }}
+                    >
+                      {clearingSecret === "githubToken" ? "Clearing..." : "Clear"}
+                    </button>
+                  </div>
+                  <span className="field-hint">
+                    Use a PAT for this repo. Minimum permissions: Contents (read/write) and Metadata (read-only).
+                  </span>
+                </div>
+              </div>
             </div>
 
-            <div className="field-inline">
-              <label className="field-row" htmlFor="repo-branch">
-                <span className="field-label">Branch</span>
-                <input
-                  id="repo-branch"
-                  className="input"
-                  value={settings.githubBranch}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, githubBranch: event.target.value }))}
-                  required
-                />
-                <span className="field-hint">
-                  Existing branch name. Example: <code>main</code>.
-                </span>
-              </label>
-              <label className="field-row" htmlFor="docs-path">
-                <span className="field-label">Docs path</span>
-                <input
-                  id="docs-path"
-                  className="input"
-                  value={settings.githubDocsPath}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, githubDocsPath: event.target.value }))}
-                  required
-                />
-                <span className="field-hint">
-                  Folder inside the repo where markdown files live. Example: <code>docs</code>.
-                </span>
-              </label>
-            </div>
+            <div className="settings-subcard">
+              <div className="settings-subcard-fields">
+                <div className="field-inline">
+                  <label className="field-row" htmlFor="repo-owner">
+                    <span className="field-label">Owner</span>
+                    <input
+                      id="repo-owner"
+                      className="input"
+                      value={settings.githubOwner}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, githubOwner: event.target.value }))}
+                      required
+                    />
+                    <span className="field-hint">
+                      GitHub user or org name only. Example: <code>Keksuccino</code>.
+                    </span>
+                  </label>
+                  <label className="field-row" htmlFor="repo-name">
+                    <span className="field-label">Repository</span>
+                    <input
+                      id="repo-name"
+                      className="input"
+                      value={settings.githubRepo}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, githubRepo: event.target.value }))}
+                      required
+                    />
+                    <span className="field-hint">
+                      Repository name only. Example: <code>Vicky</code> (no owner, no <code>.git</code>).
+                    </span>
+                  </label>
+                </div>
 
-            <div className="action-row">
-              <button type="button" className="btn" disabled={refreshingDocs} onClick={refreshDocsCache}>
-                <MaterialIcon name={refreshingDocs ? "sync" : "cloud_sync"} />
-                <span>{refreshingDocs ? "Fetching..." : "Fetch pages now"}</span>
-              </button>
+                <div className="field-inline">
+                  <label className="field-row" htmlFor="repo-branch">
+                    <span className="field-label">Branch</span>
+                    <input
+                      id="repo-branch"
+                      className="input"
+                      value={settings.githubBranch}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, githubBranch: event.target.value }))}
+                      required
+                    />
+                    <span className="field-hint">
+                      Existing branch name. Example: <code>main</code>.
+                    </span>
+                  </label>
+                  <label className="field-row" htmlFor="docs-path">
+                    <span className="field-label">Docs path</span>
+                    <input
+                      id="docs-path"
+                      className="input"
+                      value={settings.githubDocsPath}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, githubDocsPath: event.target.value }))}
+                      required
+                    />
+                    <span className="field-hint">
+                      Folder inside the repo where markdown files live. Example: <code>docs</code>.
+                    </span>
+                  </label>
+                </div>
 
-              <button
-                type="button"
-                className="btn"
-                disabled={testingConnection}
-                onClick={async () => {
-                  setTestingConnection(true);
-                  setConnectionMessage(null);
-                  setConnectionError(null);
+                <div className="action-row">
+                  <button type="button" className="btn" disabled={refreshingDocs} onClick={refreshDocsCache}>
+                    <MaterialIcon name={refreshingDocs ? "sync" : "cloud_sync"} />
+                    <span>{refreshingDocs ? "Fetching..." : "Fetch pages now"}</span>
+                  </button>
 
-                  try {
-                    const message = await testAdminConnection(settings);
-                    setConnectionMessage(message);
-                  } catch (error) {
-                    setConnectionError(formatApiError(error));
-                  } finally {
-                    setTestingConnection(false);
-                  }
-                }}
-              >
-                <MaterialIcon name={testingConnection ? "hourglass_top" : "network_check"} />
-                <span>{testingConnection ? "Testing..." : "Test connection"}</span>
-              </button>
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={testingConnection}
+                    onClick={async () => {
+                      setTestingConnection(true);
+                      setConnectionMessage(null);
+                      setConnectionError(null);
+
+                      try {
+                        const message = await testAdminConnection(settings);
+                        setConnectionMessage(message);
+                      } catch (error) {
+                        setConnectionError(formatApiError(error));
+                      } finally {
+                        setTestingConnection(false);
+                      }
+                    }}
+                  >
+                    <MaterialIcon name={testingConnection ? "hourglass_top" : "network_check"} />
+                    <span>{testingConnection ? "Testing..." : "Test connection"}</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
