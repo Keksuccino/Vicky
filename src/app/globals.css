@@ -2698,6 +2698,10 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
   gap: 0.55rem;
 }
 
+.repository-action-row {
+  margin-top: 0.3rem;
+}
+
 .moderator-list {
   display: grid;
   gap: 0.58rem;
