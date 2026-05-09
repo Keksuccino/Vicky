@@ -49,8 +49,103 @@ type TitleTranslationPayload = {
 
 const logLanguageContext = (language: AutoTranslateLanguage): string => formatAutoTranslateLanguageForLog(language);
 
-const pageTranslationLoads = new Map<string, Promise<GitHubDocPage>>();
-const titleTranslationLoads = new Map<string, Promise<Map<string, string>>>();
+type TranslationQueueState = {
+  pageQueues: Map<string, Map<string, Promise<GitHubDocPage>>>;
+  titleQueues: Map<string, Map<string, Promise<Map<string, string>>>>;
+};
+
+const TRANSLATION_QUEUE_STATE_KEY = Symbol.for("vicky.autoTranslate.translationQueueState");
+
+const getTranslationQueueState = (): TranslationQueueState => {
+  const globalState = globalThis as typeof globalThis & Record<symbol, TranslationQueueState | undefined>;
+  let state = globalState[TRANSLATION_QUEUE_STATE_KEY];
+
+  if (!state) {
+    state = {
+      pageQueues: new Map(),
+      titleQueues: new Map(),
+    };
+    globalState[TRANSLATION_QUEUE_STATE_KEY] = state;
+  }
+
+  return state;
+};
+
+const languageQueueKey = (language: AutoTranslateLanguage): string =>
+  normalizeAutoTranslateLanguageCode(language.code).toLowerCase();
+
+const pageTranslationQueueKey = (config: GitHubRuntimeConfig, page: GitHubDocPage): string =>
+  [toRuntimeConfigCacheKey(config), "auto-translate", "page-queue", page.slug || page.path].join("|");
+
+const titleTranslationQueueKey = (config: GitHubRuntimeConfig): string =>
+  [toRuntimeConfigCacheKey(config), "auto-translate", "title-queue"].join("|");
+
+const runQueuedTranslation = <T>({
+  getCached,
+  languageKey,
+  queues,
+  queueKey,
+  task,
+}: {
+  getCached: () => T | null;
+  languageKey: string;
+  queues: Map<string, Map<string, Promise<T>>>;
+  queueKey: string;
+  task: () => Promise<T>;
+}): Promise<T> => {
+  const cached = getCached();
+  if (cached) {
+    return Promise.resolve(cached);
+  }
+
+  let queue = queues.get(queueKey);
+  if (!queue) {
+    queue = new Map();
+    queues.set(queueKey, queue);
+  }
+
+  const pending = queue.get(languageKey);
+  if (pending) {
+    return pending.then(() => {
+      const cachedAfterPending = getCached();
+      if (cachedAfterPending) {
+        return cachedAfterPending;
+      }
+
+      return runQueuedTranslation({
+        getCached,
+        languageKey,
+        queues,
+        queueKey,
+        task,
+      });
+    });
+  }
+
+  const loadPromise = Promise.resolve()
+    .then(async () => {
+      const cachedBeforeRequest = getCached();
+      if (cachedBeforeRequest) {
+        return cachedBeforeRequest;
+      }
+
+      return task();
+    })
+    .finally(() => {
+      const currentQueue = queues.get(queueKey);
+      if (currentQueue?.get(languageKey) !== loadPromise) {
+        return;
+      }
+
+      currentQueue.delete(languageKey);
+      if (currentQueue.size === 0) {
+        queues.delete(queueKey);
+      }
+    });
+
+  queue.set(languageKey, loadPromise);
+  return loadPromise;
+};
 
 export type GitHubDocPageTranslationRequestResult = {
   totalPages: number;
@@ -281,6 +376,44 @@ const buildTitleTranslationPrompt = (targetLanguageDisplayName: string, items: G
 ${JSON.stringify(payload, null, 2)}`;
 };
 
+const getCachedTitleTranslations = ({
+  config,
+  items,
+  language,
+  model,
+}: {
+  config: GitHubRuntimeConfig;
+  items: GitHubDocTreeItem[];
+  language: AutoTranslateLanguage;
+  model: string;
+}): Map<string, string> | null => {
+  const keys = titleTranslationCacheKeys(config, items, language, model);
+  const key = keys[0];
+
+  for (const cacheKey of keys) {
+    const cached = translatedDocsTitleCache.get(cacheKey) as Map<string, string> | undefined;
+    if (cached) {
+      translatedDocsTitleCache.set(key, cached);
+      return cached;
+    }
+  }
+
+  for (const cacheKey of keys) {
+    const persisted = readPersistentTitleTranslationsSync(cacheKey);
+    if (persisted) {
+      translatedDocsTitleCache.set(key, persisted);
+      logAutoTranslateInfo("Loaded sidebar title translations from persistent cache", {
+        language: logLanguageContext(language),
+        pages: items.length,
+        cacheKeyType: cacheKey === key ? "current" : "legacy",
+      });
+      return persisted;
+    }
+  }
+
+  return null;
+};
+
 const loadTitleOnlyTranslations = async ({
   apiKey,
   config,
@@ -298,105 +431,93 @@ const loadTitleOnlyTranslations = async ({
   origin: string;
   siteTitle: string;
 }): Promise<Map<string, string>> => {
-  const keys = titleTranslationCacheKeys(config, items, language, model);
-  const key = keys[0];
+  const queueState = getTranslationQueueState();
 
-  for (const cacheKey of keys) {
-    const cached = translatedDocsTitleCache.get(cacheKey) as Map<string, string> | undefined;
-    if (cached) {
-      translatedDocsTitleCache.set(key, cached);
-      return cached;
-    }
-  }
+  return runQueuedTranslation({
+    getCached: () => getCachedTitleTranslations({ config, items, language, model }),
+    languageKey: languageQueueKey(language),
+    queues: queueState.titleQueues,
+    queueKey: titleTranslationQueueKey(config),
+    task: async () => {
+      const keys = titleTranslationCacheKeys(config, items, language, model);
+      const key = keys[0];
 
-  const pending = titleTranslationLoads.get(key);
-  if (pending) {
-    return pending;
-  }
+      try {
+        for (const cacheKey of keys) {
+          const persisted = await readPersistentTitleTranslations(cacheKey);
+          if (persisted) {
+            translatedDocsTitleCache.set(key, persisted);
+            logAutoTranslateInfo("Loaded sidebar title translations from persistent cache", {
+              language: logLanguageContext(language),
+              pages: items.length,
+              cacheKeyType: cacheKey === key ? "current" : "legacy",
+            });
 
-  const loadPromise = (async () => {
-    try {
-      for (const cacheKey of keys) {
-        const persisted = await readPersistentTitleTranslations(cacheKey);
-        if (persisted) {
-          translatedDocsTitleCache.set(key, persisted);
-          logAutoTranslateInfo("Loaded sidebar title translations from persistent cache", {
-            language: logLanguageContext(language),
-            pages: items.length,
-            cacheKeyType: cacheKey === key ? "current" : "legacy",
-          });
-
-          if (cacheKey !== key) {
-            const migrated = await writePersistentTitleTranslations(key, persisted);
-            if (migrated) {
-              logAutoTranslateInfo("Updated persistent sidebar title translation cache key", {
-                language: logLanguageContext(language),
-                pages: items.length,
-              });
+            if (cacheKey !== key) {
+              const migrated = await writePersistentTitleTranslations(key, persisted);
+              if (migrated) {
+                logAutoTranslateInfo("Updated persistent sidebar title translation cache key", {
+                  language: logLanguageContext(language),
+                  pages: items.length,
+                });
+              }
             }
+
+            return persisted;
           }
-
-          return persisted;
         }
+
+        logAutoTranslateInfo("Requesting sidebar title translations", {
+          language: logLanguageContext(language),
+          pages: items.length,
+          model,
+        });
+
+        const text = await requestOpenRouterChatCompletion({
+          apiKey,
+          model,
+          origin,
+          siteTitle,
+          messages: [
+            {
+              role: "system",
+              content: AUTO_TRANSLATE_SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: buildTitleTranslationPrompt(language.name, items),
+            },
+          ],
+        });
+
+        const translations = normalizeTitleTranslationResponse(text, items);
+        const persisted = await writePersistentTitleTranslations(key, translations);
+        if (!persisted) {
+          throw new ApiError(500, "Failed to persist translated docs title cache.");
+        }
+
+        translatedDocsTitleCache.set(key, translations);
+        logAutoTranslateInfo("Wrote persistent sidebar title translation cache", {
+          language: logLanguageContext(language),
+          pages: items.length,
+        });
+        logAutoTranslateInfo("Translated docs sidebar titles", {
+          language: logLanguageContext(language),
+          pages: items.length,
+          model,
+        });
+        return translations;
+      } catch (error: unknown) {
+        logAutoTranslateInfo("Sidebar title translation failed", {
+          language: logLanguageContext(language),
+          pages: items.length,
+          model,
+          error: getAutoTranslateErrorMessage(error),
+        });
+        throw error;
       }
-
-      logAutoTranslateInfo("Requesting sidebar title translations", {
-        language: logLanguageContext(language),
-        pages: items.length,
-        model,
-      });
-
-      const text = await requestOpenRouterChatCompletion({
-        apiKey,
-        model,
-        origin,
-        siteTitle,
-        messages: [
-          {
-            role: "system",
-            content: AUTO_TRANSLATE_SYSTEM_PROMPT,
-          },
-          {
-            role: "user",
-            content: buildTitleTranslationPrompt(language.name, items),
-          },
-        ],
-      });
-
-      const translations = normalizeTitleTranslationResponse(text, items);
-      const persisted = await writePersistentTitleTranslations(key, translations);
-      if (!persisted) {
-        throw new ApiError(500, "Failed to persist translated docs title cache.");
-      }
-
-      translatedDocsTitleCache.set(key, translations);
-      logAutoTranslateInfo("Wrote persistent sidebar title translation cache", {
-        language: logLanguageContext(language),
-        pages: items.length,
-      });
-      logAutoTranslateInfo("Translated docs sidebar titles", {
-        language: logLanguageContext(language),
-        pages: items.length,
-        model,
-      });
-      return translations;
-    } catch (error: unknown) {
-      logAutoTranslateInfo("Sidebar title translation failed", {
-        language: logLanguageContext(language),
-        pages: items.length,
-        model,
-        error: getAutoTranslateErrorMessage(error),
-      });
-      throw error;
-    }
-  })().finally(() => {
-    if (titleTranslationLoads.get(key) === loadPromise) {
-      titleTranslationLoads.delete(key);
-    }
+    },
   });
-
-  titleTranslationLoads.set(key, loadPromise);
-  return loadPromise;
 };
 
 const applyTreeTitleTranslations = (
@@ -687,110 +808,99 @@ export const translateGitHubDocPage = async ({
     return sourcePage;
   }
 
-  const keys = pageTranslationCacheKeys(config, sourcePage, language, model);
-  const key = keys[0];
+  const queueState = getTranslationQueueState();
+  const loadPromise = runQueuedTranslation({
+    getCached: () => getCachedTranslatedDocPage(config, sourcePage, language, model),
+    languageKey: languageQueueKey(language),
+    queues: queueState.pageQueues,
+    queueKey: pageTranslationQueueKey(config, sourcePage),
+    task: async () => {
+      const keys = pageTranslationCacheKeys(config, sourcePage, language, model);
+      const key = keys[0];
 
-  for (const cacheKey of keys) {
-    const cached = translatedDocsPageCache.get(cacheKey) as GitHubDocPage | undefined;
-    if (cached) {
-      translatedDocsPageCache.set(key, cached);
-      return withSourcePageRuntimeFields(cached, sourcePage);
-    }
-  }
+      try {
+        for (const cacheKey of keys) {
+          const persisted = await readPersistentTranslatedPage(cacheKey);
+          if (persisted) {
+            translatedDocsPageCache.set(key, persisted);
+            logAutoTranslateInfo("Loaded page translation from persistent cache", {
+              language: logLanguageContext(language),
+              slug: sourcePage.slug,
+              path: sourcePage.path,
+              cacheKeyType: cacheKey === key ? "current" : "legacy",
+            });
 
-  const pending = pageTranslationLoads.get(key);
-  if (pending) {
-    return pending.then((translatedPage) => withSourcePageRuntimeFields(translatedPage, sourcePage));
-  }
-
-  const loadPromise = (async () => {
-    try {
-      for (const cacheKey of keys) {
-        const persisted = await readPersistentTranslatedPage(cacheKey);
-        if (persisted) {
-          translatedDocsPageCache.set(key, persisted);
-          logAutoTranslateInfo("Loaded page translation from persistent cache", {
-            language: logLanguageContext(language),
-            slug: sourcePage.slug,
-            path: sourcePage.path,
-            cacheKeyType: cacheKey === key ? "current" : "legacy",
-          });
-
-          if (cacheKey !== key) {
-            const migrated = await writePersistentTranslatedPage(key, persisted);
-            if (migrated) {
-              logAutoTranslateInfo("Updated persistent page translation cache key", {
-                language: logLanguageContext(language),
-                slug: sourcePage.slug,
-                path: sourcePage.path,
-              });
+            if (cacheKey !== key) {
+              const migrated = await writePersistentTranslatedPage(key, persisted);
+              if (migrated) {
+                logAutoTranslateInfo("Updated persistent page translation cache key", {
+                  language: logLanguageContext(language),
+                  slug: sourcePage.slug,
+                  path: sourcePage.path,
+                });
+              }
             }
+
+            return persisted;
           }
-
-          return persisted;
         }
+
+        logAutoTranslateInfo("Requesting page translation", {
+          language: logLanguageContext(language),
+          slug: sourcePage.slug,
+          path: sourcePage.path,
+          model,
+        });
+
+        const text = await requestOpenRouterChatCompletion({
+          apiKey,
+          model,
+          origin,
+          siteTitle,
+          messages: [
+            {
+              role: "system",
+              content: AUTO_TRANSLATE_SYSTEM_PROMPT,
+            },
+            {
+              role: "user",
+              content: buildPageTranslationPrompt(language.name, sourcePage),
+            },
+          ],
+        });
+
+        const translatedPage = createTranslatedDocPage(sourcePage, normalizePageTranslationResponse(text));
+        const persisted = await writePersistentTranslatedPage(key, translatedPage);
+        if (!persisted) {
+          throw new ApiError(500, "Failed to persist translated docs page cache.");
+        }
+
+        translatedDocsPageCache.set(key, translatedPage);
+        logAutoTranslateInfo("Wrote persistent page translation cache", {
+          language: logLanguageContext(language),
+          slug: sourcePage.slug,
+          path: sourcePage.path,
+        });
+        logAutoTranslateInfo("Translated docs page", {
+          language: logLanguageContext(language),
+          slug: sourcePage.slug,
+          path: sourcePage.path,
+          model,
+        });
+        return translatedPage;
+      } catch (error: unknown) {
+        logAutoTranslateInfo("Page translation failed", {
+          language: logLanguageContext(language),
+          slug: sourcePage.slug,
+          path: sourcePage.path,
+          model,
+          error: getAutoTranslateErrorMessage(error),
+        });
+        throw error;
       }
-
-      logAutoTranslateInfo("Requesting page translation", {
-        language: logLanguageContext(language),
-        slug: sourcePage.slug,
-        path: sourcePage.path,
-        model,
-      });
-
-      const text = await requestOpenRouterChatCompletion({
-        apiKey,
-        model,
-        origin,
-        siteTitle,
-        messages: [
-          {
-            role: "system",
-            content: AUTO_TRANSLATE_SYSTEM_PROMPT,
-          },
-          {
-            role: "user",
-            content: buildPageTranslationPrompt(language.name, sourcePage),
-          },
-        ],
-      });
-
-      const translatedPage = createTranslatedDocPage(sourcePage, normalizePageTranslationResponse(text));
-      const persisted = await writePersistentTranslatedPage(key, translatedPage);
-      if (!persisted) {
-        throw new ApiError(500, "Failed to persist translated docs page cache.");
-      }
-
-      translatedDocsPageCache.set(key, translatedPage);
-      logAutoTranslateInfo("Wrote persistent page translation cache", {
-        language: logLanguageContext(language),
-        slug: sourcePage.slug,
-        path: sourcePage.path,
-      });
-      logAutoTranslateInfo("Translated docs page", {
-        language: logLanguageContext(language),
-        slug: sourcePage.slug,
-        path: sourcePage.path,
-        model,
-      });
-      return translatedPage;
-    } catch (error: unknown) {
-      logAutoTranslateInfo("Page translation failed", {
-        language: logLanguageContext(language),
-        slug: sourcePage.slug,
-        path: sourcePage.path,
-        model,
-        error: getAutoTranslateErrorMessage(error),
-      });
-      throw error;
-    }
-  })().finally(() => {
-    if (pageTranslationLoads.get(key) === loadPromise) {
-      pageTranslationLoads.delete(key);
-    }
+    },
   });
 
-  pageTranslationLoads.set(key, loadPromise);
   return loadPromise.then((translatedPage) => withSourcePageRuntimeFields(translatedPage, sourcePage));
 };
 

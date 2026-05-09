@@ -105,6 +105,35 @@ const resetTranslationState = (): void => {
   mocks.requestOpenRouterChatCompletion.mockReset();
 };
 
+const waitForPendingWork = (delayMs = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, delayMs));
+
+const waitForOpenRouterCalls = async (count: number): Promise<void> => {
+  for (let index = 0; index < 50; index += 1) {
+    if (mocks.requestOpenRouterChatCompletion.mock.calls.length >= count) {
+      return;
+    }
+
+    await waitForPendingWork();
+  }
+
+  throw new Error(`Timed out waiting for ${count} OpenRouter request(s).`);
+};
+
+const createDeferred = <T>(): {
+  promise: Promise<T>;
+  resolve: (value: T) => void;
+  reject: (error: unknown) => void;
+} => {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return { promise, resolve, reject };
+};
+
 describe("auto translate persistent cache", () => {
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-translations-test-"));
@@ -480,6 +509,74 @@ describe("auto translate persistent cache", () => {
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
   });
 
+  it("queues page translation requests per page and language before cache keys can race", async () => {
+    const firstRequest = createDeferred<string>();
+    const changedSourcePage: GitHubDocPage = {
+      ...sourcePage,
+      sha: "source-sha-2",
+      description: "Updated package setup instructions.",
+      content: "## Setup\n\nInstall the package with pnpm.",
+      markdown:
+        "---\ntitle: Install Guide\ndescription: Updated package setup instructions.\n---\n\n## Setup\n\nInstall the package with pnpm.",
+    };
+
+    mocks.requestOpenRouterChatCompletion
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockResolvedValueOnce(
+        JSON.stringify([
+          {
+            page_display_name: "Aktualisierte Installationsanleitung",
+            page_description: "Aktualisierte deutsche Einrichtung.",
+            page_content: "## Einrichtung\n\nInstalliere das Paket mit pnpm.",
+          },
+        ]),
+      );
+
+    const firstTranslation = translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage,
+    });
+
+    await waitForOpenRouterCalls(1);
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+
+    const secondTranslation = translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage: changedSourcePage,
+    });
+
+    await waitForPendingWork(25);
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+
+    firstRequest.resolve(
+      JSON.stringify([
+        {
+          page_display_name: "Installationsanleitung",
+          page_description: "Deutsche Einrichtung.",
+          page_content: "## Einrichtung\n\nInstalliere das Paket mit npm.",
+        },
+      ]),
+    );
+
+    const [first, second] = await Promise.all([firstTranslation, secondTranslation]);
+
+    expect(first.title).toBe("Installationsanleitung");
+    expect(second.title).toBe("Aktualisierte Installationsanleitung");
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(2);
+  });
+
   it("reuses persisted sidebar title translations after the in-memory cache is cleared", async () => {
     mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
       JSON.stringify([
@@ -546,5 +643,69 @@ describe("auto translate persistent cache", () => {
 
     expect(translatedTrees.map((tree) => tree[0]?.name)).toEqual(Array.from({ length: 5 }, () => "Installation"));
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("queues sidebar title translation requests per language before title keys can race", async () => {
+    const firstRequest = createDeferred<string>();
+    const renamedTreeItems: GitHubDocTreeItem[] = [
+      {
+        ...treeItems[0],
+        name: "Setup Guide",
+      },
+    ];
+
+    mocks.requestOpenRouterChatCompletion
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockResolvedValueOnce(
+        JSON.stringify([
+          {
+            page_slug: "install",
+            page_display_name: "Einrichtung",
+          },
+        ]),
+      );
+
+    const firstTree = loadTranslatedDocTreeTitles({
+      apiKey: "key",
+      config,
+      items: treeItems,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+    });
+
+    await waitForOpenRouterCalls(1);
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+
+    const secondTree = loadTranslatedDocTreeTitles({
+      apiKey: "key",
+      config,
+      items: renamedTreeItems,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+    });
+
+    await waitForPendingWork(25);
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+
+    firstRequest.resolve(
+      JSON.stringify([
+        {
+          page_slug: "install",
+          page_display_name: "Installation",
+        },
+      ]),
+    );
+
+    const [first, second] = await Promise.all([firstTree, secondTree]);
+
+    expect(first[0]?.name).toBe("Installation");
+    expect(second[0]?.name).toBe("Einrichtung");
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(2);
   });
 });
