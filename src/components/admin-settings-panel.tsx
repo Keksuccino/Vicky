@@ -2246,7 +2246,6 @@ export function AdminSettingsPanel() {
 
             <div className="form-grid">
               <div className="settings-subcard">
-                <strong className="settings-subcard-title">Site copy</strong>
                 <div className="settings-subcard-fields">
                   <div className="field-inline">
                     <label className="field-row" htmlFor="site-title">
