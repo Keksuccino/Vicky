@@ -2064,52 +2064,56 @@ export function AdminSettingsPanel() {
                 void handleCreateModerator();
               }}
             >
-              <div className="field-inline">
-                <label className="field-row" htmlFor="moderator-username">
-                  <span className="field-label">Username</span>
-                  <input
-                    id="moderator-username"
-                    className="input"
-                    value={moderatorUsername}
-                    onChange={(event) => setModeratorUsername(event.target.value)}
-                    placeholder="docs-editor"
-                    autoComplete="off"
-                    required
-                  />
-                </label>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-inline">
+                    <label className="field-row" htmlFor="moderator-username">
+                      <span className="field-label">Username</span>
+                      <input
+                        id="moderator-username"
+                        className="input"
+                        value={moderatorUsername}
+                        onChange={(event) => setModeratorUsername(event.target.value)}
+                        placeholder="docs-editor"
+                        autoComplete="off"
+                        required
+                      />
+                    </label>
 
-                <div className="field-row">
-                  <label className="field-label" htmlFor="moderator-password">
-                    Password
-                  </label>
-                  <div className="password-input-row">
-                    <input
-                      id="moderator-password"
-                      className="input"
-                      type={showModeratorPassword ? "text" : "password"}
-                      value={moderatorPassword}
-                      onChange={(event) => setModeratorPassword(event.target.value)}
-                      autoComplete="new-password"
-                      required
-                    />
-                    <button
-                      type="button"
-                      className="btn btn-icon password-toggle-button"
-                      aria-label={showModeratorPassword ? "Hide password" : "Show password"}
-                      aria-pressed={showModeratorPassword}
-                      onClick={() => setShowModeratorPassword((current) => !current)}
-                    >
-                      <MaterialIcon name={showModeratorPassword ? "visibility_off" : "visibility"} />
+                    <div className="field-row">
+                      <label className="field-label" htmlFor="moderator-password">
+                        Password
+                      </label>
+                      <div className="password-input-row">
+                        <input
+                          id="moderator-password"
+                          className="input"
+                          type={showModeratorPassword ? "text" : "password"}
+                          value={moderatorPassword}
+                          onChange={(event) => setModeratorPassword(event.target.value)}
+                          autoComplete="new-password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="btn btn-icon password-toggle-button"
+                          aria-label={showModeratorPassword ? "Hide password" : "Show password"}
+                          aria-pressed={showModeratorPassword}
+                          onClick={() => setShowModeratorPassword((current) => !current)}
+                        >
+                          <MaterialIcon name={showModeratorPassword ? "visibility_off" : "visibility"} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="action-row">
+                    <button type="submit" className="btn" disabled={moderatorSaving}>
+                      <MaterialIcon name={moderatorSaving ? "hourglass_top" : "person_add"} />
+                      <span>{moderatorSaving ? "Adding..." : "Add moderator"}</span>
                     </button>
                   </div>
                 </div>
-              </div>
-
-              <div className="action-row">
-                <button type="submit" className="btn" disabled={moderatorSaving}>
-                  <MaterialIcon name={moderatorSaving ? "hourglass_top" : "person_add"} />
-                  <span>{moderatorSaving ? "Adding..." : "Add moderator"}</span>
-                </button>
               </div>
             </form>
 
@@ -2807,20 +2811,24 @@ export function AdminSettingsPanel() {
                 </div>
               </div>
 
-              <label className="field-row" htmlFor="theme-custom-css">
-                <span className="field-label">Custom CSS</span>
-                <textarea
-                  id="theme-custom-css"
-                  className="input textarea"
-                  rows={6}
-                  value={settings.themeCustomCss}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, themeCustomCss: event.target.value }))}
-                  placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
-                />
-                <span className="field-hint">
-                  Optional advanced overrides applied on top of the built-in Light and Dark themes.
-                </span>
-              </label>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <label className="field-row" htmlFor="theme-custom-css">
+                    <span className="field-label">Custom CSS</span>
+                    <textarea
+                      id="theme-custom-css"
+                      className="input textarea"
+                      rows={6}
+                      value={settings.themeCustomCss}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, themeCustomCss: event.target.value }))}
+                      placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
+                    />
+                    <span className="field-hint">
+                      Optional advanced overrides applied on top of the built-in Light and Dark themes.
+                    </span>
+                  </label>
+                </div>
+              </div>
 
             </div>
           </section>
@@ -2835,56 +2843,60 @@ export function AdminSettingsPanel() {
             </p>
 
             <div className="form-grid">
-              <div className="field-row">
-                <label className="field-label" htmlFor="openrouter-api-key">
-                  OpenRouter API key
-                </label>
-                <div className="secret-input-row">
-                  <input
-                    id="openrouter-api-key"
-                    className="input"
-                    type="text"
-                    autoComplete="off"
-                    value={settings.openRouterApiKey}
-                    aria-invalid={Boolean(openRouterFieldErrors.apiKey)}
-                    onChange={(event) => {
-                      const value = event.target.value;
-                      setSettings((prev) => ({ ...prev, openRouterApiKey: value }));
-                      setOpenRouterFieldErrors((prev) => ({
-                        ...prev,
-                        apiKey:
-                          settings.aiChatEnabled || settings.autoTranslateEnabled
-                            ? value.trim() || settings.openRouterApiKeyConfigured
-                              ? null
-                              : "Enter an OpenRouter API key before enabling AI features."
-                            : null,
-                      }));
-                    }}
-                    placeholder={
-                      settings.openRouterApiKeyConfigured
-                        ? "Saved OpenRouter key configured (leave blank to keep)"
-                        : "sk-or-v1-..."
-                    }
-                  />
-                  <button
-                    type="button"
-                    className="btn secret-clear-button"
-                    disabled={
-                      settingsSaving ||
-                      clearingSecret !== null ||
-                      (!settings.openRouterApiKey.trim() && !settings.openRouterApiKeyConfigured)
-                    }
-                    onClick={() => {
-                      void clearSavedSecret("openRouterApiKey");
-                    }}
-                  >
-                    {clearingSecret === "openRouterApiKey" ? "Clearing..." : "Clear"}
-                  </button>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-row">
+                    <label className="field-label" htmlFor="openrouter-api-key">
+                      OpenRouter API key
+                    </label>
+                    <div className="secret-input-row">
+                      <input
+                        id="openrouter-api-key"
+                        className="input"
+                        type="text"
+                        autoComplete="off"
+                        value={settings.openRouterApiKey}
+                        aria-invalid={Boolean(openRouterFieldErrors.apiKey)}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSettings((prev) => ({ ...prev, openRouterApiKey: value }));
+                          setOpenRouterFieldErrors((prev) => ({
+                            ...prev,
+                            apiKey:
+                              settings.aiChatEnabled || settings.autoTranslateEnabled
+                                ? value.trim() || settings.openRouterApiKeyConfigured
+                                  ? null
+                                  : "Enter an OpenRouter API key before enabling AI features."
+                                : null,
+                          }));
+                        }}
+                        placeholder={
+                          settings.openRouterApiKeyConfigured
+                            ? "Saved OpenRouter key configured (leave blank to keep)"
+                            : "sk-or-v1-..."
+                        }
+                      />
+                      <button
+                        type="button"
+                        className="btn secret-clear-button"
+                        disabled={
+                          settingsSaving ||
+                          clearingSecret !== null ||
+                          (!settings.openRouterApiKey.trim() && !settings.openRouterApiKeyConfigured)
+                        }
+                        onClick={() => {
+                          void clearSavedSecret("openRouterApiKey");
+                        }}
+                      >
+                        {clearingSecret === "openRouterApiKey" ? "Clearing..." : "Clear"}
+                      </button>
+                    </div>
+                    <span className="field-hint">
+                      Stored encrypted in the local app settings file. Leave blank to keep the existing saved key.
+                    </span>
+                    {openRouterFieldErrors.apiKey ? <span className="error-text">{openRouterFieldErrors.apiKey}</span> : null}
+                  </div>
                 </div>
-                <span className="field-hint">
-                  Stored encrypted in the local app settings file. Leave blank to keep the existing saved key.
-                </span>
-                {openRouterFieldErrors.apiKey ? <span className="error-text">{openRouterFieldErrors.apiKey}</span> : null}
               </div>
             </div>
           </section>
