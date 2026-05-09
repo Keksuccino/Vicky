@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import { shouldTranslateAutoTranslateLanguage } from "@/lib/auto-translate";
+import {
+  normalizeAutoTranslateLanguageCode,
+  shouldTranslateAutoTranslateLanguage,
+} from "@/lib/auto-translate";
 import { translatedDocsPageCache, translatedDocsTitleCache } from "@/lib/cache";
 import { ApiError } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
@@ -63,14 +66,37 @@ export type GitHubDocPageTranslationCacheStatus = {
 const hashValue = (value: unknown): string =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
 
-const translationSettingsHash = (language: AutoTranslateLanguage, model: string): string =>
+const translationTargetHash = (language: AutoTranslateLanguage): string =>
+  hashValue({
+    languageCode: normalizeAutoTranslateLanguageCode(language.code).toLowerCase(),
+  });
+
+const legacyTranslationSettingsHash = (language: AutoTranslateLanguage, model: string): string =>
   hashValue({
     languageCode: language.code,
     languageName: language.name,
     model,
   });
 
+// Paid translations stay valid for the same target language/source page until the exact source content changes.
+// GitHub fetch SHAs, model choices, and display-name tweaks must not invalidate them.
+const pageSourceContentHash = (page: GitHubDocPage): string => hashValue(page.markdown);
+
 const pageTranslationCacheKey = (
+  config: GitHubRuntimeConfig,
+  page: GitHubDocPage,
+  language: AutoTranslateLanguage,
+): string =>
+  [
+    toRuntimeConfigCacheKey(config),
+    "auto-translate",
+    "page",
+    translationTargetHash(language),
+    page.slug,
+    pageSourceContentHash(page),
+  ].join("|");
+
+const legacyPageTranslationCacheKey = (
   config: GitHubRuntimeConfig,
   page: GitHubDocPage,
   language: AutoTranslateLanguage,
@@ -80,12 +106,39 @@ const pageTranslationCacheKey = (
     toRuntimeConfigCacheKey(config),
     "auto-translate",
     "page",
-    translationSettingsHash(language, model),
+    legacyTranslationSettingsHash(language, model),
     page.slug,
     page.sha,
   ].join("|");
 
+const pageTranslationCacheKeys = (
+  config: GitHubRuntimeConfig,
+  page: GitHubDocPage,
+  language: AutoTranslateLanguage,
+  model: string,
+): string[] => {
+  const currentKey = pageTranslationCacheKey(config, page, language);
+  const legacyKey = legacyPageTranslationCacheKey(config, page, language, model);
+  return currentKey === legacyKey ? [currentKey] : [currentKey, legacyKey];
+};
+
+const titleSourceContentHash = (items: GitHubDocTreeItem[]): string =>
+  hashValue(items.map((item) => ({ slug: item.slug, path: item.path, name: item.name })));
+
 const titleTranslationCacheKey = (
+  config: GitHubRuntimeConfig,
+  items: GitHubDocTreeItem[],
+  language: AutoTranslateLanguage,
+): string =>
+  [
+    toRuntimeConfigCacheKey(config),
+    "auto-translate",
+    "titles",
+    translationTargetHash(language),
+    titleSourceContentHash(items),
+  ].join("|");
+
+const legacyTitleTranslationCacheKey = (
   config: GitHubRuntimeConfig,
   items: GitHubDocTreeItem[],
   language: AutoTranslateLanguage,
@@ -95,9 +148,20 @@ const titleTranslationCacheKey = (
     toRuntimeConfigCacheKey(config),
     "auto-translate",
     "titles",
-    translationSettingsHash(language, model),
-    hashValue(items.map((item) => ({ slug: item.slug, path: item.path, name: item.name }))),
+    legacyTranslationSettingsHash(language, model),
+    titleSourceContentHash(items),
   ].join("|");
+
+const titleTranslationCacheKeys = (
+  config: GitHubRuntimeConfig,
+  items: GitHubDocTreeItem[],
+  language: AutoTranslateLanguage,
+  model: string,
+): string[] => {
+  const currentKey = titleTranslationCacheKey(config, items, language);
+  const legacyKey = legacyTitleTranslationCacheKey(config, items, language, model);
+  return currentKey === legacyKey ? [currentKey] : [currentKey, legacyKey];
+};
 
 const stripJsonCodeFence = (value: string): string => {
   const trimmed = value.trim();
@@ -227,10 +291,15 @@ const loadTitleOnlyTranslations = async ({
   origin: string;
   siteTitle: string;
 }): Promise<Map<string, string>> => {
-  const key = titleTranslationCacheKey(config, items, language, model);
-  const cached = translatedDocsTitleCache.get(key) as Map<string, string> | undefined;
-  if (cached) {
-    return cached;
+  const keys = titleTranslationCacheKeys(config, items, language, model);
+  const key = keys[0];
+
+  for (const cacheKey of keys) {
+    const cached = translatedDocsTitleCache.get(cacheKey) as Map<string, string> | undefined;
+    if (cached) {
+      translatedDocsTitleCache.set(key, cached);
+      return cached;
+    }
   }
 
   const pending = titleTranslationLoads.get(key);
@@ -239,10 +308,16 @@ const loadTitleOnlyTranslations = async ({
   }
 
   const loadPromise = (async () => {
-    const persisted = await readPersistentTitleTranslations(key);
-    if (persisted) {
-      translatedDocsTitleCache.set(key, persisted);
-      return persisted;
+    for (const cacheKey of keys) {
+      const persisted = await readPersistentTitleTranslations(cacheKey);
+      if (persisted) {
+        translatedDocsTitleCache.set(key, persisted);
+        if (cacheKey !== key) {
+          await writePersistentTitleTranslations(key, persisted);
+        }
+
+        return persisted;
+      }
     }
 
     const text = await requestOpenRouterChatCompletion({
@@ -263,8 +338,12 @@ const loadTitleOnlyTranslations = async ({
     });
 
     const translations = normalizeTitleTranslationResponse(text, items);
+    const persisted = await writePersistentTitleTranslations(key, translations);
+    if (!persisted) {
+      throw new ApiError(500, "Failed to persist translated docs title cache.");
+    }
+
     translatedDocsTitleCache.set(key, translations);
-    await writePersistentTitleTranslations(key, translations);
     return translations;
   })().finally(() => {
     if (titleTranslationLoads.get(key) === loadPromise) {
@@ -302,16 +381,23 @@ export const applyCachedTranslatedDocTreeTitles = ({
     return items;
   }
 
-  const key = titleTranslationCacheKey(config, items, language, model);
-  const cached = translatedDocsTitleCache.get(key) as Map<string, string> | undefined;
-  if (cached) {
-    return applyTreeTitleTranslations(items, cached);
+  const keys = titleTranslationCacheKeys(config, items, language, model);
+  const key = keys[0];
+
+  for (const cacheKey of keys) {
+    const cached = translatedDocsTitleCache.get(cacheKey) as Map<string, string> | undefined;
+    if (cached) {
+      translatedDocsTitleCache.set(key, cached);
+      return applyTreeTitleTranslations(items, cached);
+    }
   }
 
-  const persisted = readPersistentTitleTranslationsSync(key);
-  if (persisted) {
-    translatedDocsTitleCache.set(key, persisted);
-    return applyTreeTitleTranslations(items, persisted);
+  for (const cacheKey of keys) {
+    const persisted = readPersistentTitleTranslationsSync(cacheKey);
+    if (persisted) {
+      translatedDocsTitleCache.set(key, persisted);
+      return applyTreeTitleTranslations(items, persisted);
+    }
   }
 
   return items;
@@ -334,18 +420,26 @@ export const hasCachedTranslatedDocTreeTitles = ({
     return true;
   }
 
-  const key = titleTranslationCacheKey(config, items, language, model);
-  if (translatedDocsTitleCache.get(key)) {
-    return true;
+  const keys = titleTranslationCacheKeys(config, items, language, model);
+  const key = keys[0];
+
+  for (const cacheKey of keys) {
+    const cached = translatedDocsTitleCache.get(cacheKey) as Map<string, string> | undefined;
+    if (cached) {
+      translatedDocsTitleCache.set(key, cached);
+      return true;
+    }
   }
 
-  const persisted = readPersistentTitleTranslationsSync(key);
-  if (!persisted) {
-    return false;
+  for (const cacheKey of keys) {
+    const persisted = readPersistentTitleTranslationsSync(cacheKey);
+    if (persisted) {
+      translatedDocsTitleCache.set(key, persisted);
+      return true;
+    }
   }
 
-  translatedDocsTitleCache.set(key, persisted);
-  return true;
+  return false;
 };
 
 export const warmTranslatedDocTreeTitles = ({
@@ -459,19 +553,26 @@ export const getCachedTranslatedDocPage = (
   language: AutoTranslateLanguage,
   model: string,
 ): GitHubDocPage | null => {
-  const key = pageTranslationCacheKey(config, sourcePage, language, model);
-  const cached = translatedDocsPageCache.get(key) as GitHubDocPage | undefined;
-  if (cached) {
-    return withSourcePageRuntimeFields(cached, sourcePage);
+  const keys = pageTranslationCacheKeys(config, sourcePage, language, model);
+  const key = keys[0];
+
+  for (const cacheKey of keys) {
+    const cached = translatedDocsPageCache.get(cacheKey) as GitHubDocPage | undefined;
+    if (cached) {
+      translatedDocsPageCache.set(key, cached);
+      return withSourcePageRuntimeFields(cached, sourcePage);
+    }
   }
 
-  const persisted = readPersistentTranslatedPageSync(key);
-  if (!persisted) {
-    return null;
+  for (const cacheKey of keys) {
+    const persisted = readPersistentTranslatedPageSync(cacheKey);
+    if (persisted) {
+      translatedDocsPageCache.set(key, persisted);
+      return withSourcePageRuntimeFields(persisted, sourcePage);
+    }
   }
 
-  translatedDocsPageCache.set(key, persisted);
-  return withSourcePageRuntimeFields(persisted, sourcePage);
+  return null;
 };
 
 export const getGitHubDocPageTranslationCacheStatus = ({
@@ -526,10 +627,15 @@ export const translateGitHubDocPage = async ({
     return sourcePage;
   }
 
-  const key = pageTranslationCacheKey(config, sourcePage, language, model);
-  const cached = translatedDocsPageCache.get(key) as GitHubDocPage | undefined;
-  if (cached) {
-    return withSourcePageRuntimeFields(cached, sourcePage);
+  const keys = pageTranslationCacheKeys(config, sourcePage, language, model);
+  const key = keys[0];
+
+  for (const cacheKey of keys) {
+    const cached = translatedDocsPageCache.get(cacheKey) as GitHubDocPage | undefined;
+    if (cached) {
+      translatedDocsPageCache.set(key, cached);
+      return withSourcePageRuntimeFields(cached, sourcePage);
+    }
   }
 
   const pending = pageTranslationLoads.get(key);
@@ -538,10 +644,16 @@ export const translateGitHubDocPage = async ({
   }
 
   const loadPromise = (async () => {
-    const persisted = await readPersistentTranslatedPage(key);
-    if (persisted) {
-      translatedDocsPageCache.set(key, persisted);
-      return persisted;
+    for (const cacheKey of keys) {
+      const persisted = await readPersistentTranslatedPage(cacheKey);
+      if (persisted) {
+        translatedDocsPageCache.set(key, persisted);
+        if (cacheKey !== key) {
+          await writePersistentTranslatedPage(key, persisted);
+        }
+
+        return persisted;
+      }
     }
 
     const text = await requestOpenRouterChatCompletion({
@@ -562,8 +674,12 @@ export const translateGitHubDocPage = async ({
     });
 
     const translatedPage = createTranslatedDocPage(sourcePage, normalizePageTranslationResponse(text));
+    const persisted = await writePersistentTranslatedPage(key, translatedPage);
+    if (!persisted) {
+      throw new ApiError(500, "Failed to persist translated docs page cache.");
+    }
+
     translatedDocsPageCache.set(key, translatedPage);
-    await writePersistentTranslatedPage(key, translatedPage);
     return translatedPage;
   })().finally(() => {
     if (pageTranslationLoads.get(key) === loadPromise) {

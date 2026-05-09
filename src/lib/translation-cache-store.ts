@@ -207,7 +207,7 @@ export const readPersistentTranslatedPageSync = (key: string): GitHubDocPage | n
   }
 };
 
-export const writePersistentTranslatedPage = async (key: string, page: GitHubDocPage): Promise<void> => {
+export const writePersistentTranslatedPage = async (key: string, page: GitHubDocPage): Promise<boolean> => {
   try {
     const entry: PersistedPageTranslation = {
       version: TRANSLATION_CACHE_VERSION,
@@ -218,8 +218,10 @@ export const writePersistentTranslatedPage = async (key: string, page: GitHubDoc
     };
 
     await writeJsonFile(cacheFilePath("pages", key), entry);
+    return true;
   } catch (error: unknown) {
     warnCacheFailure("write", key, error);
+    return false;
   }
 };
 
@@ -252,7 +254,7 @@ export const readPersistentTitleTranslationsSync = (key: string): Map<string, st
 export const writePersistentTitleTranslations = async (
   key: string,
   translations: Map<string, string>,
-): Promise<void> => {
+): Promise<boolean> => {
   try {
     const entry: PersistedTitleTranslations = {
       version: TRANSLATION_CACHE_VERSION,
@@ -263,7 +265,9 @@ export const writePersistentTitleTranslations = async (
     };
 
     await writeJsonFile(cacheFilePath("titles", key), entry);
+    return true;
   } catch (error: unknown) {
     warnCacheFailure("write", key, error);
+    return false;
   }
 };

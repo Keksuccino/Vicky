@@ -1,4 +1,5 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -19,6 +20,7 @@ import {
   loadTranslatedDocTreeTitles,
   translateGitHubDocPage,
 } from "../auto-translate-server";
+import { writePersistentTranslatedPage } from "../translation-cache-store";
 import type {
   AutoTranslateLanguage,
   AutoTranslateSettings,
@@ -74,6 +76,27 @@ const treeItems: GitHubDocTreeItem[] = [
 
 const previousTranslationCacheDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
 let tempDir = "";
+
+const legacyHashValue = (value: unknown): string =>
+  createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 32);
+
+const legacyPageTranslationCacheKey = (
+  page: GitHubDocPage,
+  targetLanguage = language,
+  model = settings.openRouterModel,
+): string =>
+  [
+    "owner|repo|main|docs",
+    "auto-translate",
+    "page",
+    legacyHashValue({
+      languageCode: targetLanguage.code,
+      languageName: targetLanguage.name,
+      model,
+    }),
+    page.slug,
+    page.sha,
+  ].join("|");
 
 const resetTranslationState = (): void => {
   translatedDocsPageCache.clear();
@@ -140,7 +163,94 @@ describe("auto translate persistent cache", () => {
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
   });
 
-  it("requests a new page translation when the source content sha changes", async () => {
+  it("reuses persisted page translations when the source sha changes but markdown content is unchanged", async () => {
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          page_display_name: "Installationsanleitung",
+          page_description: "Deutsche Einrichtung.",
+          page_content: "## Einrichtung\n\nInstalliere das Paket mit npm.",
+        },
+      ]),
+    );
+
+    await translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage,
+    });
+
+    translatedDocsPageCache.clear();
+
+    const refetchedSourcePage = {
+      ...sourcePage,
+      sha: "source-sha-2",
+      updatedAt: "2026-05-05T08:15:00.000Z",
+      updatedBy: "Grace",
+    };
+
+    const refetched = await translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage: refetchedSourcePage,
+    });
+
+    expect(refetched.title).toBe("Installationsanleitung");
+    expect(refetched.sha).toBe(refetchedSourcePage.sha);
+    expect(refetched.updatedBy).toBe(refetchedSourcePage.updatedBy);
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses persisted page translations when translation model or language display name changes", async () => {
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          page_display_name: "Installationsanleitung",
+          page_description: "Deutsche Einrichtung.",
+          page_content: "## Einrichtung\n\nInstalliere das Paket mit npm.",
+        },
+      ]),
+    );
+
+    await translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage,
+    });
+
+    translatedDocsPageCache.clear();
+
+    const reused = await translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language: { ...language, name: "Deutsch" },
+      model: "openai/gpt-5.5",
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage,
+    });
+
+    expect(reused.title).toBe("Installationsanleitung");
+    expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("requests a new page translation when the source markdown content changes", async () => {
     mocks.requestOpenRouterChatCompletion
       .mockResolvedValueOnce(
         JSON.stringify([
@@ -197,7 +307,7 @@ describe("auto translate persistent cache", () => {
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(2);
   });
 
-  it("counts only cached page translations matching the current source sha", async () => {
+  it("counts cached page translations by source markdown content instead of source sha", async () => {
     mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
       JSON.stringify([
         {
@@ -235,8 +345,103 @@ describe("auto translate persistent cache", () => {
         model: settings.openRouterModel,
         pages: [{ ...sourcePage, sha: "source-sha-2" }],
       }),
+    ).toEqual({ totalPages: 1, cachedPages: 1 });
+
+    expect(
+      getGitHubDocPageTranslationCacheStatus({
+        config,
+        language,
+        model: settings.openRouterModel,
+        pages: [
+          {
+            ...sourcePage,
+            sha: "source-sha-2",
+            content: "## New Setup\n\nInstall the updated package.",
+            markdown:
+              "---\ntitle: Install Guide\ndescription: Package setup instructions.\n---\n\n## New Setup\n\nInstall the updated package.",
+          },
+        ],
+      }),
     ).toEqual({ totalPages: 1, cachedPages: 0 });
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(1);
+  });
+
+  it("reuses legacy sha-keyed persistent page translations", async () => {
+    const legacyTranslatedPage: GitHubDocPage = {
+      ...sourcePage,
+      title: "Legacy Installation",
+      description: "Legacy persisted translation.",
+      content: "## Legacy\n\nPersisted translation.",
+      markdown:
+        "---\ntitle: Legacy Installation\ndescription: Legacy persisted translation.\n---\n\n## Legacy\n\nPersisted translation.",
+      headings: [{ depth: 2, text: "Legacy", slug: "legacy" }],
+    };
+
+    await expect(writePersistentTranslatedPage(legacyPageTranslationCacheKey(sourcePage), legacyTranslatedPage)).resolves.toBe(
+      true,
+    );
+
+    const translated = await translateGitHubDocPage({
+      apiKey: "key",
+      config,
+      language,
+      model: settings.openRouterModel,
+      origin: "https://example.com",
+      settings,
+      siteTitle: "Vicky Docs",
+      sourcePage,
+    });
+
+    expect(translated.title).toBe("Legacy Installation");
+    expect(mocks.requestOpenRouterChatCompletion).not.toHaveBeenCalled();
+    expect(
+      getGitHubDocPageTranslationCacheStatus({
+        config,
+        language,
+        model: settings.openRouterModel,
+        pages: [sourcePage],
+      }),
+    ).toEqual({ totalPages: 1, cachedPages: 1 });
+  });
+
+  it("does not mark translations cached when the persistent page cache write fails", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const blockedCachePath = path.join(tempDir, "blocked-cache");
+    await writeFile(blockedCachePath, "not a directory", "utf8");
+    process.env.WIKI_TRANSLATION_CACHE_DIR = blockedCachePath;
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(
+      JSON.stringify([
+        {
+          page_display_name: "Installationsanleitung",
+          page_description: "Deutsche Einrichtung.",
+          page_content: "## Einrichtung\n\nInstalliere das Paket mit npm.",
+        },
+      ]),
+    );
+
+    await expect(
+      translateGitHubDocPage({
+        apiKey: "key",
+        config,
+        language,
+        model: settings.openRouterModel,
+        origin: "https://example.com",
+        settings,
+        siteTitle: "Vicky Docs",
+        sourcePage,
+      }),
+    ).rejects.toThrow("Failed to persist translated docs page cache.");
+
+    expect(
+      getGitHubDocPageTranslationCacheStatus({
+        config,
+        language,
+        model: settings.openRouterModel,
+        pages: [sourcePage],
+      }),
+    ).toEqual({ totalPages: 1, cachedPages: 0 });
+    expect(warnSpy).toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it("dedupes concurrent page translation requests for the same source key", async () => {
