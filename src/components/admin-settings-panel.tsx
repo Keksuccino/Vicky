@@ -2021,7 +2021,7 @@ export function AdminSettingsPanel() {
                   </label>
                 </div>
 
-                <div className="action-row repository-action-row">
+                <div className="action-row">
                   <button type="button" className="btn" disabled={refreshingDocs} onClick={refreshDocsCache}>
                     <MaterialIcon name={refreshingDocs ? "sync" : "cloud_sync"} />
                     <span>{refreshingDocs ? "Fetching..." : "Fetch pages now"}</span>

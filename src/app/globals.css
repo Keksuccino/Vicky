@@ -2480,6 +2480,10 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
   gap: 0.65rem;
 }
 
+.panel-card-repo .field-inline {
+  align-items: start;
+}
+
 .field-stack {
   display: grid;
   gap: 0.55rem;
@@ -2696,10 +2700,6 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
   display: flex;
   flex-wrap: wrap;
   gap: 0.55rem;
-}
-
-.repository-action-row {
-  margin-top: 0.3rem;
 }
 
 .moderator-list {
