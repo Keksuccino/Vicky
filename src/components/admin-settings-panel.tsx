@@ -2319,23 +2319,25 @@ export function AdminSettingsPanel() {
                 </div>
               </div>
 
-              <label className="field-row" htmlFor="site-start-page">
-                <span className="field-label">Start page (docs path)</span>
-                <input
-                  id="site-start-page"
-                  className="input"
-                  value={settings.startPage}
-                  onChange={(event) => setSettings((prev) => ({ ...prev, startPage: event.target.value }))}
-                  placeholder="/home"
-                  required
-                />
-                <span className="field-hint">
-                  Preferred format: <code>/home</code>. <code>/docs/home</code> and full docs URLs are normalized
-                  automatically.
-                </span>
-              </label>
-
-              <div className="form-separator" role="separator" aria-hidden="true" />
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <label className="field-row" htmlFor="site-start-page">
+                    <span className="field-label">Start page (docs path)</span>
+                    <input
+                      id="site-start-page"
+                      className="input"
+                      value={settings.startPage}
+                      onChange={(event) => setSettings((prev) => ({ ...prev, startPage: event.target.value }))}
+                      placeholder="/home"
+                      required
+                    />
+                    <span className="field-hint">
+                      Preferred format: <code>/home</code>. <code>/docs/home</code> and full docs URLs are normalized
+                      automatically.
+                    </span>
+                  </label>
+                </div>
+              </div>
 
               <div className="settings-subcard">
                 <div className="settings-subcard-fields">
