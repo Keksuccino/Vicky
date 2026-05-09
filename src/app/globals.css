@@ -2113,7 +2113,7 @@ select {
 .secret-input-row {
   display: flex;
   align-items: stretch;
-  gap: 0.45rem;
+  gap: 0.7rem;
 }
 
 .secret-input-row > .input {
