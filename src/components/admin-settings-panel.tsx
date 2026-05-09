@@ -2494,24 +2494,28 @@ export function AdminSettingsPanel() {
             </p>
 
             <div className="form-grid">
-              <div className="field-row">
-                <span className="field-label">Enable AI chat</span>
-                <label className="toggle-row" htmlFor="ai-chat-enabled">
-                  <input
-                    id="ai-chat-enabled"
-                    className="toggle-input"
-                    type="checkbox"
-                    checked={settings.aiChatEnabled}
-                    onChange={(event) => setSettings((prev) => ({ ...prev, aiChatEnabled: event.target.checked }))}
-                  />
-                  <span className="toggle-control" aria-hidden="true">
-                    <span className="toggle-thumb" />
-                  </span>
-                  <span>{settings.aiChatEnabled ? "Enabled" : "Disabled"}</span>
-                </label>
-                <span className="field-hint">
-                  Shows the floating Ask Docs button on docs pages and enables the public chat API route.
-                </span>
+              <div className="settings-subcard">
+                <div className="settings-subcard-fields">
+                  <div className="field-row">
+                    <span className="field-label">Enable AI chat</span>
+                    <label className="toggle-row" htmlFor="ai-chat-enabled">
+                      <input
+                        id="ai-chat-enabled"
+                        className="toggle-input"
+                        type="checkbox"
+                        checked={settings.aiChatEnabled}
+                        onChange={(event) => setSettings((prev) => ({ ...prev, aiChatEnabled: event.target.checked }))}
+                      />
+                      <span className="toggle-control" aria-hidden="true">
+                        <span className="toggle-thumb" />
+                      </span>
+                      <span>{settings.aiChatEnabled ? "Enabled" : "Disabled"}</span>
+                    </label>
+                    <span className="field-hint">
+                      Shows the floating Ask Docs button on docs pages and enables the public chat API route.
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="settings-subcard">
