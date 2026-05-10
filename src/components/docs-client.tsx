@@ -172,20 +172,49 @@ function findHeadingElement(heading: MarkdownHeading): HTMLElement | null {
   );
 }
 
+function withInstantWindowScroll(scroll: () => void): void {
+  const htmlBehavior = document.documentElement.style.scrollBehavior;
+  const bodyBehavior = document.body.style.scrollBehavior;
+  document.documentElement.style.scrollBehavior = "auto";
+  document.body.style.scrollBehavior = "auto";
+
+  try {
+    scroll();
+  } finally {
+    document.documentElement.style.scrollBehavior = htmlBehavior;
+    document.body.style.scrollBehavior = bodyBehavior;
+  }
+}
+
+function scrollToPageTop(): void {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  withInstantWindowScroll(() => {
+    const scrollingElement = document.scrollingElement;
+    if (scrollingElement) {
+      scrollingElement.scrollTop = 0;
+      scrollingElement.scrollLeft = 0;
+    }
+
+    document.documentElement.scrollTop = 0;
+    document.documentElement.scrollLeft = 0;
+    document.body.scrollTop = 0;
+    document.body.scrollLeft = 0;
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  });
+}
+
 function scrollToElement(element: HTMLElement): void {
   const headerHeightVar = getComputedStyle(document.documentElement).getPropertyValue("--header-height").trim();
   const headerHeight = Number.parseInt(headerHeightVar, 10);
   const offset = Number.isFinite(headerHeight) && headerHeight > 0 ? headerHeight + 12 : 0;
   const top = Math.max(0, window.scrollY + element.getBoundingClientRect().top - offset);
 
-  // Force instant positioning to avoid racing with global smooth scroll behavior.
-  const htmlBehavior = document.documentElement.style.scrollBehavior;
-  const bodyBehavior = document.body.style.scrollBehavior;
-  document.documentElement.style.scrollBehavior = "auto";
-  document.body.style.scrollBehavior = "auto";
-  window.scrollTo({ top, left: 0, behavior: "auto" });
-  document.documentElement.style.scrollBehavior = htmlBehavior;
-  document.body.style.scrollBehavior = bodyBehavior;
+  withInstantWindowScroll(() => {
+    window.scrollTo({ top, left: 0, behavior: "auto" });
+  });
 }
 
 function DocsSidebarUnresolved() {
@@ -880,13 +909,19 @@ export function DocsClient({
 
   const onSelectPath = (path: string, anchor?: string) => {
     const normalized = normalizePath(path);
+    const hasAnchor = Boolean(anchor);
+
+    if (!hasAnchor) {
+      scrollToPageTop();
+    }
+
     setCurrentPath(normalized);
-    setActiveHeadingSlug(anchor ?? null);
+    setActiveHeadingSlug(hasAnchor ? anchor ?? null : null);
     setSearchQuery("");
     setSearchResults([]);
     setSidebarOpen(false);
-    const hash = anchor ? `#${encodeURIComponent(anchor)}` : "";
-    router.push(`${toDocsHref(normalized)}${hash}`, { scroll: !anchor });
+    const hash = hasAnchor ? `#${encodeURIComponent(anchor ?? "")}` : "";
+    router.push(`${toDocsHref(normalized)}${hash}`, { scroll: false });
   };
 
   const showPagePlaceholder = pageLoading;
