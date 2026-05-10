@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
@@ -24,10 +24,21 @@ type PersistedRenderedMarkdownEntry = {
   headings: MarkdownHeading[];
 };
 
+export type RenderedMarkdownCacheEntryMetadata = {
+  fileName: string;
+  headingCount: number;
+  htmlBytes: number;
+  key: string;
+  rendererVersion: string;
+  savedAt: string;
+};
+
 const getMarkdownRenderCacheDir = (): string =>
   process.env.WIKI_MARKDOWN_CACHE_DIR?.trim() || DEFAULT_MARKDOWN_RENDER_CACHE_DIR;
 
 const hashCacheKey = (key: string): string => createHash("sha256").update(key).digest("hex");
+
+const cachePagesDir = (): string => path.join(getMarkdownRenderCacheDir(), "pages");
 
 const cacheFilePath = (key: string): string => path.join(getMarkdownRenderCacheDir(), "pages", `${hashCacheKey(key)}.json`);
 
@@ -40,6 +51,11 @@ const isMissingFileError = (error: unknown): boolean =>
 const warnCacheFailure = (action: string, key: string, error: unknown): void => {
   const message = error instanceof Error ? error.message : String(error);
   console.warn(`[markdown] Failed to ${action} persistent rendered markdown cache entry ${hashCacheKey(key)}: ${message}`);
+};
+
+const warnCacheFileFailure = (action: string, fileName: string, error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[markdown] Failed to ${action} persistent rendered markdown cache file ${fileName}: ${message}`);
 };
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
@@ -110,11 +126,69 @@ const normalizePersistedRenderedMarkdown = (value: unknown, key: string): Persis
   };
 };
 
+const normalizePersistedRenderedMarkdownMetadata = (
+  value: unknown,
+  fileName: string,
+): RenderedMarkdownCacheEntryMetadata | null => {
+  const source = asRecord(value);
+  if (!source || source.version !== MARKDOWN_RENDER_CACHE_ENTRY_VERSION || source.kind !== "rendered-markdown") {
+    return null;
+  }
+
+  const key = asString(source.key);
+  const rendererVersion = asString(source.rendererVersion);
+  const savedAt = asString(source.savedAt);
+  const html = asString(source.html);
+  const headingCount = Array.isArray(source.headings) ? source.headings.length : 0;
+
+  if (!key || !rendererVersion || !savedAt || html === null) {
+    return null;
+  }
+
+  return {
+    fileName,
+    headingCount,
+    htmlBytes: Buffer.byteLength(html, "utf8"),
+    key,
+    rendererVersion,
+    savedAt,
+  };
+};
+
 const writeJsonFile = async (filePath: string, value: unknown): Promise<void> => {
   await mkdir(path.dirname(filePath), { recursive: true });
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   await rename(tempPath, filePath);
+};
+
+const listPersistentRenderedMarkdownFileNames = async (): Promise<string[]> => {
+  try {
+    return (await readdir(cachePagesDir())).filter((fileName) => fileName.endsWith(".json"));
+  } catch (error: unknown) {
+    if (!isMissingFileError(error)) {
+      warnCacheFileFailure("list", "pages", error);
+    }
+
+    return [];
+  }
+};
+
+const readPersistentRenderedMarkdownMetadataFile = async (
+  fileName: string,
+): Promise<RenderedMarkdownCacheEntryMetadata | null> => {
+  const filePath = path.join(cachePagesDir(), fileName);
+
+  try {
+    const raw = await readFile(filePath, "utf8");
+    return normalizePersistedRenderedMarkdownMetadata(JSON.parse(raw) as unknown, fileName);
+  } catch (error: unknown) {
+    if (!isMissingFileError(error)) {
+      warnCacheFileFailure("read metadata from", fileName, error);
+    }
+
+    return null;
+  }
 };
 
 export const readPersistentRenderedMarkdown = async (key: string): Promise<PersistedRenderedMarkdown | null> => {
@@ -143,6 +217,21 @@ export const readPersistentRenderedMarkdownSync = (key: string): PersistedRender
   }
 };
 
+export const readPersistentRenderedMarkdownMetadata = async (
+  key: string,
+): Promise<RenderedMarkdownCacheEntryMetadata | null> => {
+  try {
+    const raw = await readFile(cacheFilePath(key), "utf8");
+    return normalizePersistedRenderedMarkdownMetadata(JSON.parse(raw) as unknown, `${hashCacheKey(key)}.json`);
+  } catch (error: unknown) {
+    if (!isMissingFileError(error)) {
+      warnCacheFailure("read metadata from", key, error);
+    }
+
+    return null;
+  }
+};
+
 export const writePersistentRenderedMarkdown = async (
   key: string,
   rendered: PersistedRenderedMarkdown,
@@ -164,4 +253,62 @@ export const writePersistentRenderedMarkdown = async (
     warnCacheFailure("write", key, error);
     return false;
   }
+};
+
+export const listPersistentRenderedMarkdownCacheEntries = async (
+  keyPrefix?: string,
+): Promise<RenderedMarkdownCacheEntryMetadata[]> => {
+  const fileNames = await listPersistentRenderedMarkdownFileNames();
+  const entries: RenderedMarkdownCacheEntryMetadata[] = [];
+
+  for (const fileName of fileNames) {
+    const entry = await readPersistentRenderedMarkdownMetadataFile(fileName);
+    if (!entry || (keyPrefix && !entry.key.startsWith(keyPrefix))) {
+      continue;
+    }
+
+    entries.push(entry);
+  }
+
+  entries.sort((left, right) => left.key.localeCompare(right.key));
+  return entries;
+};
+
+export const deletePersistentRenderedMarkdown = async (key: string): Promise<boolean> => {
+  try {
+    await unlink(cacheFilePath(key));
+    return true;
+  } catch (error: unknown) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+
+    warnCacheFailure("delete", key, error);
+    return false;
+  }
+};
+
+export const deletePersistentRenderedMarkdownWhere = async (
+  predicate: (key: string) => boolean,
+): Promise<number> => {
+  const fileNames = await listPersistentRenderedMarkdownFileNames();
+  let deletedEntries = 0;
+
+  for (const fileName of fileNames) {
+    const entry = await readPersistentRenderedMarkdownMetadataFile(fileName);
+    if (!entry || !predicate(entry.key)) {
+      continue;
+    }
+
+    try {
+      await unlink(path.join(cachePagesDir(), fileName));
+      deletedEntries += 1;
+    } catch (error: unknown) {
+      if (!isMissingFileError(error)) {
+        warnCacheFileFailure("delete", fileName, error);
+      }
+    }
+  }
+
+  return deletedEntries;
 };

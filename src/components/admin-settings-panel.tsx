@@ -15,12 +15,14 @@ import {
 import { useRouter } from "next/navigation";
 
 import {
+  clearAdminMarkdownCache,
   clearAdminGitHubToken,
   clearAdminOpenRouterApiKey,
   createAdminModerator,
   deleteAdminModerator,
   fetchAdminDomainSslStatus,
   fetchAdminLanguageTranslationCacheStatuses,
+  fetchAdminMarkdownCacheStatus,
   fetchAdminModerators,
   fetchAdminPerformanceStats,
   fetchAdminSettings,
@@ -32,6 +34,7 @@ import {
   saveAdminSettings,
   testAdminConnection,
   updateAdminModerator,
+  warmAdminMarkdownCache,
 } from "@/components/api";
 import { CircleFlagIconPicker } from "@/components/circle-flag-icon-picker";
 import { ColorPickerField } from "@/components/color-picker-field";
@@ -60,6 +63,8 @@ import {
 } from "@/lib/auto-translate";
 import type {
   AdminLanguageTranslationCacheStatus,
+  AdminMarkdownCachePageStatus,
+  AdminMarkdownCacheStatus,
   AdminSettings,
   AutoTranslateLanguage,
   DomainSslRuntimeStatus,
@@ -377,6 +382,10 @@ type PerformanceStatsLoadResult =
   | { error: null; stats: PerformanceStatsSnapshot }
   | { error: string; stats: null };
 
+type MarkdownCacheStatusLoadResult =
+  | { error: null; status: AdminMarkdownCacheStatus }
+  | { error: string; status: null };
+
 const loadVisitorStatsResult = async (): Promise<VisitorStatsLoadResult> => {
   try {
     return {
@@ -400,6 +409,20 @@ const loadPerformanceStatsResult = async (): Promise<PerformanceStatsLoadResult>
   } catch (error) {
     return {
       stats: null,
+      error: formatApiError(error),
+    };
+  }
+};
+
+const loadMarkdownCacheStatusResult = async (): Promise<MarkdownCacheStatusLoadResult> => {
+  try {
+    return {
+      status: await fetchAdminMarkdownCacheStatus(),
+      error: null,
+    };
+  } catch (error) {
+    return {
+      status: null,
       error: formatApiError(error),
     };
   }
@@ -646,6 +669,167 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
               />
             </div>
           </>
+        )}
+      </div>
+    </section>
+  );
+}
+
+type MarkdownCacheCardProps = {
+  actionMessage: { tone: "success" | "warning" | "error"; text: string } | null;
+  clearingAll: boolean;
+  clearingSlug: string | null;
+  error: string | null;
+  loading: boolean;
+  status: AdminMarkdownCacheStatus | null;
+  warming: boolean;
+  onClearAll: () => void;
+  onClearPage: (page: AdminMarkdownCachePageStatus) => void;
+  onRefresh: () => void;
+  onWarmAll: () => void;
+};
+
+function MarkdownCacheCard({
+  actionMessage,
+  clearingAll,
+  clearingSlug,
+  error,
+  loading,
+  status,
+  warming,
+  onClearAll,
+  onClearPage,
+  onRefresh,
+  onWarmAll,
+}: MarkdownCacheCardProps) {
+  const hasUncachedVariants = Boolean(status && status.uncachedVariants > 0);
+  const cacheRatio = status ? `${formatVisitorCount(status.cachedVariants)}/${formatVisitorCount(status.totalVariants)}` : "...";
+  const pageRatio = status ? `${formatVisitorCount(status.sourcePagesCached)}/${formatVisitorCount(status.totalPages)}` : "...";
+  const translatedVariantLabel = status ? formatVisitorCount(status.translatedVariants) : "...";
+  const staleEntryLabel = status ? formatVisitorCount(status.staleEntries) : "...";
+  const storageLabel = status ? formatByteSize(status.totalHtmlBytes) : "...";
+
+  return (
+    <section className="panel-card panel-card-markdown-cache">
+      <div className="panel-header">
+        <div>
+          <h2>Markdown HTML Cache</h2>
+          <p className="panel-description">Persistent server-rendered HTML for current docs content.</p>
+        </div>
+        <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}>
+          <button
+            type="button"
+            className="btn btn-icon visitor-refresh-button"
+            disabled={loading || warming || clearingAll || Boolean(clearingSlug)}
+            aria-label={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}
+            onClick={onRefresh}
+          >
+            <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
+          </button>
+        </span>
+      </div>
+
+      {error ? <p className="error-text">{error}</p> : null}
+      {actionMessage ? <p className={`${actionMessage.tone}-text`}>{actionMessage.text}</p> : null}
+
+      <div className="markdown-cache-summary-grid">
+        <div className="markdown-cache-summary-item">
+          <strong>{cacheRatio}</strong>
+          <span>HTML variants</span>
+        </div>
+        <div className="markdown-cache-summary-item">
+          <strong>{pageRatio}</strong>
+          <span>Source pages</span>
+        </div>
+        <div className="markdown-cache-summary-item">
+          <strong>{translatedVariantLabel}</strong>
+          <span>Translations</span>
+        </div>
+        <div className="markdown-cache-summary-item">
+          <strong>{storageLabel}</strong>
+          <span>Storage</span>
+        </div>
+      </div>
+
+      <div className="markdown-cache-meta-row">
+        <span>Renderer v{status?.rendererVersion || "..."}</span>
+        <span>{staleEntryLabel} unused entr{status?.staleEntries === 1 ? "y" : "ies"}</span>
+        <span>{status ? `Updated ${formatStatusTimestamp(status.updatedAt)}` : "Loading cache status..."}</span>
+      </div>
+
+      <div className="action-row">
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={!status || !hasUncachedVariants || loading || warming || clearingAll || Boolean(clearingSlug)}
+          onClick={onWarmAll}
+        >
+          <MaterialIcon name={warming ? "hourglass_top" : "cached"} />
+          <span>{warming ? "Caching..." : "Cache missing HTML"}</span>
+        </button>
+
+        <button
+          type="button"
+          className="btn danger"
+          disabled={!status || loading || warming || clearingAll || Boolean(clearingSlug)}
+          onClick={onClearAll}
+        >
+          <MaterialIcon name={clearingAll ? "hourglass_top" : "delete_sweep"} />
+          <span>{clearingAll ? "Clearing..." : "Clear all"}</span>
+        </button>
+      </div>
+
+      <div className="markdown-cache-page-list">
+        {!status ? (
+          <p className="muted-caption">{loading ? "Loading Markdown cache..." : "No Markdown cache data available."}</p>
+        ) : status.pages.length === 0 ? (
+          <p className="muted-caption">No docs pages found.</p>
+        ) : (
+          status.pages.map((page) => {
+            const isClearing = clearingSlug === page.slug;
+            const pageRatio = `${formatVisitorCount(page.cachedVariants)}/${formatVisitorCount(page.totalVariants)}`;
+
+            return (
+              <div className="markdown-cache-page-row" key={page.slug || page.path}>
+                <div className="markdown-cache-page-main">
+                  <div className="markdown-cache-page-heading">
+                    <strong>{page.title}</strong>
+                    <span>{pageRatio}</span>
+                  </div>
+                  <span className="markdown-cache-page-path">{page.path || page.slug}</span>
+                  <div className="markdown-cache-language-list">
+                    {page.languages.map((language) => (
+                      <span
+                        className={`markdown-cache-language-chip${
+                          language.cached ? " markdown-cache-language-cached" : " markdown-cache-language-missing"
+                        }`}
+                        key={`${page.slug}-${language.languageCode}-${language.contentHash}`}
+                        title={
+                          language.cached && language.savedAt
+                            ? `${language.languageName} cached ${formatStatusTimestamp(language.savedAt)}`
+                            : `${language.languageName} is not cached`
+                        }
+                      >
+                        {language.sourceLanguage ? "Source" : language.languageCode}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <span className="markdown-cache-page-action-tooltip ui-tooltip" data-ui-tooltip="Clear page cache">
+                  <button
+                    type="button"
+                    className="btn btn-icon danger markdown-cache-page-clear"
+                    aria-label={`Clear rendered Markdown cache for ${page.title}`}
+                    disabled={loading || warming || clearingAll || Boolean(clearingSlug)}
+                    onClick={() => onClearPage(page)}
+                  >
+                    <MaterialIcon name={isClearing ? "hourglass_top" : "delete"} />
+                  </button>
+                </span>
+              </div>
+            );
+          })
         )}
       </div>
     </section>
@@ -1239,6 +1423,17 @@ export function AdminSettingsPanel() {
   const [translationCacheStatusLoading, setTranslationCacheStatusLoading] = useState(false);
   const [translationCacheStatusError, setTranslationCacheStatusError] = useState<string | null>(null);
 
+  const [markdownCacheStatus, setMarkdownCacheStatus] = useState<AdminMarkdownCacheStatus | null>(null);
+  const [markdownCacheStatusLoading, setMarkdownCacheStatusLoading] = useState(true);
+  const [markdownCacheStatusError, setMarkdownCacheStatusError] = useState<string | null>(null);
+  const [markdownCacheActionMessage, setMarkdownCacheActionMessage] = useState<{
+    tone: "success" | "warning" | "error";
+    text: string;
+  } | null>(null);
+  const [warmingMarkdownCache, setWarmingMarkdownCache] = useState(false);
+  const [clearingMarkdownCacheAll, setClearingMarkdownCacheAll] = useState(false);
+  const [clearingMarkdownCacheSlug, setClearingMarkdownCacheSlug] = useState<string | null>(null);
+
   const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
   const [sslStatusLoading, setSslStatusLoading] = useState(true);
   const [sslStatusError, setSslStatusError] = useState<string | null>(null);
@@ -1271,6 +1466,7 @@ export function AdminSettingsPanel() {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const translationCacheStatusRequestRef = useRef(0);
   const translationCacheStatusInFlightRef = useRef(false);
+  const markdownCacheStatusRequestRef = useRef(0);
   const performanceStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
@@ -1634,6 +1830,127 @@ export function AdminSettingsPanel() {
     }
   }, []);
 
+  const refreshMarkdownCacheStatus = useCallback(async () => {
+    const requestId = markdownCacheStatusRequestRef.current + 1;
+    markdownCacheStatusRequestRef.current = requestId;
+    setMarkdownCacheStatusLoading(true);
+    setMarkdownCacheStatusError(null);
+
+    const result = await loadMarkdownCacheStatusResult();
+    if (markdownCacheStatusRequestRef.current !== requestId) {
+      return;
+    }
+
+    setMarkdownCacheStatus(result.status);
+    setMarkdownCacheStatusError(result.error);
+    setMarkdownCacheStatusLoading(false);
+  }, []);
+
+  const cacheMissingMarkdownHtml = useCallback(async () => {
+    setWarmingMarkdownCache(true);
+    setMarkdownCacheActionMessage(null);
+    setMarkdownCacheStatusError(null);
+
+    try {
+      await persistLatestSettings();
+      const { result, status } = await warmAdminMarkdownCache();
+      setMarkdownCacheStatus(status);
+
+      if (result.failedVariants > 0) {
+        setMarkdownCacheActionMessage({
+          tone: "warning",
+          text: `Cached ${formatVisitorCount(result.renderedVariants)} Markdown HTML variant${
+            result.renderedVariants === 1 ? "" : "s"
+          }; ${formatVisitorCount(result.failedVariants)} failed.`,
+        });
+        return;
+      }
+
+      if (result.renderedVariants === 0) {
+        setMarkdownCacheActionMessage({
+          tone: "success",
+          text: "All available Markdown HTML variants were already cached.",
+        });
+        return;
+      }
+
+      setMarkdownCacheActionMessage({
+        tone: "success",
+        text: `Cached ${formatVisitorCount(result.renderedVariants)} missing Markdown HTML variant${
+          result.renderedVariants === 1 ? "" : "s"
+        }.`,
+      });
+    } catch (error) {
+      setMarkdownCacheActionMessage({
+        tone: "error",
+        text: formatApiError(error),
+      });
+    } finally {
+      setWarmingMarkdownCache(false);
+    }
+  }, [persistLatestSettings]);
+
+  const clearMarkdownCacheForAllPages = useCallback(async () => {
+    if (!window.confirm("Clear rendered Markdown HTML for all pages?")) {
+      return;
+    }
+
+    setClearingMarkdownCacheAll(true);
+    setMarkdownCacheActionMessage(null);
+    setMarkdownCacheStatusError(null);
+
+    try {
+      await persistLatestSettings();
+      const { result, status } = await clearAdminMarkdownCache();
+      setMarkdownCacheStatus(status);
+      setMarkdownCacheActionMessage({
+        tone: "success",
+        text: `Cleared ${formatVisitorCount(result.clearedEntries)} Markdown HTML cache entr${
+          result.clearedEntries === 1 ? "y" : "ies"
+        }.`,
+      });
+    } catch (error) {
+      setMarkdownCacheActionMessage({
+        tone: "error",
+        text: formatApiError(error),
+      });
+    } finally {
+      setClearingMarkdownCacheAll(false);
+    }
+  }, [persistLatestSettings]);
+
+  const clearMarkdownCacheForPage = useCallback(
+    async (page: AdminMarkdownCachePageStatus) => {
+      if (!window.confirm(`Clear rendered Markdown HTML for "${page.title}"?`)) {
+        return;
+      }
+
+      setClearingMarkdownCacheSlug(page.slug);
+      setMarkdownCacheActionMessage(null);
+      setMarkdownCacheStatusError(null);
+
+      try {
+        await persistLatestSettings();
+        const { result, status } = await clearAdminMarkdownCache(page.slug);
+        setMarkdownCacheStatus(status);
+        setMarkdownCacheActionMessage({
+          tone: "success",
+          text: `Cleared ${formatVisitorCount(result.clearedEntries)} Markdown HTML cache entr${
+            result.clearedEntries === 1 ? "y" : "ies"
+          } for ${page.title}.`,
+        });
+      } catch (error) {
+        setMarkdownCacheActionMessage({
+          tone: "error",
+          text: formatApiError(error),
+        });
+      } finally {
+        setClearingMarkdownCacheSlug(null);
+      }
+    },
+    [persistLatestSettings],
+  );
+
   const refreshDocsCache = useCallback(async () => {
     setRefreshingDocs(true);
     setDocsRefreshMessage(null);
@@ -1646,12 +1963,13 @@ export function AdminSettingsPanel() {
         `Fetched ${formatVisitorCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
       );
       void refreshTranslationCacheStatuses();
+      void refreshMarkdownCacheStatus();
     } catch (error) {
       setDocsRefreshError(formatApiError(error));
     } finally {
       setRefreshingDocs(false);
     }
-  }, [persistLatestSettings, refreshTranslationCacheStatuses]);
+  }, [persistLatestSettings, refreshMarkdownCacheStatus, refreshTranslationCacheStatuses]);
 
   const requestLanguageTranslations = useCallback(
     async (language: AutoTranslateLanguage) => {
@@ -1690,6 +2008,7 @@ export function AdminSettingsPanel() {
         const result = await requestAdminLanguageTranslations({ name, code, icon });
         const pageLabel = result.totalPages === 1 ? "page" : "pages";
         void refreshTranslationCacheStatuses();
+        void refreshMarkdownCacheStatus();
 
         if (result.failedPages > 0) {
           setTranslationRequestStatus({
@@ -1724,7 +2043,7 @@ export function AdminSettingsPanel() {
         });
       }
     },
-    [persistLatestSettings, refreshTranslationCacheStatuses],
+    [persistLatestSettings, refreshMarkdownCacheStatus, refreshTranslationCacheStatuses],
   );
 
   useEffect(() => {
@@ -1754,6 +2073,14 @@ export function AdminSettingsPanel() {
       document.removeEventListener("visibilitychange", refreshIfVisible);
     };
   }, [loadError, loading, refreshTranslationCacheStatuses, translationCacheStatusSignature]);
+
+  useEffect(() => {
+    if (loading || loadError || !autoSaveReadyRef.current) {
+      return;
+    }
+
+    void refreshMarkdownCacheStatus();
+  }, [loadError, loading, refreshMarkdownCacheStatus]);
 
   useEffect(() => {
     if (loading || loadError) {
@@ -1787,6 +2114,8 @@ export function AdminSettingsPanel() {
       setPerformanceStatsError(null);
       setVisitorStatsLoading(true);
       setVisitorStatsError(null);
+      setMarkdownCacheStatusLoading(true);
+      setMarkdownCacheStatusError(null);
 
       try {
         const currentUser = await getCurrentUser();
@@ -1837,6 +2166,7 @@ export function AdminSettingsPanel() {
           setLoadError(formatApiError(error));
           setPerformanceStatsLoading(false);
           setVisitorStatsLoading(false);
+          setMarkdownCacheStatusLoading(false);
         }
       } finally {
         if (isActive) {
@@ -2059,6 +2389,24 @@ export function AdminSettingsPanel() {
           {docsRefreshMessage ? <p className="success-text">{docsRefreshMessage}</p> : null}
           {docsRefreshError ? <p className="error-text">{docsRefreshError}</p> : null}
           </section>
+
+          <MarkdownCacheCard
+            actionMessage={markdownCacheActionMessage}
+            clearingAll={clearingMarkdownCacheAll}
+            clearingSlug={clearingMarkdownCacheSlug}
+            error={markdownCacheStatusError}
+            loading={markdownCacheStatusLoading}
+            status={markdownCacheStatus}
+            warming={warmingMarkdownCache}
+            onClearAll={clearMarkdownCacheForAllPages}
+            onClearPage={clearMarkdownCacheForPage}
+            onRefresh={() => {
+              void refreshMarkdownCacheStatus();
+            }}
+            onWarmAll={() => {
+              void cacheMissingMarkdownHtml();
+            }}
+          />
 
           <section className="panel-card panel-card-moderators">
             <div className="panel-header">

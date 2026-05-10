@@ -1,6 +1,11 @@
 import {
   type AdminSettings,
   type AdminLanguageTranslationCacheStatus,
+  type AdminMarkdownCacheClearResult,
+  type AdminMarkdownCacheLanguageStatus,
+  type AdminMarkdownCachePageStatus,
+  type AdminMarkdownCacheStatus,
+  type AdminMarkdownCacheWarmResult,
   type AiChatReply,
   type AuthUser,
   type AutoTranslateLanguage,
@@ -774,6 +779,129 @@ function normalizeAdminLanguageTranslationCacheStatuses(source: unknown): AdminL
     .filter((entry): entry is AdminLanguageTranslationCacheStatus => Boolean(entry));
 }
 
+function normalizeAdminMarkdownCacheLanguageStatus(source: unknown): AdminMarkdownCacheLanguageStatus | null {
+  const payload = asRecord(source);
+  const languageCode = asString(payload.languageCode).trim();
+  const languageName = asString(payload.languageName).trim() || languageCode;
+  const contentHash = asString(payload.contentHash).trim();
+  const savedAt = asString(payload.savedAt).trim();
+
+  if (!languageCode) {
+    return null;
+  }
+
+  return {
+    cached: asBoolean(payload.cached, false),
+    contentHash,
+    headingCount: Math.max(0, Math.round(asNumber(payload.headingCount, 0))),
+    htmlBytes: Math.max(0, Math.round(asNumber(payload.htmlBytes, 0))),
+    languageCode,
+    languageName,
+    savedAt: savedAt || null,
+    sourceLanguage: asBoolean(payload.sourceLanguage, false),
+  };
+}
+
+function normalizeAdminMarkdownCachePageStatus(source: unknown): AdminMarkdownCachePageStatus | null {
+  const payload = asRecord(source);
+  const slug = asString(payload.slug).trim();
+  const path = asString(payload.path).trim();
+  const rawLanguages = payload.languages;
+  const languages = Array.isArray(rawLanguages)
+    ? rawLanguages
+        .map((entry) => normalizeAdminMarkdownCacheLanguageStatus(entry))
+        .filter((entry): entry is AdminMarkdownCacheLanguageStatus => Boolean(entry))
+    : [];
+
+  if (!slug && !path) {
+    return null;
+  }
+
+  const totalVariants = Math.max(0, Math.round(asNumber(payload.totalVariants, languages.length)));
+
+  return {
+    cachedVariants: Math.max(0, Math.round(asNumber(payload.cachedVariants, languages.filter((entry) => entry.cached).length))),
+    languages,
+    path,
+    slug,
+    title: asString(payload.title).trim() || slug || path,
+    totalVariants,
+  };
+}
+
+function normalizeAdminMarkdownCacheStatus(source: unknown): AdminMarkdownCacheStatus {
+  const payload = asRecord(asRecord(source).status ?? source);
+  const rawPages = payload.pages;
+  const pages = Array.isArray(rawPages)
+    ? rawPages
+        .map((entry) => normalizeAdminMarkdownCachePageStatus(entry))
+        .filter((entry): entry is AdminMarkdownCachePageStatus => Boolean(entry))
+    : [];
+  const totalVariants = Math.max(0, Math.round(asNumber(payload.totalVariants, 0)));
+  const cachedVariants = Math.max(0, Math.round(asNumber(payload.cachedVariants, 0)));
+
+  return {
+    cachedVariants,
+    rendererVersion: asString(payload.rendererVersion).trim(),
+    sourcePagesCached: Math.max(0, Math.round(asNumber(payload.sourcePagesCached, 0))),
+    staleEntries: Math.max(0, Math.round(asNumber(payload.staleEntries, 0))),
+    totalHtmlBytes: Math.max(0, Math.round(asNumber(payload.totalHtmlBytes, 0))),
+    totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, pages.length))),
+    totalVariants,
+    translatedVariants: Math.max(0, Math.round(asNumber(payload.translatedVariants, 0))),
+    uncachedVariants: Math.max(0, Math.round(asNumber(payload.uncachedVariants, Math.max(0, totalVariants - cachedVariants)))),
+    updatedAt: asString(payload.updatedAt).trim() || new Date().toISOString(),
+    pages,
+  };
+}
+
+function normalizeAdminMarkdownCacheWarmResult(source: unknown): AdminMarkdownCacheWarmResult {
+  const payload = asRecord(asRecord(source).result ?? source);
+  const rawFailures = payload.failures;
+  const failures = Array.isArray(rawFailures)
+    ? rawFailures
+        .map((entry) => {
+          const failure = asRecord(entry);
+          const slug = asString(failure.slug).trim();
+          const languageCode = asString(failure.languageCode).trim();
+          const error = asString(failure.error).trim();
+
+          if (!slug && !languageCode && !error) {
+            return null;
+          }
+
+          return {
+            error: error || "Rendered Markdown HTML cache failed.",
+            languageCode,
+            slug,
+          };
+        })
+        .filter((entry): entry is AdminMarkdownCacheWarmResult["failures"][number] => Boolean(entry))
+    : [];
+
+  return {
+    cachedVariants: Math.max(0, Math.round(asNumber(payload.cachedVariants, 0))),
+    failedVariants: Math.max(0, Math.round(asNumber(payload.failedVariants, failures.length))),
+    failures,
+    renderedVariants: Math.max(0, Math.round(asNumber(payload.renderedVariants, 0))),
+    skippedVariants: Math.max(0, Math.round(asNumber(payload.skippedVariants, 0))),
+    totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
+    totalVariants: Math.max(0, Math.round(asNumber(payload.totalVariants, 0))),
+  };
+}
+
+function normalizeAdminMarkdownCacheClearResult(source: unknown): AdminMarkdownCacheClearResult {
+  const payload = asRecord(asRecord(source).result ?? source);
+  const scope = asString(payload.scope).trim() === "page" ? "page" : "all";
+  const slug = asString(payload.slug).trim();
+
+  return {
+    clearedEntries: Math.max(0, Math.round(asNumber(payload.clearedEntries, 0))),
+    scope,
+    ...(scope === "page" && slug ? { slug } : {}),
+  };
+}
+
 function normalizePublicSiteSettings(source: unknown): PublicSiteSettings {
   const payload = asRecord(asRecord(source).settings ?? source);
   const docsIcon = asRecord(payload.docsIcon);
@@ -1015,6 +1143,45 @@ export async function fetchAdminVisitorStats(): Promise<VisitorStatsSummary> {
 export async function fetchAdminPerformanceStats(): Promise<PerformanceStatsSnapshot> {
   const response = await requestJson<unknown>("/api/admin/performance");
   return normalizePerformanceStats(response);
+}
+
+export async function fetchAdminMarkdownCacheStatus(): Promise<AdminMarkdownCacheStatus> {
+  const response = await requestJson<unknown>("/api/admin/markdown-cache");
+  return normalizeAdminMarkdownCacheStatus(response);
+}
+
+export async function warmAdminMarkdownCache(): Promise<{
+  result: AdminMarkdownCacheWarmResult;
+  status: AdminMarkdownCacheStatus;
+}> {
+  const response = await requestJson<unknown>("/api/admin/markdown-cache", {
+    method: "POST",
+  });
+
+  return {
+    result: normalizeAdminMarkdownCacheWarmResult(response),
+    status: normalizeAdminMarkdownCacheStatus(response),
+  };
+}
+
+export async function clearAdminMarkdownCache(slug?: string): Promise<{
+  result: AdminMarkdownCacheClearResult;
+  status: AdminMarkdownCacheStatus;
+}> {
+  const query = new URLSearchParams();
+  if (slug?.trim()) {
+    query.set("slug", slug.trim());
+  }
+
+  const path = query.size > 0 ? `/api/admin/markdown-cache?${query.toString()}` : "/api/admin/markdown-cache";
+  const response = await requestJson<unknown>(path, {
+    method: "DELETE",
+  });
+
+  return {
+    result: normalizeAdminMarkdownCacheClearResult(response),
+    status: normalizeAdminMarkdownCacheStatus(response),
+  };
 }
 
 export async function saveAdminSettings(settings: AdminSettings): Promise<AdminSettings> {

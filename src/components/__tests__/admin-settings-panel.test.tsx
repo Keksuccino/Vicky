@@ -12,9 +12,11 @@ const routerMock = {
   replace: replaceMock,
 };
 const setThemeSettingsMock = vi.fn();
+const clearAdminMarkdownCacheMock = vi.fn();
 const createAdminModeratorMock = vi.fn();
 const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
+const fetchAdminMarkdownCacheStatusMock = vi.fn();
 const fetchAdminModeratorsMock = vi.fn();
 const fetchAdminPerformanceStatsMock = vi.fn();
 const fetchAdminSettingsMock = vi.fn();
@@ -25,6 +27,7 @@ const refreshAdminDocsCacheMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
 const testAdminConnectionMock = vi.fn();
 const updateAdminModeratorMock = vi.fn();
+const warmAdminMarkdownCacheMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
@@ -37,9 +40,11 @@ vi.mock("@/components/theme-provider", () => ({
 }));
 
 vi.mock("@/components/api", () => ({
+  clearAdminMarkdownCache: (...args: unknown[]) => clearAdminMarkdownCacheMock(...args),
   createAdminModerator: (...args: unknown[]) => createAdminModeratorMock(...args),
   deleteAdminModerator: (...args: unknown[]) => deleteAdminModeratorMock(...args),
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
+  fetchAdminMarkdownCacheStatus: (...args: unknown[]) => fetchAdminMarkdownCacheStatusMock(...args),
   fetchAdminModerators: (...args: unknown[]) => fetchAdminModeratorsMock(...args),
   fetchAdminPerformanceStats: (...args: unknown[]) => fetchAdminPerformanceStatsMock(...args),
   fetchAdminSettings: (...args: unknown[]) => fetchAdminSettingsMock(...args),
@@ -51,6 +56,7 @@ vi.mock("@/components/api", () => ({
   saveAdminSettings: (...args: unknown[]) => saveAdminSettingsMock(...args),
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
   updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
+  warmAdminMarkdownCache: (...args: unknown[]) => warmAdminMarkdownCacheMock(...args),
 }));
 
 function createDeferred<T>() {
@@ -193,6 +199,50 @@ const PERFORMANCE_STATS = {
   },
 };
 
+const MARKDOWN_CACHE_STATUS = {
+  cachedVariants: 1,
+  rendererVersion: "1",
+  sourcePagesCached: 1,
+  staleEntries: 0,
+  totalHtmlBytes: 1024,
+  totalPages: 1,
+  totalVariants: 2,
+  translatedVariants: 1,
+  uncachedVariants: 1,
+  updatedAt: "2026-03-10T12:00:00.000Z",
+  pages: [
+    {
+      cachedVariants: 1,
+      languages: [
+        {
+          cached: true,
+          contentHash: "source",
+          headingCount: 1,
+          htmlBytes: 1024,
+          languageCode: "en-US",
+          languageName: "English (US)",
+          savedAt: "2026-03-10T12:00:00.000Z",
+          sourceLanguage: true,
+        },
+        {
+          cached: false,
+          contentHash: "translated",
+          headingCount: 0,
+          htmlBytes: 0,
+          languageCode: "de",
+          languageName: "German",
+          savedAt: null,
+          sourceLanguage: false,
+        },
+      ],
+      path: "home.md",
+      slug: "home",
+      title: "Home",
+      totalVariants: 2,
+    },
+  ],
+};
+
 describe("AdminSettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -200,6 +250,7 @@ describe("AdminSettingsPanel", () => {
     fetchAdminSettingsMock.mockResolvedValue(INITIAL_SETTINGS);
     fetchAdminModeratorsMock.mockResolvedValue([]);
     fetchAdminDomainSslStatusMock.mockResolvedValue(SSL_STATUS);
+    fetchAdminMarkdownCacheStatusMock.mockResolvedValue(MARKDOWN_CACHE_STATUS);
     fetchAdminPerformanceStatsMock.mockResolvedValue(PERFORMANCE_STATS);
     fetchAdminVisitorStatsMock.mockResolvedValue(VISITOR_STATS);
     createAdminModeratorMock.mockResolvedValue({
@@ -222,6 +273,22 @@ describe("AdminSettingsPanel", () => {
       expiresAt: "2026-03-10T13:00:00.000Z",
     });
     testAdminConnectionMock.mockResolvedValue("ok");
+    clearAdminMarkdownCacheMock.mockResolvedValue({
+      result: { clearedEntries: 1, scope: "all" },
+      status: MARKDOWN_CACHE_STATUS,
+    });
+    warmAdminMarkdownCacheMock.mockResolvedValue({
+      result: {
+        cachedVariants: 1,
+        failedVariants: 0,
+        failures: [],
+        renderedVariants: 1,
+        skippedVariants: 1,
+        totalPages: 1,
+        totalVariants: 2,
+      },
+      status: { ...MARKDOWN_CACHE_STATUS, cachedVariants: 2, uncachedVariants: 0 },
+    });
   });
 
   it("keeps the newest typed value when an older autosave response resolves later", async () => {

@@ -156,6 +156,60 @@ export type AdminLanguageTranslationCacheStatus = {
   sourceLanguage: boolean;
 };
 
+export type AdminMarkdownCacheLanguageStatus = {
+  cached: boolean;
+  contentHash: string;
+  headingCount: number;
+  htmlBytes: number;
+  languageCode: string;
+  languageName: string;
+  savedAt: string | null;
+  sourceLanguage: boolean;
+};
+
+export type AdminMarkdownCachePageStatus = {
+  cachedVariants: number;
+  languages: AdminMarkdownCacheLanguageStatus[];
+  path: string;
+  slug: string;
+  title: string;
+  totalVariants: number;
+};
+
+export type AdminMarkdownCacheStatus = {
+  cachedVariants: number;
+  rendererVersion: string;
+  sourcePagesCached: number;
+  staleEntries: number;
+  totalHtmlBytes: number;
+  totalPages: number;
+  totalVariants: number;
+  translatedVariants: number;
+  uncachedVariants: number;
+  updatedAt: string;
+  pages: AdminMarkdownCachePageStatus[];
+};
+
+export type AdminMarkdownCacheWarmResult = {
+  cachedVariants: number;
+  failedVariants: number;
+  failures: Array<{
+    error: string;
+    languageCode: string;
+    slug: string;
+  }>;
+  renderedVariants: number;
+  skippedVariants: number;
+  totalPages: number;
+  totalVariants: number;
+};
+
+export type AdminMarkdownCacheClearResult = {
+  clearedEntries: number;
+  scope: "all" | "page";
+  slug?: string;
+};
+
 export type AdminSettings = {
   siteTitle: string;
   siteDescription: string;
