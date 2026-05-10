@@ -8,7 +8,11 @@ import {
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
-import { loadDocsPageForLanguage, loadDocsTreeForLanguage, type DocsPageWithSourceHeadings } from "@/lib/docs-server-data";
+import {
+  loadDocsTreeForLanguage,
+  loadRenderedDocsPageForLanguage,
+  type RenderedDocsPageWithSourceHeadings,
+} from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { getStore } from "@/lib/store";
 
@@ -52,13 +56,14 @@ const readRequestedLanguageCode = async (): Promise<string> => {
   }
 };
 
-const toClientDocPage = (page: DocsPageWithSourceHeadings): DocPage => ({
+const toClientDocPage = (page: RenderedDocsPageWithSourceHeadings): DocPage => ({
   title: page.title,
   description: page.description,
   path: toAbsoluteDocPath(page.slug),
   slug: page.slug,
   content: page.content,
   markdown: page.markdown,
+  renderedHtml: page.renderedHtml,
   headings: page.headings,
   sourceHeadings: page.sourceHeadings,
   includeInPlaintextExport: page.includeInPlaintextExport,
@@ -105,7 +110,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
 
     if (pagePath !== "/") {
       try {
-        const pageResult = await loadDocsPageForLanguage({
+        const pageResult = await loadRenderedDocsPageForLanguage({
           config,
           locator: { slug: pagePath.replace(/^\/+/, "") },
           origin,

@@ -7,48 +7,29 @@ import ReactMarkdown from "react-markdown";
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
-import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import rehypeSanitize from "rehype-sanitize";
 import rehypeSlug from "rehype-slug";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
 
 import { cn } from "@/components/cn";
 import { copyTextToClipboard } from "@/components/copy-text";
+import {
+  isSafeMarkdownHref,
+  markdownAutolinkHeadingsOptions,
+  markdownHighlightOptions,
+  markdownSanitizeSchema,
+  normalizeInternalDocsLink,
+} from "@/lib/markdown-rendering-shared";
 import { remarkGitHubAlerts } from "@/lib/remark-github-alerts";
 
 type MarkdownRendererProps = {
   content: string;
 };
 
-const ALLOWED_SCHEME_HREF_REGEX = /^(https?:|mailto:|#)/i;
-const ROOT_RELATIVE_HREF_REGEX = /^\/(?!\/)/;
-const DOCS_HREF_REGEX = /^\/docs(?:[/?#]|$)/i;
-const RESERVED_ROOT_HREF_REGEX = /^\/(?:api|admin|editor|_next)(?:[/?#]|$)/i;
-const RESERVED_ROOT_FILE_HREF_REGEX = /^\/(?:favicon\.ico|robots\.txt|sitemap\.xml|manifest\.json)(?:[?#]|$)/i;
 const COPIED_STATE_DURATION_MS = 1400;
 
 type CodeBlockProps = ComponentPropsWithoutRef<"pre">;
-
-const normalizeInternalDocsLink = (href: string): string => {
-  if (!ROOT_RELATIVE_HREF_REGEX.test(href)) {
-    return href;
-  }
-
-  if (DOCS_HREF_REGEX.test(href) || RESERVED_ROOT_HREF_REGEX.test(href) || RESERVED_ROOT_FILE_HREF_REGEX.test(href)) {
-    return href;
-  }
-
-  const queryOrHashIndex = href.search(/[?#]/);
-  const pathOnly = queryOrHashIndex >= 0 ? href.slice(0, queryOrHashIndex) : href;
-  const suffix = queryOrHashIndex >= 0 ? href.slice(queryOrHashIndex) : "";
-  const normalizedPath = pathOnly.replace(/\/{2,}/g, "/");
-  const docsPath = normalizedPath === "/" ? "/docs" : `/docs${normalizedPath}`;
-
-  return `${docsPath}${suffix}`;
-};
-
-const isSafeHref = (href: string): boolean =>
-  ALLOWED_SCHEME_HREF_REGEX.test(href) || ROOT_RELATIVE_HREF_REGEX.test(href);
 
 const getNodeText = (node: ReactNode): string => {
   if (typeof node === "string" || typeof node === "number") {
@@ -115,22 +96,6 @@ function CodeBlock({ children, className, ...props }: CodeBlockProps) {
   );
 }
 
-const sanitizeSchema = {
-  ...defaultSchema,
-  clobberPrefix: "",
-  tagNames: [...(defaultSchema.tagNames || []), "aside"],
-  attributes: {
-    ...(defaultSchema.attributes || {}),
-    "*": [...((defaultSchema.attributes && defaultSchema.attributes["*"]) || []), "className", "id", "data-alert"],
-    a: [...((defaultSchema.attributes && defaultSchema.attributes.a) || []), "target", "rel"],
-    code: [...((defaultSchema.attributes && defaultSchema.attributes.code) || []), "className"],
-    pre: [...((defaultSchema.attributes && defaultSchema.attributes.pre) || []), "className"],
-    span: [...((defaultSchema.attributes && defaultSchema.attributes.span) || []), "className"],
-    aside: ["className", "data-alert"],
-    input: [...((defaultSchema.attributes && defaultSchema.attributes.input) || []), "checked", "disabled", "type"],
-  },
-};
-
 export function MarkdownRenderer({ content }: MarkdownRendererProps) {
   return (
     <article className="markdown-body">
@@ -139,50 +104,15 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         rehypePlugins={[
           rehypeRaw,
           rehypeSlug,
-          [
-            rehypeAutolinkHeadings,
-            {
-              behavior: "append",
-              properties: { className: ["heading-anchor"] },
-              content: {
-                type: "element",
-                tagName: "span",
-                properties: { className: ["heading-anchor-wrap"] },
-                children: [
-                  {
-                    type: "element",
-                    tagName: "span",
-                    properties: { className: ["material-symbols-outlined", "anchor-icon"] },
-                    children: [{ type: "text", value: "link" }],
-                  },
-                ],
-              },
-            },
-          ],
-          [
-            rehypeHighlight,
-            {
-              detect: false,
-              ignoreMissing: true,
-              aliases: {
-                html: "xml",
-                js: "javascript",
-                jsx: "javascript",
-                mjs: "javascript",
-                patch: "diff",
-                plain: "plaintext",
-                text: "plaintext",
-                txt: "plaintext",
-              },
-              plainText: ["plain", "text", "txt", "plaintext"],
-            },
-          ],
-          [rehypeSanitize, sanitizeSchema],
+          [rehypeAutolinkHeadings, markdownAutolinkHeadingsOptions],
+          [rehypeHighlight, markdownHighlightOptions],
+          [rehypeSanitize, markdownSanitizeSchema],
         ]}
         components={{
           a: ({ href, children, ...props }) => {
             const normalizedHref = href ? normalizeInternalDocsLink(href.trim()) : "";
-            const safeHref = normalizedHref && isSafeHref(normalizedHref) ? normalizedHref : normalizedHref ? "#" : undefined;
+            const safeHref =
+              normalizedHref && isSafeMarkdownHref(normalizedHref) ? normalizedHref : normalizedHref ? "#" : undefined;
             const external = safeHref?.startsWith("http://") || safeHref?.startsWith("https://");
 
             return (

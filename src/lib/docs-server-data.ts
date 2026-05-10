@@ -1,4 +1,5 @@
 import {
+  DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   resolveAutoTranslateLanguage,
   shouldTranslateAutoTranslateLanguage,
 } from "@/lib/auto-translate";
@@ -20,6 +21,10 @@ import {
   loadGitHubDoc,
   warmMarkdownDocsTitleIndex,
 } from "@/lib/github";
+import {
+  renderGitHubDocPageMarkdown,
+  type RenderedGitHubDocPage,
+} from "@/lib/markdown-server-renderer";
 import type {
   AutoTranslateLanguage,
   DocsStore,
@@ -33,9 +38,14 @@ export type DocsPageWithSourceHeadings = GitHubDocPage & {
   sourceHeadings?: MarkdownHeading[];
 };
 
+export type RenderedDocsPageWithSourceHeadings = RenderedGitHubDocPage & {
+  sourceHeadings?: MarkdownHeading[];
+};
+
 export type DocsLanguageData<T> = {
   data: T;
   language: AutoTranslateLanguage;
+  contentLanguageCode?: string;
   titlesPending?: boolean;
 };
 
@@ -84,6 +94,7 @@ export const loadDocsPageForLanguage = async ({
     return {
       data: sourcePage,
       language,
+      contentLanguageCode: language.code,
     };
   }
 
@@ -92,6 +103,7 @@ export const loadDocsPageForLanguage = async ({
     return {
       data: sourcePage,
       language,
+      contentLanguageCode: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
     };
   }
 
@@ -110,14 +122,48 @@ export const loadDocsPageForLanguage = async ({
     return {
       data: { ...translatedPage, sourceHeadings: sourcePage.headings },
       language,
+      contentLanguageCode: language.code,
     };
   } catch (error: unknown) {
     warnPageFallback(language, error);
     return {
       data: sourcePage,
       language,
+      contentLanguageCode: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
     };
   }
+};
+
+export const loadRenderedDocsPageForLanguage = async ({
+  config,
+  locator,
+  origin,
+  requestedLanguageCode,
+  store,
+}: {
+  config: GitHubRuntimeConfig;
+  locator: { slug?: string; path?: string };
+  origin: string;
+  requestedLanguageCode?: string;
+  store: DocsStore;
+}): Promise<DocsLanguageData<RenderedDocsPageWithSourceHeadings>> => {
+  const pageResult = await loadDocsPageForLanguage({
+    config,
+    locator,
+    origin,
+    requestedLanguageCode,
+    store,
+  });
+  const renderedPage = await renderGitHubDocPageMarkdown({
+    config,
+    languageCode: pageResult.contentLanguageCode ?? pageResult.language.code,
+    page: pageResult.data,
+  });
+
+  return {
+    ...pageResult,
+    data: renderedPage,
+  };
 };
 
 export const loadDocsTreeForLanguage = async ({

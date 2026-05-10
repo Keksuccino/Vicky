@@ -117,6 +117,7 @@ export const docsSearchCorpusCache = new TtlCache<string, unknown>(DOCS_CACHE_TT
 export const aiPlaintextDocsCache = new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS);
 export const translatedDocsPageCache = new MemoryCache<string, unknown>();
 export const translatedDocsTitleCache = new MemoryCache<string, unknown>();
+export const renderedMarkdownCache = new MemoryCache<string, unknown>();
 
 export const setDocsCacheTtlMs = (ttlMs: number): number => {
   const normalized = normalizeDocsCacheTtlMs(ttlMs, docsSnapshotCache.getTtlMs());

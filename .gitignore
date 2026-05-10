@@ -12,6 +12,7 @@
 
 # testing
 /coverage
+/.playwright-cli/
 
 # next.js
 /.next/
@@ -45,3 +46,4 @@ yarn-error.log*
 /data/wiki-store.json
 /data/login-rate-limit.json
 /data/translation-cache/
+/data/markdown-cache/

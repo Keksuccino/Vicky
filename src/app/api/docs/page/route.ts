@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
-import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
+import { loadRenderedDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
@@ -37,7 +37,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.nextUrl.searchParams.get("language") ??
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
-    const { data: page } = await loadDocsPageForLanguage({
+    const { data: page } = await loadRenderedDocsPageForLanguage({
       config,
       locator: { slug, path },
       origin: resolveRequestOrigin(request),

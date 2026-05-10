@@ -17,8 +17,8 @@ import { cn } from "@/components/cn";
 import { copyTextToClipboard } from "@/components/copy-text";
 import { DocsAiChat } from "@/components/docs-ai-chat";
 import { DocsTree } from "@/components/docs-tree";
-import { MarkdownRenderer } from "@/components/markdown-renderer";
 import { MaterialIcon } from "@/components/material-icon";
+import { RenderedMarkdown } from "@/components/rendered-markdown";
 import { ErrorState } from "@/components/states";
 import {
   AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT,
@@ -1074,7 +1074,7 @@ export function DocsClient({
                 </div>
               </section>
 
-              <MarkdownRenderer content={page.content} />
+              <RenderedMarkdown html={page.renderedHtml} />
             </div>
           ) : null}
         </main>

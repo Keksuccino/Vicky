@@ -8,6 +8,7 @@ import {
   docsSearchCorpusCache,
   docsSnapshotCache,
   docsTreeCache,
+  renderedMarkdownCache,
   translatedDocsPageCache,
   translatedDocsTitleCache,
 } from "@/lib/cache";
@@ -132,6 +133,9 @@ const translatedDocsPageCachePrefix = (config: GitHubRuntimeConfig): string =>
 
 const translatedDocsTitleCachePrefix = (config: GitHubRuntimeConfig): string =>
   `${toRuntimeConfigCacheKey(config)}|auto-translate|titles|`;
+
+const renderedMarkdownCachePrefix = (config: GitHubRuntimeConfig): string =>
+  `${toRuntimeConfigCacheKey(config)}|markdown-render|`;
 
 const titleSourceSignature = (items: GitHubDocTreeItem[]): string =>
   JSON.stringify(items.map((item) => ({ slug: item.slug, path: item.path, name: item.name })));
@@ -353,6 +357,7 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
     docsPageCache.clear();
     docsSearchCorpusCache.clear();
     aiPlaintextDocsCache.clear();
+    renderedMarkdownCache.clear();
     translatedDocsPageCache.clear();
     translatedDocsTitleCache.clear();
     logAutoTranslateInfo("Cleared all in-memory translation caches after docs cache reset");
@@ -365,6 +370,7 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   docsPageCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
+  renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
   logAutoTranslateInfo("Cleared in-memory translation caches for docs source", docsSourceLogContext(config));
@@ -380,6 +386,7 @@ const clearDerivedGitHubDocsCache = (
   }
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
+  renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
 
   if (snapshots?.previous && snapshots.next) {
     pruneTranslatedDocsCacheForSnapshotChange(config, snapshots.previous, snapshots.next);
