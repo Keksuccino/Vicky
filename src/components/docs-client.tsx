@@ -886,7 +886,7 @@ export function DocsClient({
     setSearchResults([]);
     setSidebarOpen(false);
     const hash = anchor ? `#${encodeURIComponent(anchor)}` : "";
-    router.push(`${toDocsHref(normalized)}${hash}`, { scroll: false });
+    router.push(`${toDocsHref(normalized)}${hash}`, { scroll: !anchor });
   };
 
   const showPagePlaceholder = pageLoading;
