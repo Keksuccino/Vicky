@@ -1,3 +1,5 @@
+# ⚠ VICKY IS STILL VERY WIP AND SHOULD NOT GET USED IN PRODUCTION YET! ⚠
+
 # Vicky
 
 Vicky is a modern self-hosted docs/wiki frontend for Markdown content stored in a GitHub repository.
@@ -8,12 +10,6 @@ It gives you:
 - an optional AI chat assistant for docs pages
 - an in-browser markdown editor that saves directly back to GitHub
 - visitor and visit analytics, including per-page analytics
-
-![Screenshot_4_5](https://github.com/user-attachments/assets/1b2e9754-5402-48e5-808c-5f79c254318d)
-
-<img width="353" height="387" alt="Screenshot_3" src="https://github.com/user-attachments/assets/2533f8ac-f8d1-498c-9908-da76b0993767" />
-<br>
-<img width="378" height="388" alt="Screenshot_2" src="https://github.com/user-attachments/assets/718216d5-0b97-48d2-9a9b-0bfdb9f58b24" />
 
 ## Highlights
 
