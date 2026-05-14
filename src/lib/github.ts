@@ -14,8 +14,16 @@ import {
 } from "@/lib/cache";
 import { logAutoTranslateInfo } from "@/lib/auto-translate-logging";
 import { decryptSecret } from "@/lib/encryption";
+import {
+  deleteAllPersistentGitHubDocsSnapshots,
+  deletePersistentGitHubDocsSnapshot,
+  readPersistentGitHubDocsSnapshot,
+  writePersistentGitHubDocsSnapshot,
+  type PersistedGitHubDocsSnapshot,
+} from "@/lib/docs-snapshot-store";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
+import { deletePersistentRenderedMarkdownWhere } from "@/lib/markdown-render-cache-store";
 import type {
   GitHubDocPage,
   GitHubPlaintextDocPage,
@@ -102,12 +110,7 @@ const commitMetadataCacheKey = (config: GitHubRuntimeConfig, fullRepoPath: strin
   `${toRuntimeConfigCacheKey(config)}|commit|${fullRepoPath}|${sha}`;
 const FULL_DOCS_LOAD_CONCURRENCY = 6;
 
-type GitHubDocsSnapshot = {
-  fetchedAt: string;
-  expiresAt: string;
-  tree: GitHubDocTreeItem[];
-  pages: GitHubDocPage[];
-};
+type GitHubDocsSnapshot = PersistedGitHubDocsSnapshot;
 
 type GitHubDocReadTarget = {
   relativePath: string;
@@ -360,6 +363,8 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
     renderedMarkdownCache.clear();
     translatedDocsPageCache.clear();
     translatedDocsTitleCache.clear();
+    void deleteAllPersistentGitHubDocsSnapshots();
+    void deletePersistentRenderedMarkdownWhere(() => true);
     logAutoTranslateInfo("Cleared all in-memory translation caches after docs cache reset");
     return;
   }
@@ -373,6 +378,8 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
+  void deletePersistentGitHubDocsSnapshot(config);
+  void deletePersistentRenderedMarkdownWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
   logAutoTranslateInfo("Cleared in-memory translation caches for docs source", docsSourceLogContext(config));
 };
 
@@ -387,6 +394,7 @@ const clearDerivedGitHubDocsCache = (
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
   renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
+  void deletePersistentRenderedMarkdownWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
 
   if (snapshots?.previous && snapshots.next) {
     pruneTranslatedDocsCacheForSnapshotChange(config, snapshots.previous, snapshots.next);
@@ -436,7 +444,9 @@ export const testGitHubConnection = async (
   }
 };
 
-const listDocsTreeFromGitHub = async (config: GitHubRuntimeConfig): Promise<GitHubDocTreeItem[]> => {
+const listDocsTreeFromGitHub = async (
+  config: GitHubRuntimeConfig,
+): Promise<{ branchCommitSha?: string; items: GitHubDocTreeItem[]; treeSha?: string }> => {
   const octokit = createOctokit(config);
   const docsRoot = normalizeDocsPath(config.docsPath);
 
@@ -446,10 +456,11 @@ const listDocsTreeFromGitHub = async (config: GitHubRuntimeConfig): Promise<GitH
     branch: config.branch,
   });
 
+  const treeSha = branch.data.commit.commit.tree.sha;
   const treeResponse = await octokit.git.getTree({
     owner: config.owner,
     repo: config.repo,
-    tree_sha: branch.data.commit.commit.tree.sha,
+    tree_sha: treeSha,
     recursive: "1",
   });
 
@@ -481,7 +492,11 @@ const listDocsTreeFromGitHub = async (config: GitHubRuntimeConfig): Promise<GitH
 
   treeItems.sort((left, right) => left.path.localeCompare(right.path));
 
-  return treeItems;
+  return {
+    branchCommitSha: branch.data.commit.sha,
+    items: treeItems,
+    treeSha,
+  };
 };
 
 export const listMarkdownDocsTree = async (
@@ -500,15 +515,26 @@ export const listMarkdownDocsTree = async (
     return cached as GitHubDocTreeItem[];
   }
 
+  if (!options?.bypassCache) {
+    const snapshot = await readPersistentGitHubDocsSnapshot(config);
+    if (snapshot?.tree.length) {
+      docsSnapshotCache.set(snapshotCacheKey(config), snapshot);
+      docsTreeCache.set(cacheKey, snapshot.tree);
+      docsTreeCache.set(titleIndexCacheKey(config, snapshot.tree), snapshot.tree);
+      snapshot.pages.forEach((page) => cacheGitHubDocPage(config, page));
+      return snapshot.tree;
+    }
+  }
+
   const pending = docsTreeLoads.get(cacheKey);
   if (pending) {
     return pending;
   }
 
   const loadPromise = listDocsTreeFromGitHub(config)
-    .then((items) => {
-      docsTreeCache.set(cacheKey, items);
-      return items;
+    .then((result) => {
+      docsTreeCache.set(cacheKey, result.items);
+      return result.items;
     })
     .finally(() => {
       if (docsTreeLoads.get(cacheKey) === loadPromise) {
@@ -870,7 +896,8 @@ const loadFreshGitHubDocsSnapshot = async (config: GitHubRuntimeConfig): Promise
     throw badRequest(validation.errors.join(" "));
   }
 
-  const baseTree = await listMarkdownDocsTree(config, { bypassCache: true });
+  const treeResult = await listDocsTreeFromGitHub(config);
+  const baseTree = treeResult.items;
   const docsRoot = normalizeDocsPath(config.docsPath);
   const octokit = createOctokit(config);
 
@@ -889,6 +916,8 @@ const loadFreshGitHubDocsSnapshot = async (config: GitHubRuntimeConfig): Promise
   const fetchedAtMs = Date.now();
   const tree = sortTreeItems(pages.map((page) => treeItemFromPage(page)));
   const snapshot = {
+    branchCommitSha: treeResult.branchCommitSha,
+    treeSha: treeResult.treeSha,
     fetchedAt: new Date(fetchedAtMs).toISOString(),
     expiresAt: new Date(fetchedAtMs + docsSnapshotCache.getTtlMs()).toISOString(),
     tree,
@@ -914,6 +943,17 @@ const loadGitHubDocsSnapshot = async (
     return cached as GitHubDocsSnapshot;
   }
 
+  if (!options?.bypassCache) {
+    const persisted = await readPersistentGitHubDocsSnapshot(config);
+    if (persisted) {
+      docsSnapshotCache.set(cacheKey, persisted);
+      docsTreeCache.set(treeCacheKey(config), persisted.tree);
+      docsTreeCache.set(titleIndexCacheKey(config, persisted.tree), persisted.tree);
+      persisted.pages.forEach((page) => cacheGitHubDocPage(config, page));
+      return persisted;
+    }
+  }
+
   const pending = docsSnapshotLoads.get(cacheKey);
   if (pending) {
     return pending;
@@ -922,6 +962,7 @@ const loadGitHubDocsSnapshot = async (
   const loadPromise = loadFreshGitHubDocsSnapshot(config)
     .then((snapshot) => {
       docsSnapshotCache.set(cacheKey, snapshot);
+      void writePersistentGitHubDocsSnapshot(config, snapshot);
       clearDerivedGitHubDocsCache(config, { previous: previousSnapshot, next: snapshot });
       return snapshot;
     })
@@ -1029,6 +1070,48 @@ const resolveGitHubDocReadTarget = async (
   };
 };
 
+const isNotFoundError = (error: unknown): boolean =>
+  error instanceof Error &&
+  ("status" in error ? (error as { status?: unknown }).status === 404 : error.message === "Document not found.");
+
+const createReadTargetFromRelativePath = (
+  config: GitHubRuntimeConfig,
+  relativePath: string,
+  slugOverride?: string,
+): GitHubDocReadTarget => {
+  const docsRoot = normalizeDocsPath(config.docsPath);
+  const normalizedRelativePath = ensureMarkdownPath(relativePath);
+  const slug = slugOverride?.trim() || relativePathToSlug(normalizedRelativePath);
+
+  return {
+    relativePath: normalizedRelativePath,
+    fullPath: joinDocsPath(docsRoot, normalizedRelativePath),
+    slug,
+    treeItem: {
+      path: normalizedRelativePath,
+      slug,
+      name: prettyNameFromPath(normalizedRelativePath),
+    },
+  };
+};
+
+const createDirectSlugReadTargets = (config: GitHubRuntimeConfig, slugInput: string): GitHubDocReadTarget[] => {
+  const slug = resolveSlugInput(slugInput);
+  if (!slug) {
+    return [];
+  }
+
+  const markdownPath = `${slug}.md`;
+  const mdxPath = `${slug}.mdx`;
+  const targets = [createReadTargetFromRelativePath(config, markdownPath, slug)];
+
+  if (mdxPath !== markdownPath) {
+    targets.push(createReadTargetFromRelativePath(config, mdxPath, slug));
+  }
+
+  return targets;
+};
+
 const loadFreshGitHubDocPage = async (
   config: GitHubRuntimeConfig,
   target: GitHubDocReadTarget,
@@ -1044,6 +1127,104 @@ const loadFreshGitHubDocPage = async (
   return createGitHubDocPage(target.treeItem, file, cachedCommitMeta ?? {});
 };
 
+const loadGitHubDocTarget = async (
+  config: GitHubRuntimeConfig,
+  target: GitHubDocReadTarget,
+  options?: { bypassCache?: boolean },
+): Promise<GitHubDocPage> => {
+  const cached = options?.bypassCache ? null : readPageFromCache(config, target);
+  if (cached) {
+    return cached;
+  }
+
+  const loadKey = `${toRuntimeConfigCacheKey(config)}|page-load|${target.relativePath}`;
+  const pending = docsPageLoads.get(loadKey);
+  if (pending) {
+    return pending;
+  }
+
+  const loadPromise = loadFreshGitHubDocPage(config, target)
+    .then((page) => {
+      cacheGitHubDocPage(config, page);
+      return mergeCachedCommitMetadata(config, page);
+    })
+    .finally(() => {
+      if (docsPageLoads.get(loadKey) === loadPromise) {
+        docsPageLoads.delete(loadKey);
+      }
+    });
+
+  docsPageLoads.set(loadKey, loadPromise);
+  return loadPromise;
+};
+
+const loadDirectGitHubDocBySlug = async (
+  config: GitHubRuntimeConfig,
+  slug: string,
+  options?: { bypassCache?: boolean },
+): Promise<GitHubDocPage | null> => {
+  let lastNotFound: unknown = null;
+
+  for (const target of createDirectSlugReadTargets(config, slug)) {
+    try {
+      return await loadGitHubDocTarget(config, target, options);
+    } catch (error: unknown) {
+      if (!isNotFoundError(error)) {
+        throw error;
+      }
+
+      lastNotFound = error;
+    }
+  }
+
+  if (lastNotFound) {
+    return null;
+  }
+
+  return null;
+};
+
+const cacheSnapshotForRead = (config: GitHubRuntimeConfig, snapshot: GitHubDocsSnapshot): void => {
+  docsSnapshotCache.set(snapshotCacheKey(config), snapshot);
+  docsTreeCache.set(treeCacheKey(config), snapshot.tree);
+  docsTreeCache.set(titleIndexCacheKey(config, snapshot.tree), snapshot.tree);
+  snapshot.pages.forEach((page) => cacheGitHubDocPage(config, page));
+};
+
+const readPageFromPersistentSnapshot = async (
+  config: GitHubRuntimeConfig,
+  locator: { slug?: string; path?: string },
+): Promise<GitHubDocPage | null> => {
+  const snapshot = await readPersistentGitHubDocsSnapshot(config);
+  if (!snapshot?.pages.length) {
+    return null;
+  }
+
+  let page: GitHubDocPage | undefined;
+
+  if (locator.slug?.trim()) {
+    const normalizedSlug = resolveSlugInput(locator.slug);
+    page = snapshot.pages.find(
+      (entry) =>
+        entry.slug === normalizedSlug ||
+        entry.path === normalizedSlug ||
+        relativePathToSlug(entry.path) === normalizedSlug,
+    );
+  } else if (locator.path?.trim()) {
+    const docsRoot = normalizeDocsPath(config.docsPath);
+    const relativePath = resolvePathFromInput(docsRoot, locator.path);
+    const normalizedSlug = relativePathToSlug(relativePath);
+    page = snapshot.pages.find((entry) => entry.path === relativePath || entry.slug === normalizedSlug);
+  }
+
+  if (!page) {
+    return null;
+  }
+
+  cacheSnapshotForRead(config, snapshot);
+  return mergeCachedCommitMetadata(config, page);
+};
+
 const upsertGitHubDocPageInSnapshotCache = (config: GitHubRuntimeConfig, page: GitHubDocPage): void => {
   cacheGitHubDocPage(config, page);
   docsTreeCache.delete(treeCacheKey(config));
@@ -1053,6 +1234,7 @@ const upsertGitHubDocPageInSnapshotCache = (config: GitHubRuntimeConfig, page: G
   const cached = docsSnapshotCache.get(cacheKey) as GitHubDocsSnapshot | undefined;
 
   if (!cached) {
+    void deletePersistentGitHubDocsSnapshot(config);
     clearDerivedGitHubDocsCache(config);
     return;
   }
@@ -1069,6 +1251,7 @@ const upsertGitHubDocPageInSnapshotCache = (config: GitHubRuntimeConfig, page: G
   };
 
   docsSnapshotCache.set(cacheKey, nextSnapshot);
+  void writePersistentGitHubDocsSnapshot(config, nextSnapshot);
   clearDerivedGitHubDocsCache(config, { previous: cached, next: nextSnapshot });
 };
 
@@ -1094,31 +1277,22 @@ export const loadGitHubDoc = async (
     throw badRequest(validation.errors.join(" "));
   }
 
+  if (!options?.bypassCache) {
+    const persistedPage = await readPageFromPersistentSnapshot(config, locator);
+    if (persistedPage) {
+      return persistedPage;
+    }
+  }
+
+  if (locator.slug?.trim() && !locator.path?.trim()) {
+    const directPage = await loadDirectGitHubDocBySlug(config, locator.slug, options);
+    if (directPage) {
+      return directPage;
+    }
+  }
+
   const target = await resolveGitHubDocReadTarget(config, locator, options);
-  const cached = options?.bypassCache ? null : readPageFromCache(config, target);
-  if (cached) {
-    return cached;
-  }
-
-  const loadKey = `${toRuntimeConfigCacheKey(config)}|page-load|${target.relativePath}`;
-  const pending = docsPageLoads.get(loadKey);
-  if (pending) {
-    return pending;
-  }
-
-  const loadPromise = loadFreshGitHubDocPage(config, target)
-    .then((page) => {
-      cacheGitHubDocPage(config, page);
-      return mergeCachedCommitMetadata(config, page);
-    })
-    .finally(() => {
-      if (docsPageLoads.get(loadKey) === loadPromise) {
-        docsPageLoads.delete(loadKey);
-      }
-    });
-
-  docsPageLoads.set(loadKey, loadPromise);
-  return loadPromise;
+  return loadGitHubDocTarget(config, target, options);
 };
 
 export const loadGitHubDocMetadata = async (

@@ -23,6 +23,7 @@ import {
   type AiChatMessage,
   type AiChatWindowSize,
   createAssistantMessage,
+  createAiChatId,
   deleteAiChatConversation,
   createEmptyConversation,
   createUserMessage,
@@ -472,7 +473,7 @@ export function DocsAiChat() {
           }
 
           return {
-            id: crypto.randomUUID(),
+            id: createAiChatId(),
             name: file.name || "image",
             dataUrl: await readImageAsDataUrl(file),
           };

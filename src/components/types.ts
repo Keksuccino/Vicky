@@ -44,6 +44,8 @@ export type DocPage = {
   updatedBy?: string;
 };
 
+export type DocPageChrome = Omit<DocPage, "content" | "markdown" | "renderedHtml">;
+
 export type DocSearchResult = {
   title: string;
   path: string;

@@ -12,7 +12,7 @@ import {
   normalizeAiChatWelcomeMessage,
 } from "@/lib/ai-chat";
 import { normalizeDocsCacheTtlMs } from "@/lib/cache";
-import { DEFAULT_SETTINGS, DEFAULT_STORE, DEFAULT_VISITOR_STATS, STORE_VERSION } from "@/lib/defaults";
+import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeFooterTemplate } from "@/lib/footer";
 import { normalizeStartPage } from "@/lib/start-page";
@@ -21,8 +21,6 @@ import type {
   AppSettings,
   DocsStore,
   ModeratorAccount,
-  VisitorStatsStore,
-  VisitorStatsVisit,
 } from "@/lib/types";
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
@@ -131,84 +129,6 @@ const normalizeModerators = (value: unknown): ModeratorAccount[] => {
       seenUsernames.add(entry.username);
       return true;
     });
-};
-
-const normalizeVisitorStatsVisitorId = (value: unknown): string | null => {
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed || null;
-};
-
-const normalizeVisitorStatsSlug = (value: unknown, fallback = ""): string => {
-  const rawValue = typeof value === "string" ? value : fallback;
-
-  return rawValue
-    .trim()
-    .replace(/\\+/g, "/")
-    .replace(/^\/?docs\//i, "")
-    .replace(/^\/+/, "")
-    .replace(/\/+$/, "")
-    .replace(/\.(md|mdx)$/i, "")
-    .replace(/\/+/g, "/");
-};
-
-const visitorStatsPathFromSlug = (slug: string): string => (slug ? `/${slug}` : "/");
-
-const prettyVisitorStatsTitle = (slug: string): string => {
-  const segment = slug.split("/").filter(Boolean).at(-1) ?? "Docs";
-  return segment
-    .replace(/[-_]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-};
-
-const normalizeVisitorStatsVisit = (
-  value: unknown,
-  seenVisitIds: Set<string>,
-): VisitorStatsVisit | null => {
-  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const visitorId = normalizeVisitorStatsVisitorId(source.visitorId);
-  const slug = normalizeVisitorStatsSlug(source.slug, normalizeTrimmedString(source.path));
-  const visitedAt = normalizeTimestamp(source.visitedAt);
-
-  if (!visitorId || !slug) {
-    return null;
-  }
-
-  let id = normalizeTrimmedString(source.id);
-  if (!id || seenVisitIds.has(id)) {
-    id = randomUUID();
-  }
-
-  seenVisitIds.add(id);
-
-  return {
-    id,
-    path: visitorStatsPathFromSlug(slug),
-    slug,
-    title: normalizeString(source.title, prettyVisitorStatsTitle(slug)),
-    visitorId,
-    visitedAt,
-  };
-};
-
-const normalizeVisitorStats = (value: unknown): VisitorStatsStore => {
-  const defaults = DEFAULT_VISITOR_STATS();
-  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
-  const seenVisitIds = new Set<string>();
-  const visits = (Array.isArray(source.visits) ? source.visits : [])
-    .map((entry) => normalizeVisitorStatsVisit(entry, seenVisitIds))
-    .filter((entry): entry is VisitorStatsVisit => Boolean(entry))
-    .sort((left, right) => left.visitedAt.localeCompare(right.visitedAt) || left.id.localeCompare(right.id));
-
-  return {
-    salt: normalizeString(source.salt, defaults.salt),
-    updatedAt: normalizeTimestamp(source.updatedAt),
-    visits,
-  };
 };
 
 const normalizeThemeAccentValue = (variables: unknown): string | null => {
@@ -376,7 +296,6 @@ const normalizeStore = (value: unknown): DocsStore => {
     version: STORE_VERSION,
     settings,
     moderators: normalizeModerators(source.moderators),
-    visitorStats: normalizeVisitorStats(source.visitorStats),
   };
 };
 

@@ -3,7 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { getClientIp } from "@/lib/login-rate-limit";
-import { updateStore } from "@/lib/store";
+import {
+  getVisitorAnalyticsSalt,
+  loadVisitorStatsSummary as loadStoredVisitorStatsSummary,
+  recordVisitorEvent,
+} from "@/lib/visitor-storage";
 import type {
   GitHubDocPage,
   VisitorPageIdentity,
@@ -275,13 +279,8 @@ export const recordVisitorInStats = (
 };
 
 const recordPageIdentityVisitForIp = async (ipAddress: string, page: VisitorPageIdentity): Promise<void> => {
-  await updateStore(
-    (store) => {
-      const visitorId = hashVisitorIp(ipAddress, store.visitorStats.salt);
-      return recordVisitorInStats(store.visitorStats, page, visitorId);
-    },
-    { touchSettings: false },
-  );
+  const visitorId = hashVisitorIp(ipAddress, await getVisitorAnalyticsSalt());
+  await recordVisitorEvent({ page, visitorId });
 };
 
 const flushQueuedVisits = async (): Promise<void> => {
@@ -501,3 +500,8 @@ export const createVisitorStatsSummary = (
     },
   };
 };
+
+export const loadVisitorStatsSummary = (
+  now = new Date(),
+  knownPages: VisitorPageIdentity[] = [],
+): Promise<VisitorStatsSummary> => loadStoredVisitorStatsSummary(now, knownPages);

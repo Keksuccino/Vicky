@@ -2,8 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   getCachedTranslatedDocPage: vi.fn(),
-  listMarkdownDocsTree: vi.fn(),
-  loadGitHubDoc: vi.fn(),
+  listMarkdownDocsTreePagesWithTitles: vi.fn(),
   toRuntimeConfigCacheKey: vi.fn(),
 }));
 
@@ -12,8 +11,7 @@ vi.mock("@/lib/auto-translate-server", () => ({
 }));
 
 vi.mock("@/lib/github", () => ({
-  listMarkdownDocsTree: mocks.listMarkdownDocsTree,
-  loadGitHubDoc: mocks.loadGitHubDoc,
+  listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles,
   toRuntimeConfigCacheKey: mocks.toRuntimeConfigCacheKey,
 }));
 
@@ -55,12 +53,13 @@ describe("docs search", () => {
   beforeEach(() => {
     docsSearchCorpusCache.clear();
     mocks.getCachedTranslatedDocPage.mockReset();
-    mocks.listMarkdownDocsTree.mockReset();
-    mocks.loadGitHubDoc.mockReset();
+    mocks.listMarkdownDocsTreePagesWithTitles.mockReset();
     mocks.toRuntimeConfigCacheKey.mockReset();
 
-    mocks.listMarkdownDocsTree.mockResolvedValue([{ path: sourcePage.path, slug: sourcePage.slug, name: sourcePage.title }]);
-    mocks.loadGitHubDoc.mockResolvedValue(sourcePage);
+    mocks.listMarkdownDocsTreePagesWithTitles.mockResolvedValue({
+      items: [{ path: sourcePage.path, slug: sourcePage.slug, name: sourcePage.title }],
+      pages: [sourcePage],
+    });
     mocks.toRuntimeConfigCacheKey.mockReturnValue("runtime-config");
   });
 

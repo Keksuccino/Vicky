@@ -40,7 +40,7 @@ const config: GitHubRuntimeConfig = {
 };
 
 const store = {
-  version: 9,
+  version: 10,
   settings: {
     autoTranslate: {
       enabled: true,
@@ -51,7 +51,7 @@ const store = {
       ],
     },
   },
-} as DocsStore;
+} as unknown as DocsStore;
 
 const createPage = (slug: string, content: string): GitHubDocPage => ({
   path: `${slug}.md`,

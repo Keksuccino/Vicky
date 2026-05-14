@@ -172,10 +172,9 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 9;
+  version: 10;
   settings: AppSettings;
   moderators: ModeratorAccount[];
-  visitorStats: VisitorStatsStore;
 }
 
 export interface GitHubRuntimeConfig {

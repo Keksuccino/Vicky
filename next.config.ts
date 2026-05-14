@@ -3,6 +3,7 @@ import type { NextConfig } from "next";
 const DEV_CHUNK_LOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["better-sqlite3"],
   turbopack: {},
   webpack(config, { dev, isServer }) {
     if (dev && !isServer) {

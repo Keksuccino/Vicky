@@ -1,11 +1,10 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
 import { getCachedTranslatedDocPage } from "@/lib/auto-translate-server";
-import { listMarkdownDocsTree, loadGitHubDoc, toRuntimeConfigCacheKey } from "@/lib/github";
+import { listMarkdownDocsTreePagesWithTitles, toRuntimeConfigCacheKey } from "@/lib/github";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
 const DEFAULT_SEARCH_LIMIT = 50;
 const MAX_SEARCH_LIMIT = 100;
-const PAGE_LOAD_CONCURRENCY = 6;
 const EXCERPT_LENGTH = 220;
 const headingRegex = /^(#{1,6})\s+(.+?)\s*#*\s*$/;
 const fenceRegex = /^(```|~~~)/;
@@ -50,6 +49,8 @@ type SearchTranslationOptions = {
   language: AutoTranslateLanguage;
   model: string;
 };
+
+const docsSearchCorpusLoads = new Map<string, Promise<SearchableDoc[]>>();
 
 const FIELD_WEIGHTS: Record<SearchField, number> = {
   title: 3.0,
@@ -188,57 +189,39 @@ const splitIntoSections = (content: string, headings: MarkdownHeading[]): Search
   return sections;
 };
 
-const toSearchableDoc = async (
-  config: GitHubRuntimeConfig,
-  treeItem: GitHubDocTreeItem,
-): Promise<SearchableDoc | null> => {
-  try {
-    const page = await loadGitHubDoc(config, { slug: treeItem.slug });
-    return toSearchableDocFromPage(page, page, treeItem.name);
-  } catch {
-    return null;
-  }
-};
-
-const mapWithConcurrency = async <T, R>(
-  values: T[],
-  concurrency: number,
-  iteratee: (value: T, index: number) => Promise<R>,
-): Promise<R[]> => {
-  const workerCount = Math.max(1, Math.min(concurrency, values.length));
-  const output = new Array<R>(values.length);
-  let index = 0;
-
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (index < values.length) {
-      const currentIndex = index;
-      index += 1;
-      output[currentIndex] = await iteratee(values[currentIndex], currentIndex);
-    }
-  });
-
-  await Promise.all(workers);
-  return output;
-};
-
 const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<SearchableDoc[]> => {
-  const tree = await listMarkdownDocsTree(config);
   const cacheKey = `${toRuntimeConfigCacheKey(config)}|search-corpus`;
   const cached = docsSearchCorpusCache.get(cacheKey);
   if (cached) {
     return cached as SearchableDoc[];
   }
 
-  if (tree.length === 0) {
-    docsSearchCorpusCache.set(cacheKey, []);
-    return [];
+  const pending = docsSearchCorpusLoads.get(cacheKey);
+  if (pending) {
+    return pending;
   }
 
-  const pages = await mapWithConcurrency(tree, PAGE_LOAD_CONCURRENCY, async (item) => toSearchableDoc(config, item));
-  const corpus = pages.filter((entry): entry is SearchableDoc => Boolean(entry));
+  const loadPromise = listMarkdownDocsTreePagesWithTitles(config)
+    .then(({ items, pages }) => {
+      if (pages.length === 0) {
+        docsSearchCorpusCache.set(cacheKey, []);
+        return [];
+      }
 
-  docsSearchCorpusCache.set(cacheKey, corpus);
-  return corpus;
+      const namesBySlug = new Map<string, GitHubDocTreeItem>(items.map((item) => [item.slug, item]));
+      const corpus = pages.map((page) => toSearchableDocFromPage(page, page, namesBySlug.get(page.slug)?.name ?? page.title));
+
+      docsSearchCorpusCache.set(cacheKey, corpus);
+      return corpus;
+    })
+    .finally(() => {
+      if (docsSearchCorpusLoads.get(cacheKey) === loadPromise) {
+        docsSearchCorpusLoads.delete(cacheKey);
+      }
+    });
+
+  docsSearchCorpusLoads.set(cacheKey, loadPromise);
+  return loadPromise;
 };
 
 const applyCachedTranslationsToCorpus = (

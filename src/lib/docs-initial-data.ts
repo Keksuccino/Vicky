@@ -1,7 +1,7 @@
 import { cookies, headers } from "next/headers";
 
 import { buildDocTree, firstLeafPath, toAbsoluteDocPath } from "@/components/api";
-import type { DocPage, DocTreeNode } from "@/components/types";
+import type { DocPageChrome, DocTreeNode } from "@/components/types";
 import {
   AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
@@ -18,11 +18,13 @@ import { getStore } from "@/lib/store";
 
 export type InitialDocsClientData = {
   initialTree?: DocTreeNode[];
-  initialPage?: DocPage | null;
+  initialPage?: DocPageChrome | null;
   initialLanguageCode: string;
   initialTreeLanguageCode?: string;
   initialTreeTitlesPending?: boolean;
   initialPageLanguageCode?: string;
+  page?: RenderedDocsPageWithSourceHeadings | null;
+  pageError?: string;
 };
 
 const firstHeaderValue = (value: string | null): string => value?.split(",")[0]?.trim() ?? "";
@@ -56,14 +58,11 @@ const readRequestedLanguageCode = async (): Promise<string> => {
   }
 };
 
-const toClientDocPage = (page: RenderedDocsPageWithSourceHeadings): DocPage => ({
+const toClientDocPageChrome = (page: RenderedDocsPageWithSourceHeadings): DocPageChrome => ({
   title: page.title,
   description: page.description,
   path: toAbsoluteDocPath(page.slug),
   slug: page.slug,
-  content: page.content,
-  markdown: page.markdown,
-  renderedHtml: page.renderedHtml,
   headings: page.headings,
   sourceHeadings: page.sourceHeadings,
   includeInPlaintextExport: page.includeInPlaintextExport,
@@ -85,27 +84,28 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
     let initialTree: DocTreeNode[] | undefined;
     let initialTreeLanguageCode: string | undefined;
     let initialTreeTitlesPending = false;
-    let initialPage: DocPage | null = null;
+    let initialPage: DocPageChrome | null = null;
     let initialPageLanguageCode: string | undefined;
+    let page: RenderedDocsPageWithSourceHeadings | null = null;
+    let pageError: string | undefined;
     let pagePath = normalizedRequestedPath;
 
-    try {
-      const treeResult = await loadDocsTreeForLanguage({
-        config,
-        origin,
-        requestedLanguageCode,
-        store,
-      });
-      initialTree = buildDocTree(treeResult.data);
-      initialTreeLanguageCode = treeResult.language.code;
-      initialTreeTitlesPending = Boolean(treeResult.titlesPending);
-
-      if (pagePath === "/") {
+    if (pagePath === "/") {
+      try {
+        const treeResult = await loadDocsTreeForLanguage({
+          config,
+          origin,
+          requestedLanguageCode,
+          store,
+        });
+        initialTree = buildDocTree(treeResult.data);
+        initialTreeLanguageCode = treeResult.language.code;
+        initialTreeTitlesPending = Boolean(treeResult.titlesPending);
         pagePath = firstLeafPath(initialTree) ?? "/";
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[docs] Failed to load initial docs tree: ${message}`);
       }
-    } catch (error: unknown) {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[docs] Failed to load initial docs tree: ${message}`);
     }
 
     if (pagePath !== "/") {
@@ -117,10 +117,12 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
           requestedLanguageCode,
           store,
         });
-        initialPage = toClientDocPage(pageResult.data);
+        page = pageResult.data;
+        initialPage = toClientDocPageChrome(pageResult.data);
         initialPageLanguageCode = pageResult.language.code;
       } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
+        pageError = message;
         console.warn(`[docs] Failed to load initial docs page: ${message}`);
       }
     }
@@ -132,6 +134,8 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
       initialTreeLanguageCode,
       initialTreeTitlesPending,
       initialPageLanguageCode,
+      page,
+      pageError,
     };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
@@ -139,6 +143,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
 
     return {
       initialLanguageCode,
+      pageError: message,
     };
   }
 };

@@ -5,7 +5,7 @@ import { setDocsCacheTtlMs } from "@/lib/cache";
 import { listMarkdownDocsTree, resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
-import { createVisitorStatsSummary } from "@/lib/visitors";
+import { loadVisitorStatsSummary } from "@/lib/visitors";
 import type { DocsStore, VisitorPageIdentity } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -36,7 +36,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
 
     const store = await getStore();
     const knownPages = await loadKnownPages(store);
-    return NextResponse.json({ stats: createVisitorStatsSummary(store.visitorStats, new Date(), knownPages) });
+    return NextResponse.json({ stats: await loadVisitorStatsSummary(new Date(), knownPages) });
   } catch (error: unknown) {
     return errorResponse(error);
   }

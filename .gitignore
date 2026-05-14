@@ -47,3 +47,7 @@ yarn-error.log*
 /data/login-rate-limit.json
 /data/translation-cache/
 /data/markdown-cache/
+/data/docs-cache/
+/data/*.sqlite
+/data/*.sqlite-shm
+/data/*.sqlite-wal

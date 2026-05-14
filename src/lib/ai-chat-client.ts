@@ -59,7 +59,15 @@ const MAX_PERSISTED_MESSAGES_PER_CONVERSATION = 24;
 const MIN_MESSAGES_TO_KEEP = 4;
 const MAX_SERIALIZED_COOKIE_CHARS = 18_000;
 
-const createId = (): string => crypto.randomUUID();
+export const createAiChatId = (): string => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+};
+
+const createId = (): string => createAiChatId();
 
 export const getAiChatWelcomeText = (
   assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
