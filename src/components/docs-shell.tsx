@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import {
@@ -213,6 +214,30 @@ function DocsSidebarUnresolved() {
   );
 }
 
+function DocsPageUnresolved() {
+  return (
+    <div className="docs-main-unresolved" role="status" aria-live="polite" aria-label="Loading page">
+      <section className="page-header-card page-header-skeleton" aria-hidden="true">
+        <div className="docs-skeleton-line docs-skeleton-heading" />
+        <div className="docs-skeleton-line docs-skeleton-subheading" />
+        <div className="docs-skeleton-meta-row">
+          <div className="docs-skeleton-chip docs-skeleton-chip-long" />
+          <div className="docs-skeleton-chip docs-skeleton-chip-short" />
+        </div>
+      </section>
+
+      <div className="docs-markdown-skeleton" aria-hidden="true">
+        <div className="docs-skeleton-line docs-skeleton-paragraph-wide" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-wide" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-mid" />
+        <div className="docs-skeleton-line docs-skeleton-heading-small" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-wide" />
+        <div className="docs-skeleton-line docs-skeleton-paragraph-short" />
+      </div>
+    </div>
+  );
+}
+
 export function DocsShell({
   children,
   initialPath,
@@ -249,6 +274,7 @@ export function DocsShell({
   const [activeHeadingSlug, setActiveHeadingSlug] = useState<string | null>(null);
   const [selectedLanguageCode, setSelectedLanguageCode] = useState(normalizedInitialLanguageCode);
   const [languageReady, setLanguageReady] = useState(Boolean(initialLanguageCode));
+  const [pageTransitioning, setPageTransitioning] = useState(false);
   const treeLoadIdRef = useRef(0);
   const treeTitleRefreshAttemptsRef = useRef(0);
   const lastInitialHashScrollKeyRef = useRef<string | null>(null);
@@ -256,9 +282,10 @@ export function DocsShell({
   const loadedTreeLanguageRef = useRef<string | null>(hasInitialTree ? normalizedInitialTreeLanguageCode : null);
   const recordedVisitKeyRef = useRef<string | null>(null);
   const serverLanguageRef = useRef(normalizedInitialLanguageCode);
+  const transitionTargetPathRef = useRef<string | null>(null);
   const page = hasInitialPage ? initialPage ?? null : null;
-  const pageHeadings = page?.headings ?? EMPTY_HEADINGS;
-  const sourceHeadings = page?.sourceHeadings ?? EMPTY_HEADINGS;
+  const pageHeadings = pageTransitioning ? EMPTY_HEADINGS : page?.headings ?? EMPTY_HEADINGS;
+  const sourceHeadings = pageTransitioning ? EMPTY_HEADINGS : page?.sourceHeadings ?? EMPTY_HEADINGS;
 
   useEffect(() => {
     serverLanguageRef.current = normalizedInitialLanguageCode;
@@ -357,6 +384,11 @@ export function DocsShell({
     const nextDisplayPath = initialPage ? normalizePath(initialPage.path) : nextInitialPath;
     rootPathNeedsReplaceRef.current = nextInitialPath === "/" && nextDisplayPath !== "/";
     setCurrentPath(nextDisplayPath);
+
+    if (!transitionTargetPathRef.current || transitionTargetPathRef.current === nextDisplayPath) {
+      transitionTargetPathRef.current = null;
+      setPageTransitioning(false);
+    }
   }, [initialPath, initialPage]);
 
   const loadTree = useCallback(async (options?: { quiet?: boolean }) => {
@@ -715,12 +747,26 @@ export function DocsShell({
   const onSelectPath = (path: string, anchor?: string) => {
     const normalized = normalizePath(path);
     const hasAnchor = Boolean(anchor);
+    const pageChanged = normalized !== currentPath;
 
-    if (!hasAnchor) {
+    if (pageChanged) {
+      transitionTargetPathRef.current = normalized;
+      flushSync(() => {
+        setPageTransitioning(true);
+        setCurrentPath(normalized);
+        setActiveHeadingSlug(null);
+        setSearchQuery("");
+        setSearchResults([]);
+        setSidebarOpen(false);
+      });
+      scrollToPageTop();
+    } else if (!hasAnchor) {
       scrollToPageTop();
     }
 
-    setCurrentPath(normalized);
+    if (!pageChanged) {
+      setCurrentPath(normalized);
+    }
     setActiveHeadingSlug(hasAnchor ? anchor ?? null : null);
     setSearchQuery("");
     setSearchResults([]);
@@ -789,8 +835,8 @@ export function DocsShell({
           )}
         </div>
 
-        <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined}>
-          {children}
+        <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined} aria-busy={pageTransitioning || undefined}>
+          {pageTransitioning ? <DocsPageUnresolved /> : children}
         </main>
       </div>
 
