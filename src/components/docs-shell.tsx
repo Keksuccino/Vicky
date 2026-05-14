@@ -841,7 +841,10 @@ export function DocsShell({
         </div>
 
         <main className="docs-main" id="main-content" aria-hidden={sidebarOpen || undefined} aria-busy={pageTransitioning || undefined}>
-          {pageTransitioning ? <DocsPageUnresolved /> : children}
+          {pageTransitioning ? <DocsPageUnresolved /> : null}
+          <div className={cn("docs-main-content-slot", pageTransitioning && "docs-main-content-pending")} aria-hidden={pageTransitioning || undefined}>
+            {children}
+          </div>
         </main>
       </div>
 
