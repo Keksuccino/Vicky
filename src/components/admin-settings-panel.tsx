@@ -2237,11 +2237,9 @@ export function AdminSettingsPanel() {
           return;
         }
 
-        const [loadedSettings, loadedModerators, loadedPerformanceStats, loadedVisitorStats] = await Promise.all([
+        const [loadedSettings, loadedModerators] = await Promise.all([
           fetchAdminSettings(),
           fetchAdminModerators(),
-          loadPerformanceStatsResult(),
-          loadVisitorStatsResult(),
         ]);
         if (!isActive) {
           return;
@@ -2256,19 +2254,15 @@ export function AdminSettingsPanel() {
 
         setSettings(loadedSettings);
         setModerators(loadedModerators);
-        setPerformanceStats(loadedPerformanceStats.stats);
-        setPerformanceStatsError(loadedPerformanceStats.error);
-        setPerformanceStatsLoading(false);
-        setVisitorStats(loadedVisitorStats.stats);
-        setVisitorStatsError(loadedVisitorStats.error);
-        setVisitorStatsLoading(false);
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
         setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
         setAiChatFieldErrors(validateAiChatFields(loadedSettings));
         setOpenRouterFieldErrors(validateOpenRouterFields(loadedSettings));
         setAutoTranslateFieldErrors(validateAutoTranslateFields(loadedSettings));
         autoSaveReadyRef.current = true;
-        await refreshSslStatus();
+        void refreshSslStatus();
+        void refreshPerformanceStats();
+        void refreshVisitorStats();
       } catch (error) {
         if (isActive) {
           setLoadError(formatApiError(error));
@@ -2289,7 +2283,7 @@ export function AdminSettingsPanel() {
       isActive = false;
       autoSaveReadyRef.current = false;
     };
-  }, [createSaveSnapshot, refreshSslStatus, router, setThemeSettings]);
+  }, [createSaveSnapshot, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;

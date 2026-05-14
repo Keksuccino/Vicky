@@ -39,6 +39,18 @@ type PageRow = CountRow & {
   title: string;
 };
 
+type AnalyticsTableName = "analytics_meta" | "visitor_pages" | "visitor_events";
+
+type TableInfoRow = {
+  name: string;
+};
+
+const REQUIRED_TABLE_COLUMNS: Record<AnalyticsTableName, string[]> = {
+  analytics_meta: ["key", "value"],
+  visitor_pages: ["slug", "path", "title", "updated_at"],
+  visitor_events: ["id", "page_slug", "visitor_id", "visited_at", "visited_day", "visited_hour"],
+};
+
 const getAnalyticsDbPath = (): string => process.env.WIKI_ANALYTICS_DB_PATH?.trim() || DEFAULT_ANALYTICS_DB_PATH;
 
 const getGlobalState = (): AnalyticsDbState | null => {
@@ -60,7 +72,41 @@ export const resetVisitorAnalyticsStorageForTests = (): void => {
   delete globalState[ANALYTICS_DB_STATE_KEY];
 };
 
+const getTableColumns = (db: SqliteDatabase, tableName: AnalyticsTableName): Set<string> =>
+  new Set(db.prepare<[], TableInfoRow>(`PRAGMA table_info(${tableName})`).all().map((row) => row.name));
+
+const hasIncompatibleAnalyticsSchema = (db: SqliteDatabase): boolean => {
+  for (const [tableName, requiredColumns] of Object.entries(REQUIRED_TABLE_COLUMNS) as Array<
+    [AnalyticsTableName, string[]]
+  >) {
+    const columns = getTableColumns(db, tableName);
+    if (columns.size === 0) {
+      continue;
+    }
+
+    if (requiredColumns.some((column) => !columns.has(column))) {
+      return true;
+    }
+  }
+
+  return false;
+};
+
+const resetAnalyticsSchema = (db: SqliteDatabase): void => {
+  db.pragma("foreign_keys = OFF");
+  db.exec(`
+    DROP TABLE IF EXISTS visitor_events;
+    DROP TABLE IF EXISTS visitor_pages;
+    DROP TABLE IF EXISTS analytics_meta;
+  `);
+  db.pragma("foreign_keys = ON");
+};
+
 const initDatabase = (db: SqliteDatabase): void => {
+  if (hasIncompatibleAnalyticsSchema(db)) {
+    resetAnalyticsSchema(db);
+  }
+
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 5000");

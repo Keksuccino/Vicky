@@ -22,6 +22,12 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     return NextResponse.json({ queued }, { status: 202 });
   } catch (error: unknown) {
-    return errorResponse(error);
+    if (error instanceof z.ZodError || error instanceof SyntaxError) {
+      return errorResponse(error);
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[visitors] Failed to queue docs page visit: ${message}`);
+    return NextResponse.json({ queued: false }, { status: 202 });
   }
 };
