@@ -1014,10 +1014,6 @@ export function DocsClient({
                       <MaterialIcon name="schedule" />
                       Updated: {formatDate(page.updatedAt)}
                     </span>
-                    <span className="meta-item">
-                      <MaterialIcon name="person" />
-                      Author: {page.updatedBy || "Unknown"}
-                    </span>
                   </div>
 
                   <div className="page-copy-actions" ref={copyMenuRef}>

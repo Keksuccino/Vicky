@@ -65,10 +65,6 @@ export function DocsArticle({ page }: DocsArticleProps) {
               <MaterialIcon name="schedule" />
               Updated: {formatDate(page.updatedAt)}
             </span>
-            <span className="meta-item">
-              <MaterialIcon name="person" />
-              Author: {page.updatedBy || "Unknown"}
-            </span>
           </div>
 
           <DocsPageCopyActions rawHref={rawPageHref} />
