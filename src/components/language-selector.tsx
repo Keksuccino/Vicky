@@ -1,5 +1,6 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { CircleFlagIcon } from "@/components/circle-flag-icon";
@@ -16,6 +17,7 @@ import {
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
 import { normalizeCircleFlagIconId } from "@/lib/circle-flags";
+import { parseDocsRoutePath } from "@/lib/docs-routing";
 
 const LANGUAGE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 const ICON_ONLY_LANGUAGE_SELECTOR_QUERY = "(max-width: 760px)";
@@ -80,7 +82,17 @@ const getLanguageIconId = (language: AutoTranslateLanguage): string =>
 const getLanguageSearchText = (language: AutoTranslateLanguage): string =>
   `${language.name} ${language.code} ${language.icon}`.toLowerCase();
 
+const getDocsRouteLanguageCode = (pathname: string, languages: AutoTranslateLanguage[]): string => {
+  const docsPrefix = "/docs/";
+  if (!pathname.startsWith(docsPrefix)) {
+    return "";
+  }
+
+  return parseDocsRoutePath(pathname.slice(docsPrefix.length), languages).languageCode ?? "";
+};
+
 export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) {
+  const pathname = usePathname();
   const availableLanguages = useMemo(
     () =>
       languages.length > 0
@@ -102,7 +114,14 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
   const [query, setQuery] = useState("");
   const selectorRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
-  const resolvedSelectedLanguageCode = resolveLanguageCode(availableLanguages, selectedLanguageCode);
+  const routeLanguageCode = useMemo(
+    () => getDocsRouteLanguageCode(pathname, availableLanguages),
+    [availableLanguages, pathname],
+  );
+  const resolvedSelectedLanguageCode = resolveLanguageCode(
+    availableLanguages,
+    enabled ? routeLanguageCode || selectedLanguageCode : DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
+  );
   const selectedLanguage =
     availableLanguages.find((language) => languageCodesEqual(language.code, resolvedSelectedLanguageCode)) ??
     availableLanguages[0];
@@ -122,13 +141,10 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
   }, []);
 
   useEffect(() => {
-    const nextLanguageCode = enabled
-      ? resolveLanguageCode(availableLanguages, selectedLanguageCode)
-      : DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
-
-    writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, nextLanguageCode);
-    dispatchLanguageChange(nextLanguageCode);
-  }, [availableLanguages, enabled, selectedLanguageCode]);
+    if (enabled && routeLanguageCode) {
+      writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, resolvedSelectedLanguageCode);
+    }
+  }, [enabled, resolvedSelectedLanguageCode, routeLanguageCode]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(ICON_ONLY_LANGUAGE_SELECTOR_QUERY);
@@ -239,6 +255,8 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
                     onClick={() => {
                       const nextLanguageCode = resolveLanguageCode(availableLanguages, language.code);
                       setSelectedLanguageCode(nextLanguageCode);
+                      writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, nextLanguageCode);
+                      dispatchLanguageChange(nextLanguageCode);
                       closeMenu();
                     }}
                   >

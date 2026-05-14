@@ -303,7 +303,16 @@ export function DocsShell({
       setLanguageReady(true);
 
       if (normalized !== serverLanguageRef.current) {
-        router.refresh();
+        transitionTargetPathRef.current = currentPath;
+        flushSync(() => {
+          setPageTransitioning(true);
+          setSearchQuery("");
+          setSearchResults([]);
+          setSidebarOpen(false);
+        });
+
+        const hash = window.location.hash;
+        router.push(`${toDocsHref(currentPath, normalized)}${hash}`, { scroll: false });
       }
     };
 
@@ -311,7 +320,7 @@ export function DocsShell({
     return () => {
       window.removeEventListener(AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT, onLanguageChange);
     };
-  }, [router]);
+  }, [currentPath, router]);
 
   useEffect(() => {
     const mobileViewportQuery = window.matchMedia("(max-width: 900px)");

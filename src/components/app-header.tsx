@@ -7,6 +7,7 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { fetchPublicSiteSettings, getCurrentUser, logout } from "@/components/api";
 import { cn } from "@/components/cn";
+import { LanguageSelector } from "@/components/language-selector";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { AuthUser, AutoTranslateLanguage } from "@/components/types";
@@ -175,6 +176,8 @@ export function AppHeader() {
         </Link>
 
         <div className="app-header-actions">
+          {brandingReady ? <LanguageSelector enabled={autoTranslateLanguages.length > 1} languages={autoTranslateLanguages} /> : null}
+
           <Link
             href={PLAINTEXT_EXPORT_NAVIGATION.href}
             className="btn btn-icon btn-pill admin-icon-link ui-tooltip"
