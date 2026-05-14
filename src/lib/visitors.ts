@@ -3,11 +3,6 @@ import { createHash, randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { getClientIp } from "@/lib/login-rate-limit";
-import {
-  getVisitorAnalyticsSalt,
-  loadVisitorStatsSummary as loadStoredVisitorStatsSummary,
-  recordVisitorEvent,
-} from "@/lib/visitor-storage";
 import type {
   GitHubDocPage,
   VisitorPageIdentity,
@@ -23,6 +18,22 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ALL_TIME_CHART_PERIOD_LIMIT = 150;
 const MAX_VISIT_RECORD_ATTEMPTS = 3;
 
+type VisitorStorageBackend = {
+  getVisitorAnalyticsSalt: () => Promise<string>;
+  loadVisitorStatsSummary: (now?: Date, knownPages?: VisitorPageIdentity[]) => Promise<VisitorStatsSummary>;
+  recordVisitorEvent: (event: {
+    page: VisitorPageIdentity;
+    visitedAt?: Date;
+    visitorId: string;
+  }) => Promise<boolean>;
+};
+
+type VisitorStorageLoader = () => Promise<VisitorStorageBackend>;
+
+const defaultVisitorStorageLoader: VisitorStorageLoader = () => import("@/lib/visitor-storage");
+
+let visitorStorageLoader: VisitorStorageLoader = defaultVisitorStorageLoader;
+
 type QueuedDocPageVisit = {
   ipAddress: string;
   page: VisitorPageIdentity;
@@ -31,6 +42,18 @@ type QueuedDocPageVisit = {
 
 const visitQueue: QueuedDocPageVisit[] = [];
 let visitQueueFlushing = false;
+
+export const setVisitorStorageLoaderForTests = (loader: VisitorStorageLoader | null): void => {
+  visitorStorageLoader = loader ?? defaultVisitorStorageLoader;
+};
+
+const loadVisitorStorage = async (): Promise<VisitorStorageBackend> => visitorStorageLoader();
+
+const createEmptyVisitorStatsStore = (updatedAt: Date): VisitorStatsStore => ({
+  salt: "",
+  updatedAt: updatedAt.toISOString(),
+  visits: [],
+});
 
 const normalizeStatsSlug = (value: string): string =>
   value
@@ -279,8 +302,9 @@ export const recordVisitorInStats = (
 };
 
 const recordPageIdentityVisitForIp = async (ipAddress: string, page: VisitorPageIdentity): Promise<void> => {
-  const visitorId = hashVisitorIp(ipAddress, await getVisitorAnalyticsSalt());
-  await recordVisitorEvent({ page, visitorId });
+  const storage = await loadVisitorStorage();
+  const visitorId = hashVisitorIp(ipAddress, await storage.getVisitorAnalyticsSalt());
+  await storage.recordVisitorEvent({ page, visitorId });
 };
 
 const flushQueuedVisits = async (): Promise<void> => {
@@ -504,4 +528,11 @@ export const createVisitorStatsSummary = (
 export const loadVisitorStatsSummary = (
   now = new Date(),
   knownPages: VisitorPageIdentity[] = [],
-): Promise<VisitorStatsSummary> => loadStoredVisitorStatsSummary(now, knownPages);
+): Promise<VisitorStatsSummary> =>
+  loadVisitorStorage()
+    .then((storage) => storage.loadVisitorStatsSummary(now, knownPages))
+    .catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : String(error);
+      console.warn(`[visitors] SQLite analytics storage unavailable; returning empty analytics summary: ${message}`);
+      return createVisitorStatsSummary(createEmptyVisitorStatsStore(now), now, knownPages);
+    });

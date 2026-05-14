@@ -1,11 +1,21 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_VISITOR_STATS } from "@/lib/defaults";
-import { createVisitorStatsSummary, recordVisitorInStats } from "@/lib/visitors";
+import {
+  createVisitorStatsSummary,
+  loadVisitorStatsSummary,
+  recordVisitorInStats,
+  setVisitorStorageLoaderForTests,
+} from "@/lib/visitors";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 describe("visitor stats", () => {
+  afterEach(() => {
+    setVisitorStorageLoaderForTests(null);
+    vi.restoreAllMocks();
+  });
+
   it("counts visits while keeping unique visitors deduped per scope and page", () => {
     const stats = DEFAULT_VISITOR_STATS();
     const visitedAt = new Date("2026-05-05T10:00:00.000Z");
@@ -147,5 +157,23 @@ describe("visitor stats", () => {
     expect(allTimePeriods.at(-1)).toMatchObject({ key: "2026-10-27", visits: 1, visitors: 1 });
     expect(Math.min(...dayGaps)).toBe(2);
     expect(Math.max(...dayGaps)).toBe(3);
+  });
+
+  it("returns a valid empty summary when SQLite analytics storage is unavailable", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    setVisitorStorageLoaderForTests(async () => {
+      throw new Error("native module unavailable");
+    });
+
+    const summary = await loadVisitorStatsSummary(new Date("2026-05-05T10:00:00.000Z"), [
+      { path: "/known", slug: "known", title: "Known Page" },
+    ]);
+
+    expect(summary.updatedAt).toBe("2026-05-05T10:00:00.000Z");
+    expect(summary.scopes.allTime.totalVisits).toBe(0);
+    expect(summary.scopes.daily.periods).toHaveLength(24);
+    expect(summary.scopes.allTime.pages).toEqual([
+      { path: "/known", slug: "known", title: "Known Page", visits: 0, visitors: 0 },
+    ]);
   });
 });
