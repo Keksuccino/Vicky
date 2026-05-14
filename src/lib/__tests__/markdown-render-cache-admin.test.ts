@@ -12,23 +12,19 @@ import {
 } from "@/lib/markdown-render-cache-admin";
 import { listPersistentRenderedMarkdownCacheEntries } from "@/lib/markdown-render-cache-store";
 import type {
-  AutoTranslateLanguage,
   DocsStore,
   GitHubDocPage,
   GitHubRuntimeConfig,
 } from "@/lib/types";
 
 const listMarkdownDocsTreePagesWithTitlesMock = vi.fn();
-const getCachedTranslatedDocPageMock = vi.fn();
+const loadGitHubLocalizationSnapshotMock = vi.fn();
 
 vi.mock("@/lib/github", () => ({
+  loadGitHubLocalizationSnapshot: (...args: unknown[]) => loadGitHubLocalizationSnapshotMock(...args),
   listMarkdownDocsTreePagesWithTitles: (...args: unknown[]) => listMarkdownDocsTreePagesWithTitlesMock(...args),
   toRuntimeConfigCacheKey: (config: GitHubRuntimeConfig) =>
     [config.owner, config.repo, config.branch, config.docsPath].join("|"),
-}));
-
-vi.mock("@/lib/auto-translate-server", () => ({
-  getCachedTranslatedDocPage: (...args: unknown[]) => getCachedTranslatedDocPageMock(...args),
 }));
 
 const config: GitHubRuntimeConfig = {
@@ -40,11 +36,12 @@ const config: GitHubRuntimeConfig = {
 };
 
 const store = {
-  version: 10,
+  version: 11,
   settings: {
     autoTranslate: {
       enabled: true,
       openRouterModel: "openai/gpt-5.4-mini",
+      localizationPath: "localizations",
       languages: [
         { name: "English (US)", code: "en-US", icon: "us" },
         { name: "German", code: "de", icon: "de" },
@@ -76,20 +73,19 @@ describe("markdown render cache admin helpers", () => {
     renderedMarkdownCache.clear();
     vi.clearAllMocks();
     listMarkdownDocsTreePagesWithTitlesMock.mockResolvedValue({ items: [], pages });
-    getCachedTranslatedDocPageMock.mockImplementation(
-      (_config: GitHubRuntimeConfig, sourcePage: GitHubDocPage, language: AutoTranslateLanguage) => {
-        if (sourcePage.slug !== "home" || language.code !== "de") {
-          return null;
-        }
-
-        return {
-          ...sourcePage,
+    loadGitHubLocalizationSnapshotMock.mockResolvedValue({
+      fetchedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      tree: [],
+      pages: [
+        {
+          ...pages[0],
           content: "## Startseite",
           markdown: "## Startseite",
           title: "Startseite",
-        };
-      },
-    );
+        },
+      ],
+    });
   });
 
   afterEach(async () => {

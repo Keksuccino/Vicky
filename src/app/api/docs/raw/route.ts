@@ -1,7 +1,9 @@
 import { type NextRequest } from "next/server";
 
+import { AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
-import { loadGitHubDoc, resolveRuntimeConfig } from "@/lib/github";
+import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
+import { resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, ApiError } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
@@ -25,7 +27,17 @@ export const GET = async (request: NextRequest): Promise<Response> => {
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
-    const page = await loadGitHubDoc(config, { slug, path });
+    const requestedLanguageCode =
+      request.nextUrl.searchParams.get("language") ??
+      request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
+      undefined;
+    const { data: page } = await loadDocsPageForLanguage({
+      config,
+      locator: { slug, path },
+      origin: request.nextUrl.origin,
+      requestedLanguageCode,
+      store,
+    });
 
     return new Response(page.markdown, {
       status: 200,

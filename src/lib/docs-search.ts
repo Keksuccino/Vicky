@@ -1,6 +1,6 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
-import { getCachedTranslatedDocPage } from "@/lib/auto-translate-server";
-import { listMarkdownDocsTreePagesWithTitles, toRuntimeConfigCacheKey } from "@/lib/github";
+import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot, toRuntimeConfigCacheKey } from "@/lib/github";
+import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
 const DEFAULT_SEARCH_LIMIT = 50;
@@ -47,7 +47,7 @@ export type DocsSearchResult = {
 
 type SearchTranslationOptions = {
   language: AutoTranslateLanguage;
-  model: string;
+  localizationPath: string;
 };
 
 const docsSearchCorpusLoads = new Map<string, Promise<SearchableDoc[]>>();
@@ -224,24 +224,41 @@ const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<Searchable
   return loadPromise;
 };
 
-const applyCachedTranslationsToCorpus = (
+const applyLocalizedPagesToCorpus = async (
   config: GitHubRuntimeConfig,
   corpus: SearchableDoc[],
   translation?: SearchTranslationOptions,
-): SearchableDoc[] => {
-  const model = translation?.model.trim();
-  if (!translation || !model) {
+): Promise<SearchableDoc[]> => {
+  if (!translation || isSourceLanguage(translation.language)) {
     return corpus;
   }
 
-  return corpus.map((doc) => {
-    const translatedPage = getCachedTranslatedDocPage(config, doc.sourcePage, translation.language, model);
-    if (!translatedPage) {
+  const cacheKey = `${toRuntimeConfigCacheKey(config)}|search-corpus|${translation.localizationPath}|${translation.language.code.toLowerCase()}`;
+  const cached = docsSearchCorpusCache.get(cacheKey);
+  if (cached) {
+    return cached as SearchableDoc[];
+  }
+
+  const sourcePages = corpus.map((doc) => doc.sourcePage);
+  const snapshot = await loadGitHubLocalizationSnapshot({
+    config,
+    language: translation.language,
+    localizationPath: translation.localizationPath,
+    sourcePages,
+  });
+  const localizedByPath = new Map(snapshot.pages.map((page) => [page.path, page]));
+
+  const localizedCorpus = corpus.map((doc) => {
+    const localizedPage = localizedByPath.get(doc.sourcePage.path);
+    if (!localizedPage || isLocalizedPageOutdated(doc.sourcePage, localizedPage)) {
       return doc;
     }
 
-    return toSearchableDocFromPage(translatedPage, doc.sourcePage, translatedPage.title.trim() || doc.name);
+    return toSearchableDocFromPage(localizedPage, doc.sourcePage, localizedPage.title.trim() || doc.name);
   });
+
+  docsSearchCorpusCache.set(cacheKey, localizedCorpus);
+  return localizedCorpus;
 };
 
 const tokenLengthFactor = (token: string): number => Math.max(0.35, Math.min(1, token.length / 4));
@@ -533,7 +550,7 @@ export const searchDocsCorpus = async (
   }
 
   const sourceCorpus = await loadSearchCorpus(config);
-  const corpus = applyCachedTranslationsToCorpus(config, sourceCorpus, options?.translation);
+  const corpus = await applyLocalizedPagesToCorpus(config, sourceCorpus, options?.translation);
   const results: DocsSearchResult[] = [];
 
   for (const doc of corpus) {

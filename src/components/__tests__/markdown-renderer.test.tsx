@@ -61,9 +61,9 @@ describe("MarkdownRenderer", () => {
     const deepLink = screen.getByRole("link", { name: "Deep" });
     const rootLink = screen.getByRole("link", { name: "Root" });
 
-    expect(link.getAttribute("href")).toBe("/docs/home");
-    expect(deepLink.getAttribute("href")).toBe("/docs/guides/setup?mode=full#install");
-    expect(rootLink.getAttribute("href")).toBe("/docs");
+    expect(link.getAttribute("href")).toBe("/docs/en-US/home");
+    expect(deepLink.getAttribute("href")).toBe("/docs/en-US/guides/setup?mode=full#install");
+    expect(rootLink.getAttribute("href")).toBe("/docs/en-US");
   });
 
   it("does not rewrite links that target reserved app routes or existing docs paths", () => {

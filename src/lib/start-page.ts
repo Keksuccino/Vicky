@@ -1,3 +1,5 @@
+import { docsHrefForPagePath } from "@/lib/docs-routing";
+
 const DEFAULT_START_PAGE = "/home";
 const markdownExtensionRegex = /\.(md|mdx)$/i;
 const HOST_LIKE_PATH_REGEX = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?(?:\/|$)/i;
@@ -67,9 +69,9 @@ export const normalizeStartPage = (value: unknown): string => {
   return `/${relativePath}`;
 };
 
-export const startPageToDocsHref = (value: unknown): string => {
+export const startPageToDocsHref = (value: unknown, languageCode?: string): string => {
   const normalized = normalizeStartPage(value);
-  return `/docs/${normalized.slice(1)}`;
+  return docsHrefForPagePath(normalized, languageCode);
 };
 
 export { DEFAULT_START_PAGE };

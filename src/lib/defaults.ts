@@ -8,7 +8,7 @@ import { DEFAULT_START_PAGE } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 import type { AppSettings, DocsStore, VisitorStatsStore } from "@/lib/types";
 
-export const STORE_VERSION = 10 as const;
+export const STORE_VERSION = 11 as const;
 
 const now = (): string => new Date().toISOString();
 

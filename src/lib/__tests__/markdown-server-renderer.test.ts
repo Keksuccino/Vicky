@@ -86,7 +86,7 @@ describe("server markdown renderer", () => {
       },
     ]);
     expect(rendered.html).toContain('<h2 id="adding-elements-to-layouts">Adding Elements to Layouts');
-    expect(rendered.html).toContain('href="/docs/home"');
+    expect(rendered.html).toContain('href="/docs/en-US/home"');
     expect(rendered.html).toContain('href="#"');
     expect(rendered.html).toContain('<aside class="md-alert md-alert-info" data-alert="info">');
     expect(rendered.html).toContain('class="markdown-code-block-shell"');

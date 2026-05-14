@@ -46,6 +46,7 @@ const language: AutoTranslateLanguage = {
 const settings: AutoTranslateSettings = {
   enabled: true,
   openRouterModel: "openai/gpt-5.4-mini",
+  localizationPath: "localizations",
   languages: [
     { name: "English (US)", code: "en-US", icon: "us" },
     language,

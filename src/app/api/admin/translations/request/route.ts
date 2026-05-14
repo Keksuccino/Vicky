@@ -2,21 +2,25 @@ import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguage,
+  normalizeAutoTranslateLanguages,
 } from "@/lib/auto-translate";
 import {
   formatAutoTranslateLanguageForLog,
   getAutoTranslateErrorMessage,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
-import { translateMissingGitHubDocPages } from "@/lib/auto-translate-server";
 import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { decryptSecret } from "@/lib/encryption";
 import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
+import {
+  normalizeRequestedLocalizationLanguageCodes,
+  translatePageLocalizations,
+  type PageLocalizationRequestMode,
+} from "@/lib/page-localization";
 import { getStore } from "@/lib/store";
 import type { AutoTranslateLanguage } from "@/lib/types";
 
@@ -34,7 +38,21 @@ const requestTranslationsSchema = z
           .min(1, "Language icon is required.")
           .refine(isCircleFlagIconId, "Language icon must be a Circle Flags icon ID."),
       })
+      .optional(),
+    languageCodes: z.array(z.string()).optional(),
+    mode: z.enum(["outdated", "missing-and-outdated"]).optional(),
+    localizationPath: z.string().optional(),
+    languages: z.array(
+      z
+        .object({
+          name: z.string(),
+          code: z.string(),
+          icon: z
+            .string()
+            .refine(isCircleFlagIconId, "Language icon must be a Circle Flags icon ID."),
+        })
       .strict(),
+    ).optional(),
   })
   .strict();
 
@@ -60,18 +78,19 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     const body = await parseJsonBody<unknown>(request);
     const payload = requestTranslationsSchema.parse(body);
-    const language = normalizeAutoTranslateLanguage(payload.language);
-    requestLanguage = language;
-
-    if (!language) {
-      throw badRequest("A valid auto-translate language is required.");
-    }
-
-    if (isDefaultAutoTranslateLanguageCode(language.code)) {
-      throw badRequest("The default source language does not need translated pages.");
-    }
-
     const store = await getStore();
+    const configuredLanguages = normalizeAutoTranslateLanguages(payload.languages ?? store.settings.autoTranslate.languages);
+    const singleLanguage = payload.language ? normalizeAutoTranslateLanguage(payload.language) : null;
+    const languages = singleLanguage
+      ? [singleLanguage]
+      : normalizeRequestedLocalizationLanguageCodes(payload.languageCodes, configuredLanguages);
+    const mode: PageLocalizationRequestMode = payload.mode ?? "missing-and-outdated";
+    requestLanguage = singleLanguage ?? languages[0] ?? null;
+
+    if (languages.length === 0) {
+      throw badRequest("At least one target localization language is required.");
+    }
+
     const apiKeyEncrypted = store.settings.openRouter.apiKeyEncrypted;
     const model = store.settings.autoTranslate.openRouterModel.trim();
 
@@ -87,28 +106,26 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const { pages } = await listMarkdownDocsTreePagesWithTitles(config, { bypassCache: true });
-    logAutoTranslateInfo("Admin requested all-pages translation", {
-      language: formatAutoTranslateLanguageForLog(language),
+    logAutoTranslateInfo("Admin requested page localization translations", {
+      language: languages.map((language) => formatAutoTranslateLanguageForLog(language)).join(", "),
       totalPages: pages.length,
       model,
     });
 
-    const result = await translateMissingGitHubDocPages({
+    const result = await translatePageLocalizations({
       apiKey,
       config,
-      language,
+      languages,
+      localizationPath: payload.localizationPath ?? store.settings.autoTranslate.localizationPath,
+      mode,
       model,
       origin: resolveRequestOrigin(request),
-      pages,
-      settings: {
-        ...store.settings.autoTranslate,
-        enabled: true,
-      },
+      sourcePages: pages,
       siteTitle: store.settings.siteTitle || "Vicky Docs",
     });
 
-    logAutoTranslateInfo("Admin all-pages translation request finished", {
-      language: formatAutoTranslateLanguageForLog(language),
+    logAutoTranslateInfo("Admin page localization request finished", {
+      language: languages.map((language) => formatAutoTranslateLanguageForLog(language)).join(", "),
       totalPages: result.totalPages,
       cachedPages: result.cachedPages,
       requestedPages: result.requestedPages,
@@ -119,7 +136,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     return NextResponse.json({ result }, { status: result.failedPages > 0 ? 207 : 200 });
   } catch (error: unknown) {
-    logAutoTranslateInfo("Admin all-pages translation request failed", {
+    logAutoTranslateInfo("Admin page localization request failed", {
       language: requestLanguage ? formatAutoTranslateLanguageForLog(requestLanguage) : undefined,
       error: getAutoTranslateErrorMessage(error),
     });

@@ -225,7 +225,7 @@ const rehypeCollectHeadings = (headings: MarkdownHeading[]) => {
   };
 };
 
-const rehypeNormalizeLinksAndMedia = () => {
+const rehypeNormalizeLinksAndMedia = (languageCode?: string) => {
   return (tree: unknown) => {
     visit(tree as Node, (node: unknown) => {
       if (!isElement(node)) {
@@ -236,7 +236,7 @@ const rehypeNormalizeLinksAndMedia = () => {
 
       if (node.tagName === "a") {
         const href = readStringProperty(properties.href)?.trim() ?? "";
-        const normalizedHref = href ? normalizeInternalDocsLink(href) : "";
+        const normalizedHref = href ? normalizeInternalDocsLink(href, languageCode) : "";
         const safeHref =
           normalizedHref && isSafeMarkdownHref(normalizedHref) ? normalizedHref : normalizedHref ? "#" : "";
 
@@ -313,7 +313,10 @@ const rehypeWrapCodeBlocks = () => {
   };
 };
 
-export const renderMarkdownToHtml = async (content: string): Promise<PersistedRenderedMarkdown> => {
+export const renderMarkdownToHtml = async (
+  content: string,
+  languageCode?: string,
+): Promise<PersistedRenderedMarkdown> => {
   const headings: MarkdownHeading[] = [];
   const file = await unified()
     .use(remarkParse)
@@ -326,7 +329,7 @@ export const renderMarkdownToHtml = async (content: string): Promise<PersistedRe
     .use(() => rehypeCollectHeadings(headings))
     .use(rehypeAutolinkHeadings, markdownAutolinkHeadingsOptions)
     .use(rehypeHighlight, markdownHighlightOptions)
-    .use(rehypeNormalizeLinksAndMedia)
+    .use(() => rehypeNormalizeLinksAndMedia(languageCode))
     .use(rehypeSanitize, markdownSanitizeSchema)
     .use(rehypeWrapCodeBlocks)
     .use(rehypeStringify)
@@ -386,7 +389,7 @@ export const renderMarkdownToHtmlCached = async ({
         };
       }
 
-      const rendered = await renderMarkdownToHtml(normalizedContent);
+      const rendered = await renderMarkdownToHtml(normalizedContent, languageCode);
       renderedMarkdownCache.set(cacheKey, rendered);
       await writePersistentRenderedMarkdown(cacheKey, rendered);
 

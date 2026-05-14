@@ -8,9 +8,8 @@ import {
   normalizeAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguages,
 } from "@/lib/auto-translate";
-import { getCachedTranslatedDocPage } from "@/lib/auto-translate-server";
 import { renderedMarkdownCache } from "@/lib/cache";
-import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
+import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot } from "@/lib/github";
 import { badRequest } from "@/lib/http";
 import {
   deletePersistentRenderedMarkdownWhere,
@@ -24,6 +23,7 @@ import {
   markdownRenderCachePrefix,
   renderMarkdownToHtml,
 } from "@/lib/markdown-server-renderer";
+import { isLocalizedPageOutdated } from "@/lib/page-localization";
 import type { AutoTranslateLanguage, DocsStore, GitHubDocPage, GitHubRuntimeConfig } from "@/lib/types";
 
 const MARKDOWN_CACHE_RENDER_CONCURRENCY = 4;
@@ -196,8 +196,18 @@ const buildMarkdownRenderCacheVariants = async ({
   const languages = uniqueLanguagesByCode(normalizeAutoTranslateLanguages(store.settings.autoTranslate.languages));
   const defaultLanguage = languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ?? sourceLanguage();
   const translatedLanguages = languages.filter((language) => !isDefaultAutoTranslateLanguageCode(language.code));
-  const model = store.settings.autoTranslate.openRouterModel.trim();
   const variants: MarkdownRenderCacheVariant[] = [];
+  const localizedPagesByLanguage = new Map<string, Map<string, GitHubDocPage>>();
+
+  for (const language of translatedLanguages) {
+    const snapshot = await loadGitHubLocalizationSnapshot({
+      config,
+      language,
+      localizationPath: store.settings.autoTranslate.localizationPath,
+      sourcePages: pages,
+    });
+    localizedPagesByLanguage.set(language.code.toLowerCase(), new Map(snapshot.pages.map((page) => [page.path, page])));
+  }
 
   for (const page of pages) {
     variants.push({
@@ -208,15 +218,15 @@ const buildMarkdownRenderCacheVariants = async ({
     });
 
     for (const language of translatedLanguages) {
-      const translatedPage = getCachedTranslatedDocPage(config, page, language, model);
-      if (!translatedPage) {
+      const localizedPage = localizedPagesByLanguage.get(language.code.toLowerCase())?.get(page.path) ?? null;
+      if (!localizedPage || isLocalizedPageOutdated(page, localizedPage)) {
         continue;
       }
 
       variants.push({
-        content: translatedPage.content,
+        content: localizedPage.content,
         language,
-        page: translatedPage,
+        page: localizedPage,
         sourceLanguage: false,
       });
     }
@@ -342,7 +352,7 @@ export const warmMarkdownRenderCache = async ({
         const rendered =
           fromMemory && typeof fromMemory === "object" && fromMemory !== null && "html" in fromMemory && "headings" in fromMemory
             ? (fromMemory as Awaited<ReturnType<typeof renderMarkdownToHtml>>)
-            : await renderMarkdownToHtml(variant.content);
+            : await renderMarkdownToHtml(variant.content, variant.language.code);
 
         renderedMarkdownCache.set(variant.cacheKey, rendered);
 

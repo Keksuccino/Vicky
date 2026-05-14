@@ -14,6 +14,6 @@ describe("start page helpers", () => {
   });
 
   it("creates docs href from normalized start page", () => {
-    expect(startPageToDocsHref("example.com/docs/home")).toBe("/docs/home");
+    expect(startPageToDocsHref("example.com/docs/home")).toBe("/docs/en-US/home");
   });
 });

@@ -1,7 +1,10 @@
 import { type NextRequest } from "next/server";
 
+import { AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
-import { loadGitHubDoc, resolveRuntimeConfig } from "@/lib/github";
+import { parseDocsRoutePath } from "@/lib/docs-routing";
+import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
+import { resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, ApiError } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
@@ -17,7 +20,7 @@ type RawDocBySlugRouteContext = {
   params: Promise<{ slug: string[] }>;
 };
 
-export const GET = async (_request: NextRequest, context: RawDocBySlugRouteContext): Promise<Response> => {
+export const GET = async (request: NextRequest, context: RawDocBySlugRouteContext): Promise<Response> => {
   try {
     const resolved = await context.params;
     const slug = resolved.slug.join("/").trim();
@@ -29,7 +32,19 @@ export const GET = async (_request: NextRequest, context: RawDocBySlugRouteConte
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
-    const page = await loadGitHubDoc(config, { slug });
+    const route = parseDocsRoutePath(slug, store.settings.autoTranslate.languages);
+    const requestedLanguageCode =
+      route.languageCode ??
+      request.nextUrl.searchParams.get("language") ??
+      request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
+      undefined;
+    const { data: page } = await loadDocsPageForLanguage({
+      config,
+      locator: { slug: route.pagePath.replace(/^\/+/, "") },
+      origin: request.nextUrl.origin,
+      requestedLanguageCode,
+      store,
+    });
 
     return new Response(page.markdown, {
       status: 200,

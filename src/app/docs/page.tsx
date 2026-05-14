@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { DocsArticle } from "@/components/docs-article";
 import { DocsShell } from "@/components/docs-shell";
 import { ErrorState } from "@/components/states";
+import { DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE } from "@/lib/auto-translate";
+import { docsHrefForPagePath } from "@/lib/docs-routing";
 import { generateDocsPageMetadata } from "@/lib/docs-page-metadata";
 import { loadInitialDocsClientData } from "@/lib/docs-initial-data";
 import { normalizeStartPage } from "@/lib/start-page";
@@ -16,7 +18,7 @@ export default async function DocsIndexPage() {
   const store = await getStore();
   const startPage = normalizeStartPage(store.settings.startPage);
   if (startPage !== "/") {
-    redirect(`/docs/${startPage.slice(1)}`);
+    redirect(docsHrefForPagePath(startPage, DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE));
   }
 
   const initialData = await loadInitialDocsClientData("/");

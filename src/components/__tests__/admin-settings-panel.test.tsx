@@ -104,6 +104,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   openRouterApiKeyConfigured: false,
   autoTranslateEnabled: false,
   autoTranslateOpenRouterModel: "openai/gpt-5.4-mini",
+  autoTranslateLocalizationPath: "localizations",
   autoTranslateLanguages: [
     { name: "English (US)", code: "en-US", icon: "us" },
     { name: "German", code: "de", icon: "de" },

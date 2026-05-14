@@ -153,7 +153,11 @@ export type AdminTranslationRequestResult = {
 
 export type AdminLanguageTranslationCacheStatus = {
   languageCode: string;
+  languageName: string;
   cachedPages: number;
+  currentPages: number;
+  missingPages: number;
+  outdatedPages: number;
   totalPages: number;
   sourceLanguage: boolean;
 };
@@ -243,6 +247,7 @@ export type AdminSettings = {
   autoTranslateEnabled: boolean;
   autoTranslateOpenRouterModel: string;
   autoTranslateLanguages: AutoTranslateLanguage[];
+  autoTranslateLocalizationPath: string;
   themeLightAccent: string;
   themeLightSurfaceAccent: string;
   themeDarkAccent: string;

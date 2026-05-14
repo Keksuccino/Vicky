@@ -56,10 +56,12 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGES,
   DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  DEFAULT_LOCALIZATION_PATH,
   getDefaultAutoTranslateLanguageIcon,
   isDefaultAutoTranslateLanguageCode,
   languageCodesEqual,
   normalizeAutoTranslateLanguageCode,
+  normalizeLocalizationPath,
 } from "@/lib/auto-translate";
 import type {
   AdminLanguageTranslationCacheStatus,
@@ -132,6 +134,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   autoTranslateEnabled: false,
   autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
   autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
+  autoTranslateLocalizationPath: DEFAULT_LOCALIZATION_PATH,
   themeLightAccent: THEME_DEFAULTS.lightAccent,
   themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
   themeDarkAccent: THEME_DEFAULTS.darkAccent,
@@ -169,11 +172,13 @@ const EMPTY_OPENROUTER_FIELD_ERRORS: OpenRouterFieldErrors = {
 
 type AutoTranslateFieldErrors = {
   openRouterModel: string | null;
+  localizationPath: string | null;
   languages: string | null;
 };
 
 const EMPTY_AUTO_TRANSLATE_FIELD_ERRORS: AutoTranslateFieldErrors = {
   openRouterModel: null,
+  localizationPath: null,
   languages: null,
 };
 
@@ -261,21 +266,31 @@ const validateAutoTranslateLanguages = (languages: AutoTranslateLanguage[]): str
 };
 
 const validateAutoTranslateFields = (settings: AdminSettings): AutoTranslateFieldErrors => {
+  const rawLocalizationPath = settings.autoTranslateLocalizationPath.trim();
+  const localizationPath = normalizeLocalizationPath(settings.autoTranslateLocalizationPath);
+  const normalizedRawLocalizationPath = rawLocalizationPath.replace(/^\/+/, "").replace(/\/+$/, "");
+  const localizationPathError =
+    !rawLocalizationPath || localizationPath === normalizedRawLocalizationPath
+      ? null
+      : "Enter a repo-relative folder path without traversal segments.";
+
   if (!settings.autoTranslateEnabled) {
     return {
       openRouterModel: null,
+      localizationPath: localizationPathError,
       languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
     };
   }
 
   return {
     openRouterModel: settings.autoTranslateOpenRouterModel.trim() ? null : "Enter an OpenRouter model identifier.",
+    localizationPath: localizationPathError,
     languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
   };
 };
 
 const hasAutoTranslateFieldErrors = (errors: AutoTranslateFieldErrors): boolean =>
-  Boolean(errors.openRouterModel || errors.languages);
+  Boolean(errors.openRouterModel || errors.localizationPath || errors.languages);
 
 const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
   const output: AutoTranslateLanguage[] = [
@@ -328,6 +343,7 @@ const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings =>
   ...settings,
   customDomain: normalizeCustomDomain(settings.customDomain),
   letsEncryptEmail: normalizeLetsEncryptEmail(settings.letsEncryptEmail),
+  autoTranslateLocalizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
   autoTranslateLanguages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
 });
 
@@ -1358,26 +1374,28 @@ const getTranslationCacheStatusTone = (
     return "loading";
   }
 
-  if (status.totalPages === 0 || status.cachedPages >= status.totalPages) {
+  if (status.totalPages === 0 || (status.currentPages ?? status.cachedPages) >= status.totalPages) {
     return "complete";
   }
 
-  return status.cachedPages === 0 ? "empty" : "partial";
+  return (status.currentPages ?? status.cachedPages) === 0 ? "empty" : "partial";
 };
 
 const getTranslationCacheStatusLabel = (status: AdminLanguageTranslationCacheStatus | undefined): string =>
-  status ? `${status.cachedPages}/${status.totalPages}` : "...";
+  status ? `${status.currentPages ?? status.cachedPages}/${status.totalPages}` : "...";
 
 const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheStatus | undefined): string => {
   if (!status) {
-    return "Checking page translation cache";
+    return "Checking localization status";
   }
 
   if (status.sourceLanguage) {
-    return "Source language does not need cached translations";
+    return "Source language";
   }
 
-  return `${status.cachedPages}/${status.totalPages} page translations cached`;
+  return `${status.currentPages ?? status.cachedPages}/${status.totalPages} current, ${status.missingPages ?? 0} missing, ${
+    status.outdatedPages ?? 0
+  } outdated`;
 };
 
 const formatStatusTimestamp = (value: string): string => {
@@ -1416,6 +1434,7 @@ export function AdminSettingsPanel() {
   const [requestedTranslationLanguageCodes, setRequestedTranslationLanguageCodes] = useState<Set<string>>(
     () => new Set(),
   );
+  const [translationBulkAction, setTranslationBulkAction] = useState<"outdated" | "missing-and-outdated" | null>(null);
   const [translationRequestStatus, setTranslationRequestStatus] = useState<TranslationRequestStatus | null>(null);
   const [translationCacheStatuses, setTranslationCacheStatuses] = useState<
     Record<string, AdminLanguageTranslationCacheStatus>
@@ -1486,12 +1505,13 @@ export function AdminSettingsPanel() {
     () =>
       JSON.stringify({
         model: settings.autoTranslateOpenRouterModel.trim(),
+        localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         languages: settings.autoTranslateLanguages.map((language) => ({
           code: normalizeAutoTranslateLanguageCode(language.code),
           name: language.name.trim(),
         })),
       }),
-    [settings.autoTranslateLanguages, settings.autoTranslateOpenRouterModel],
+    [settings.autoTranslateLanguages, settings.autoTranslateLocalizationPath, settings.autoTranslateOpenRouterModel],
   );
 
   const refreshSslStatus = useCallback(async () => {
@@ -1810,6 +1830,7 @@ export function AdminSettingsPanel() {
       const statuses = await fetchAdminLanguageTranslationCacheStatuses(
         draft.autoTranslateLanguages,
         draft.autoTranslateOpenRouterModel,
+        draft.autoTranslateLocalizationPath,
       );
 
       if (translationCacheStatusRequestRef.current !== requestId) {
@@ -1985,7 +2006,7 @@ export function AdminSettingsPanel() {
       }
 
       const confirmed = window.confirm(
-        `Request translations for all pages in ${name}? Only pages without a current cached translation will be sent.`,
+        `Request translations for all missing or outdated ${name} pages? Current localization files will be kept.`,
       );
 
       if (!confirmed) {
@@ -2005,7 +2026,11 @@ export function AdminSettingsPanel() {
       try {
         await persistLatestSettings();
         const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
-        const result = await requestAdminLanguageTranslations({ name, code, icon });
+        const result = await requestAdminLanguageTranslations({
+          mode: "missing-and-outdated",
+          languages: [{ name, code, icon }],
+          localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
+        });
         const pageLabel = result.totalPages === 1 ? "page" : "pages";
         void refreshTranslationCacheStatuses();
         void refreshMarkdownCacheStatus();
@@ -2015,7 +2040,7 @@ export function AdminSettingsPanel() {
             tone: "warning",
             message: `${result.translatedPages} ${name} translation${
               result.translatedPages === 1 ? "" : "s"
-            } finished, ${result.cachedPages} ${pageLabel} already had current translations, and ${
+            } finished, ${result.cachedPages} ${pageLabel} already had current localizations, and ${
               result.failedPages
             } failed.`,
           });
@@ -2023,27 +2048,110 @@ export function AdminSettingsPanel() {
         }
 
         if (result.requestedPages === 0) {
+        setTranslationRequestStatus({
+          tone: "success",
+          message: `All ${result.totalPages} ${pageLabel} already have current ${name} localizations.`,
+        });
+          return;
+        }
+
+        setTranslationRequestStatus({
+          tone: "success",
+        message: `Finished ${result.translatedPages} ${name} translation${
+          result.translatedPages === 1 ? "" : "s"
+        }. ${result.cachedPages} ${pageLabel} already had current localizations.`,
+      });
+      } catch (error) {
+        setTranslationRequestStatus({
+          tone: "error",
+          message: formatApiError(error),
+        });
+      } finally {
+        setRequestedTranslationLanguageCodes((prev) => {
+          const next = new Set(prev);
+          next.delete(code.toLowerCase());
+          return next;
+        });
+      }
+    },
+    [persistLatestSettings, refreshMarkdownCacheStatus, refreshTranslationCacheStatuses, settings.autoTranslateLocalizationPath],
+  );
+
+  const requestBulkTranslations = useCallback(
+    async (mode: "outdated" | "missing-and-outdated") => {
+      const targetLanguages = settings.autoTranslateLanguages.filter(
+        (language) => !isDefaultAutoTranslateLanguageCode(language.code),
+      );
+      if (targetLanguages.length === 0) {
+        setTranslationRequestStatus({
+          tone: "error",
+          message: "Add at least one target language first.",
+        });
+        return;
+      }
+
+      const label = mode === "outdated" ? "Update all outdated translations" : "Translate all missing and outdated pages";
+      if (!window.confirm(`${label}?`)) {
+        return;
+      }
+
+      setTranslationBulkAction(mode);
+      setTranslationRequestStatus({
+        tone: "warning",
+        message: mode === "outdated" ? "Updating outdated translations..." : "Translating missing and outdated pages...",
+      });
+
+      try {
+        await persistLatestSettings();
+        const result = await requestAdminLanguageTranslations({
+          mode,
+          languages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
+          localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
+        });
+        const pageLabel = result.requestedPages === 1 ? "page" : "pages";
+        void refreshTranslationCacheStatuses();
+        void refreshMarkdownCacheStatus();
+
+        if (result.failedPages > 0) {
+          setTranslationRequestStatus({
+            tone: "warning",
+            message: `Finished ${result.translatedPages} translation${
+              result.translatedPages === 1 ? "" : "s"
+            }; ${result.failedPages} failed.`,
+          });
+          return;
+        }
+
+        if (result.requestedPages === 0) {
           setTranslationRequestStatus({
             tone: "success",
-            message: `All ${result.totalPages} ${pageLabel} already have current ${name} translations.`,
+            message: "All localizations were already current.",
           });
           return;
         }
 
         setTranslationRequestStatus({
           tone: "success",
-          message: `Finished ${result.translatedPages} ${name} translation${
+          message: `Finished ${result.translatedPages} translation${
             result.translatedPages === 1 ? "" : "s"
-          }. ${result.cachedPages} ${pageLabel} already had current translations.`,
+          } for ${result.requestedPages} ${pageLabel}.`,
         });
       } catch (error) {
         setTranslationRequestStatus({
           tone: "error",
           message: formatApiError(error),
         });
+      } finally {
+        setTranslationBulkAction(null);
       }
     },
-    [persistLatestSettings, refreshMarkdownCacheStatus, refreshTranslationCacheStatuses],
+    [
+      persistLatestSettings,
+      refreshMarkdownCacheStatus,
+      refreshTranslationCacheStatuses,
+      settings.autoTranslateLanguages,
+      settings.autoTranslateLocalizationPath,
+    ],
   );
 
   useEffect(() => {
@@ -3263,18 +3371,18 @@ export function AdminSettingsPanel() {
 
           <section className="panel-card panel-card-auto-translate">
             <div className="panel-header">
-              <h2>Auto Translate</h2>
+              <h2>Page Localization</h2>
             </div>
 
             <p className="panel-description">
-              Translate docs pages for the languages visitors can select.
+              Serve manually maintained GitHub localization files and optionally update outdated translations with OpenRouter.
             </p>
 
             <div className="form-grid">
               <div className="settings-subcard">
                 <div className="settings-subcard-fields">
                   <div className="field-row">
-                    <span className="field-label">Enable auto-translate</span>
+                    <span className="field-label">Automatic translation updates</span>
                     <label className="toggle-row" htmlFor="auto-translate-enabled">
                       <input
                         id="auto-translate-enabled"
@@ -3301,7 +3409,7 @@ export function AdminSettingsPanel() {
                       <span>{settings.autoTranslateEnabled ? "Enabled" : "Disabled"}</span>
                     </label>
                     <span className="field-hint">
-                      Shows the language selector in the docs header and translates selected non-English pages.
+                      When enabled, requested outdated existing localization files are updated automatically. Missing files are only created by admin actions.
                     </span>
                   </div>
                 </div>
@@ -3309,6 +3417,53 @@ export function AdminSettingsPanel() {
 
               <div className="settings-subcard">
                 <div className="settings-subcard-fields">
+                  <div className="field-row">
+                    <label className="field-label" htmlFor="auto-translate-localization-path">
+                      Localization directory
+                    </label>
+                    <div className="field-control-row">
+                      <input
+                        id="auto-translate-localization-path"
+                        className="input"
+                        value={settings.autoTranslateLocalizationPath}
+                        aria-invalid={Boolean(autoTranslateFieldErrors.localizationPath)}
+                        onChange={(event) => {
+                          const value = event.target.value;
+                          setSettings((prev) => ({ ...prev, autoTranslateLocalizationPath: value }));
+                          setAutoTranslateFieldErrors((prev) => ({
+                            ...prev,
+                            localizationPath: validateAutoTranslateFields({
+                              ...settings,
+                              autoTranslateLocalizationPath: value,
+                            }).localizationPath,
+                          }));
+                        }}
+                        onBlur={(event) => {
+                          const normalized = normalizeLocalizationPath(event.target.value);
+                          setSettings((prev) => ({ ...prev, autoTranslateLocalizationPath: normalized }));
+                          setAutoTranslateFieldErrors((prev) => ({ ...prev, localizationPath: null }));
+                        }}
+                        placeholder={DEFAULT_LOCALIZATION_PATH}
+                      />
+                      <ResetToDefaultButton
+                        disabled={settings.autoTranslateLocalizationPath === DEFAULT_LOCALIZATION_PATH}
+                        onClick={() => {
+                          setSettings((prev) => ({
+                            ...prev,
+                            autoTranslateLocalizationPath: DEFAULT_LOCALIZATION_PATH,
+                          }));
+                          setAutoTranslateFieldErrors((prev) => ({ ...prev, localizationPath: null }));
+                        }}
+                      />
+                    </div>
+                    <span className="field-hint">
+                      Repo-root directory. Files live at <code>{settings.autoTranslateLocalizationPath || DEFAULT_LOCALIZATION_PATH}/&lt;lang&gt;/page.md</code>.
+                    </span>
+                    {autoTranslateFieldErrors.localizationPath ? (
+                      <span className="error-text">{autoTranslateFieldErrors.localizationPath}</span>
+                    ) : null}
+                  </div>
+
                   <div className="field-row">
                     <label className="field-label" htmlFor="auto-translate-openrouter-model">
                       Translation model
@@ -3353,6 +3508,33 @@ export function AdminSettingsPanel() {
 
               <div className="field-row">
                 <span className="field-label">Selectable languages</span>
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="btn"
+                    disabled={translationBulkAction !== null}
+                    onClick={() => {
+                      void requestBulkTranslations("outdated");
+                    }}
+                  >
+                    <MaterialIcon name={translationBulkAction === "outdated" ? "hourglass_top" : "sync"} />
+                    <span>{translationBulkAction === "outdated" ? "Updating..." : "Update All Outdated"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    disabled={translationBulkAction !== null}
+                    onClick={() => {
+                      void requestBulkTranslations("missing-and-outdated");
+                    }}
+                  >
+                    <MaterialIcon name={translationBulkAction === "missing-and-outdated" ? "hourglass_top" : "translate"} />
+                    <span>
+                      {translationBulkAction === "missing-and-outdated" ? "Translating..." : "Translate All Missing/Outdated"}
+                    </span>
+                  </button>
+                </div>
                 <div className="translation-language-list">
                   <div className="translation-language-item translation-language-label-row" aria-hidden="true">
                     <div className="field-inline translation-language-fields translation-language-label-fields">
@@ -3371,6 +3553,7 @@ export function AdminSettingsPanel() {
                         getDefaultAutoTranslateLanguageIcon(normalizedLanguageCode || language.code);
                     const translationRequestDisabled =
                       isDefaultLanguage ||
+                      translationBulkAction !== null ||
                       (normalizedLanguageCode
                         ? requestedTranslationLanguageCodes.has(normalizedLanguageCode.toLowerCase())
                         : false);
@@ -3383,7 +3566,7 @@ export function AdminSettingsPanel() {
                       !translationCacheStatus && translationCacheStatusError
                         ? translationCacheStatusError
                         : !translationCacheStatus && translationCacheStatusLoading
-                          ? "Checking page translation cache"
+                          ? "Checking localization status"
                         : getTranslationCacheStatusTooltip(translationCacheStatus);
                     const languageKey = `${language.code || "language"}-${index}`;
 
@@ -3562,7 +3745,7 @@ export function AdminSettingsPanel() {
                 </div>
 
                 <span className="field-hint">
-                  {DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME} is always the default source language and is never sent to the translation model.
+                  {DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME} is the source language. Other languages map to GitHub folders by language ID.
                 </span>
                 {autoTranslateFieldErrors.languages ? (
                   <span className="error-text">{autoTranslateFieldErrors.languages}</span>

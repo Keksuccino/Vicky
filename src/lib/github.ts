@@ -31,6 +31,7 @@ import type {
   GitHubRuntimeConfig,
   GitHubSettings,
   GitHubValidationResult,
+  AutoTranslateLanguage,
   SaveGitHubDocInput,
   SaveGitHubDocResult,
 } from "@/lib/types";
@@ -67,6 +68,20 @@ const normalizeDocsPath = (docsPath: string): string => {
   return normalizePathValue(docsPath);
 };
 
+const normalizeLocalizationRoot = (localizationPath: string): string => {
+  const normalized = normalizePathValue(localizationPath || "localizations");
+  return normalized || "localizations";
+};
+
+const normalizeLocalizationLanguageCode = (languageCode: string): string => {
+  const normalized = languageCode.trim().replace(/_/g, "-");
+  if (!normalized) {
+    throw badRequest("Localization language code is required.");
+  }
+
+  return normalizePathValue(normalized);
+};
+
 const ensureMarkdownPath = (relativePath: string): string => {
   const normalized = normalizePathValue(relativePath);
 
@@ -99,6 +114,12 @@ export const toRuntimeConfigCacheKey = (config: GitHubRuntimeConfig): string =>
   [config.owner, config.repo, config.branch, normalizeDocsPath(config.docsPath)].join("|");
 
 const snapshotCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntimeConfigCacheKey(config)}|snapshot`;
+const localizationSnapshotCacheKey = (
+  config: GitHubRuntimeConfig,
+  localizationPath: string,
+  languageCode: string,
+): string =>
+  `${toRuntimeConfigCacheKey(config)}|localization-snapshot|${normalizeLocalizationRoot(localizationPath)}|${languageCode.toLowerCase()}`;
 const treeCacheKey = (config: GitHubRuntimeConfig): string => `${toRuntimeConfigCacheKey(config)}|tree`;
 const titleIndexCacheKey = (config: GitHubRuntimeConfig, items: GitHubDocTreeItem[]): string =>
   `${toRuntimeConfigCacheKey(config)}|title-index|${titleSourceSignature(items)}`;
@@ -111,6 +132,20 @@ const commitMetadataCacheKey = (config: GitHubRuntimeConfig, fullRepoPath: strin
 const FULL_DOCS_LOAD_CONCURRENCY = 6;
 
 type GitHubDocsSnapshot = PersistedGitHubDocsSnapshot;
+
+type GitHubLocalizationSnapshot = {
+  fetchedAt: string;
+  expiresAt: string;
+  tree: GitHubDocTreeItem[];
+  pages: GitHubDocPage[];
+};
+
+export type GitHubLocalizedDocResult = {
+  sourcePage: GitHubDocPage;
+  page: GitHubDocPage | null;
+  status: "current" | "outdated" | "missing";
+  localizedRepoPath: string;
+};
 
 type GitHubDocReadTarget = {
   relativePath: string;
@@ -203,6 +238,7 @@ const pruneTranslatedDocsCacheForSnapshotChange = (
 };
 
 const docsSnapshotLoads = new Map<string, Promise<GitHubDocsSnapshot>>();
+const localizationSnapshotLoads = new Map<string, Promise<GitHubLocalizationSnapshot>>();
 const docsTreeLoads = new Map<string, Promise<GitHubDocTreeItem[]>>();
 const docsTitleIndexLoads = new Map<string, Promise<GitHubDocTreeItem[]>>();
 const docsPageLoads = new Map<string, Promise<GitHubDocPage>>();
@@ -397,10 +433,12 @@ const clearDerivedGitHubDocsCache = (
   void deletePersistentRenderedMarkdownWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
 
   if (snapshots?.previous && snapshots.next) {
+    clearLocalizationCaches(config);
     pruneTranslatedDocsCacheForSnapshotChange(config, snapshots.previous, snapshots.next);
     return;
   }
 
+  clearLocalizationCaches(config);
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(translatedDocsPageCachePrefix(config)));
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(translatedDocsTitleCachePrefix(config)));
   logAutoTranslateInfo("Cleared derived in-memory translation caches for docs source", docsSourceLogContext(config));
@@ -444,11 +482,12 @@ export const testGitHubConnection = async (
   }
 };
 
-const listDocsTreeFromGitHub = async (
+const listMarkdownTreeFromGitHub = async (
   config: GitHubRuntimeConfig,
+  rootPath: string,
 ): Promise<{ branchCommitSha?: string; items: GitHubDocTreeItem[]; treeSha?: string }> => {
   const octokit = createOctokit(config);
-  const docsRoot = normalizeDocsPath(config.docsPath);
+  const docsRoot = normalizePathValue(rootPath);
 
   const branch = await octokit.repos.getBranch({
     owner: config.owner,
@@ -498,6 +537,11 @@ const listDocsTreeFromGitHub = async (
     treeSha,
   };
 };
+
+const listDocsTreeFromGitHub = async (
+  config: GitHubRuntimeConfig,
+): Promise<{ branchCommitSha?: string; items: GitHubDocTreeItem[]; treeSha?: string }> =>
+  listMarkdownTreeFromGitHub(config, normalizeDocsPath(config.docsPath));
 
 export const listMarkdownDocsTree = async (
   config: GitHubRuntimeConfig,
@@ -974,6 +1018,218 @@ const loadGitHubDocsSnapshot = async (
 
   docsSnapshotLoads.set(cacheKey, loadPromise);
   return loadPromise;
+};
+
+export const localizedRepoPathForSourcePath = (
+  localizationPath: string,
+  languageCode: string,
+  sourcePath: string,
+): string => {
+  const root = normalizeLocalizationRoot(localizationPath);
+  const language = normalizeLocalizationLanguageCode(languageCode);
+  const relativeSourcePath = ensureMarkdownPath(sourcePath);
+  return joinDocsPath(joinDocsPath(root, language), relativeSourcePath);
+};
+
+const createLocalizedDocPage = ({
+  commitMeta,
+  file,
+  languageCode,
+  localizedRepoPath,
+  sourcePage,
+}: {
+  commitMeta: { updatedAt?: string; updatedBy?: string };
+  file: { sha: string; markdown: string };
+  languageCode: string;
+  localizedRepoPath: string;
+  sourcePage: GitHubDocPage;
+}): GitHubDocPage => {
+  const page = createGitHubDocPage(
+    {
+      path: sourcePage.path,
+      slug: sourcePage.slug,
+      name: sourcePage.title.trim() || prettyNameFromPath(sourcePage.path),
+    },
+    file,
+    commitMeta,
+  );
+
+  return {
+    ...page,
+    languageCode,
+    sourceLanguage: false,
+    sourcePath: sourcePage.path,
+    sourceSlug: sourcePage.slug,
+    sourceUpdatedAt: sourcePage.updatedAt,
+    translationPath: localizedRepoPath,
+    translationUpdatedAt: page.updatedAt,
+  };
+};
+
+const isTranslationOutdated = (sourcePage: GitHubDocPage, translatedPage: GitHubDocPage): boolean => {
+  const sourceTime = sourcePage.updatedAt ? Date.parse(sourcePage.updatedAt) : Number.NaN;
+  const translationTime = translatedPage.updatedAt ? Date.parse(translatedPage.updatedAt) : Number.NaN;
+
+  return Number.isFinite(sourceTime) && Number.isFinite(translationTime) && sourceTime > translationTime;
+};
+
+export const hydrateGitHubDocPageMetadata = async (
+  config: GitHubRuntimeConfig,
+  page: GitHubDocPage,
+): Promise<GitHubDocPage> => {
+  if (page.updatedAt) {
+    return page;
+  }
+
+  const fullPath = joinDocsPath(normalizeDocsPath(config.docsPath), page.path);
+  const cachedCommitMeta = getCachedCommitMetadata(config, fullPath, page.sha);
+  const commitMeta = cachedCommitMeta ?? (await fetchLatestCommitMetadata(config, fullPath));
+  if (!cachedCommitMeta) {
+    cacheCommitMetadata(config, fullPath, page.sha, commitMeta);
+  }
+
+  return {
+    ...page,
+    updatedAt: commitMeta.updatedAt ?? page.updatedAt,
+    updatedBy: commitMeta.updatedBy ?? page.updatedBy,
+  };
+};
+
+export const loadGitHubLocalizedDoc = async ({
+  config,
+  language,
+  localizationPath,
+  sourcePage,
+}: {
+  config: GitHubRuntimeConfig;
+  language: Pick<AutoTranslateLanguage, "code">;
+  localizationPath: string;
+  sourcePage: GitHubDocPage;
+}): Promise<GitHubLocalizedDocResult> => {
+  const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, sourcePage);
+  const localizedRepoPath = localizedRepoPathForSourcePath(localizationPath, language.code, resolvedSourcePage.path);
+  const octokit = createOctokit(config);
+
+  try {
+    const file = await fetchFileFromGitHub(config, localizedRepoPath, octokit);
+    const commitMeta = await fetchLatestCommitMetadata(config, localizedRepoPath, octokit);
+    const page = createLocalizedDocPage({
+      commitMeta,
+      file,
+      languageCode: language.code,
+      localizedRepoPath,
+      sourcePage: resolvedSourcePage,
+    });
+    const outdated = isTranslationOutdated(resolvedSourcePage, page);
+
+    return {
+      sourcePage: resolvedSourcePage,
+      page: {
+        ...page,
+        translationStale: outdated,
+        localizationStatus: outdated ? "outdated" : "current",
+      },
+      status: outdated ? "outdated" : "current",
+      localizedRepoPath,
+    };
+  } catch (error: unknown) {
+    if (!isNotFoundError(error)) {
+      throw error;
+    }
+
+    return {
+      sourcePage: resolvedSourcePage,
+      page: null,
+      status: "missing",
+      localizedRepoPath,
+    };
+  }
+};
+
+export const loadGitHubLocalizationSnapshot = async ({
+  config,
+  language,
+  localizationPath,
+  sourcePages,
+}: {
+  config: GitHubRuntimeConfig;
+  language: Pick<AutoTranslateLanguage, "code">;
+  localizationPath: string;
+  sourcePages: GitHubDocPage[];
+}): Promise<GitHubLocalizationSnapshot> => {
+  const cacheKey = localizationSnapshotCacheKey(config, localizationPath, language.code);
+  const cached = docsSnapshotCache.get(cacheKey);
+  if (cached) {
+    return cached as GitHubLocalizationSnapshot;
+  }
+
+  const pending = localizationSnapshotLoads.get(cacheKey);
+  if (pending) {
+    return pending;
+  }
+
+  const loadPromise = (async () => {
+    const sourcePageByPath = new Map(sourcePages.map((page) => [page.path, page]));
+    const languageRoot = joinDocsPath(normalizeLocalizationRoot(localizationPath), normalizeLocalizationLanguageCode(language.code));
+    const treeResult = await listMarkdownTreeFromGitHub(config, languageRoot);
+    const filteredItems = treeResult.items.filter((item) => sourcePageByPath.has(item.path));
+    const octokit = createOctokit(config);
+    const pages = await mapWithConcurrency(
+      filteredItems,
+      FULL_DOCS_LOAD_CONCURRENCY,
+      async (item): Promise<GitHubDocPage | null> => {
+        const sourcePage = sourcePageByPath.get(item.path);
+        if (!sourcePage) {
+          return null;
+        }
+
+        const fullPath = joinDocsPath(languageRoot, item.path);
+        const file = await fetchFileFromGitHub(config, fullPath, octokit);
+        const commitMeta = await fetchLatestCommitMetadata(config, fullPath, octokit);
+        return createLocalizedDocPage({
+          commitMeta,
+          file,
+          languageCode: language.code,
+          localizedRepoPath: fullPath,
+          sourcePage,
+        });
+      },
+    );
+    const filteredPages = pages.filter((page): page is GitHubDocPage => Boolean(page));
+    const fetchedAtMs = Date.now();
+    const snapshot = {
+      fetchedAt: new Date(fetchedAtMs).toISOString(),
+      expiresAt: new Date(fetchedAtMs + docsSnapshotCache.getTtlMs()).toISOString(),
+      tree: sortTreeItems(filteredPages.map((page) => treeItemFromPage(page))),
+      pages: filteredPages,
+    };
+
+    docsSnapshotCache.set(cacheKey, snapshot);
+    return snapshot;
+  })().finally(() => {
+    if (localizationSnapshotLoads.get(cacheKey) === loadPromise) {
+      localizationSnapshotLoads.delete(cacheKey);
+    }
+  });
+
+  localizationSnapshotLoads.set(cacheKey, loadPromise);
+  return loadPromise;
+};
+
+const clearLocalizationCaches = (
+  config: GitHubRuntimeConfig,
+  localizationPath?: string,
+  languageCode?: string,
+): void => {
+  const prefix = localizationPath
+    ? `${toRuntimeConfigCacheKey(config)}|localization-snapshot|${normalizeLocalizationRoot(localizationPath)}|${
+        languageCode ? `${languageCode.toLowerCase()}` : ""
+      }`
+    : `${toRuntimeConfigCacheKey(config)}|localization-snapshot|`;
+
+  docsSnapshotCache.deleteWhere((key) => key.startsWith(prefix));
+  docsSearchCorpusCache.deleteWhere((key) => key.startsWith(`${toRuntimeConfigCacheKey(config)}|`));
+  renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
 };
 
 const findTreeItemBySlug = async (
@@ -1489,5 +1745,120 @@ export const saveGitHubDoc = async (
     slug: target.slug,
     commitSha,
     page,
+  };
+};
+
+export const saveGitHubLocalizedDoc = async ({
+  config,
+  input,
+  language,
+  localizationPath,
+  sourcePage,
+}: {
+  config: GitHubRuntimeConfig;
+  input: Omit<SaveGitHubDocInput, "path" | "slug">;
+  language: Pick<AutoTranslateLanguage, "code">;
+  localizationPath: string;
+  sourcePage: GitHubDocPage;
+}): Promise<SaveGitHubDocResult> => {
+  const validation = validateGitHubRuntimeConfig(config);
+
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, sourcePage);
+  const octokit = createOctokit(config);
+  const fullPath = localizedRepoPathForSourcePath(localizationPath, language.code, resolvedSourcePage.path);
+
+  let existingSha: string | undefined;
+  let existingMarkdown = "";
+
+  try {
+    const existing = await fetchFileFromGitHub(config, fullPath, octokit);
+    existingSha = existing.sha;
+    existingMarkdown = existing.markdown;
+  } catch (error: unknown) {
+    const apiError = error as { status?: number; message?: string };
+    if (apiError.status !== 404 && apiError.message !== "Document not found.") {
+      throw error;
+    }
+  }
+
+  let baseTitle = resolvedSourcePage.title;
+  let baseDescription = resolvedSourcePage.description;
+  let baseContent = resolvedSourcePage.content;
+  let baseIncludeInPlaintextExport = resolvedSourcePage.includeInPlaintextExport;
+
+  if (input.markdown !== undefined) {
+    const parsedIncoming = parseMarkdownDocument(input.markdown);
+    baseTitle = parsedIncoming.title;
+    baseDescription = parsedIncoming.description;
+    baseContent = parsedIncoming.content;
+    baseIncludeInPlaintextExport = parsedIncoming.includeInPlaintextExport;
+  } else if (existingMarkdown) {
+    const parsedExisting = parseMarkdownDocument(existingMarkdown);
+    baseTitle = parsedExisting.title;
+    baseDescription = parsedExisting.description;
+    baseContent = parsedExisting.content;
+    baseIncludeInPlaintextExport = parsedExisting.includeInPlaintextExport;
+  }
+
+  const markdown = serializeMarkdownDocument({
+    title: input.title ?? baseTitle,
+    description: input.description ?? baseDescription,
+    content: input.content ?? baseContent,
+    includeInPlaintextExport: input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
+  });
+
+  const parsedOutput = parseMarkdownDocument(markdown);
+  if (!parsedOutput.content.trim()) {
+    throw badRequest("Localized document content cannot be empty.");
+  }
+
+  const commitMessage =
+    input.commitMessage?.trim() || `docs: update ${language.code} localization for ${resolvedSourcePage.path}`;
+
+  const writeResult = await octokit.repos.createOrUpdateFileContents({
+    owner: config.owner,
+    repo: config.repo,
+    path: fullPath,
+    message: commitMessage,
+    content: Buffer.from(markdown, "utf8").toString("base64"),
+    branch: config.branch,
+    sha: existingSha,
+  });
+
+  const commitSha = writeResult.data.commit?.sha;
+  if (!commitSha) {
+    throw new Error("GitHub response did not include a commit SHA.");
+  }
+
+  const commitMeta = extractCommitMetadata(writeResult.data.commit);
+  const page = createLocalizedDocPage({
+    commitMeta: {
+      updatedAt: commitMeta.updatedAt ?? new Date().toISOString(),
+      updatedBy: commitMeta.updatedBy,
+    },
+    file: {
+      sha: writeResult.data.content?.sha ?? existingSha ?? commitSha,
+      markdown,
+    },
+    languageCode: language.code,
+    localizedRepoPath: fullPath,
+    sourcePage: resolvedSourcePage,
+  });
+
+  clearLocalizationCaches(config, localizationPath, language.code);
+
+  return {
+    path: page.path,
+    slug: page.slug,
+    commitSha,
+    page: {
+      ...page,
+      translationStale: false,
+      localizationStatus: "current",
+    },
   };
 };

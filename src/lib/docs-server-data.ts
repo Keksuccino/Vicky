@@ -1,30 +1,27 @@
 import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   resolveAutoTranslateLanguage,
-  shouldTranslateAutoTranslateLanguage,
 } from "@/lib/auto-translate";
 import {
   formatAutoTranslateLanguageForLog,
   getAutoTranslateErrorMessage,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
-import {
-  applyCachedTranslatedDocTreeTitles,
-  hasCachedTranslatedDocTreeTitles,
-  loadTranslatedDocTreeTitles,
-  translateGitHubDocPage,
-  warmTranslatedDocTreeTitles,
-} from "@/lib/auto-translate-server";
 import { decryptSecret } from "@/lib/encryption";
 import {
-  listMarkdownDocsTreeWithTitleStatus,
+  listMarkdownDocsTreePagesWithTitles,
   loadGitHubDoc,
-  warmMarkdownDocsTitleIndex,
 } from "@/lib/github";
 import {
   renderGitHubDocPageMarkdown,
   type RenderedGitHubDocPage,
 } from "@/lib/markdown-server-renderer";
+import {
+  getCurrentLocalizedTreeItems,
+  getLocalizedPageForSource,
+  isSourceLanguage,
+  resolveServedLocalizedPage,
+} from "@/lib/page-localization";
 import type {
   AutoTranslateLanguage,
   DocsStore,
@@ -56,18 +53,7 @@ const warnPageFallback = (language: AutoTranslateLanguage, error: unknown): void
     error: message,
   });
   console.warn(
-    `[auto-translate] Failed to translate docs page to ${language.name} (${language.code}); serving source English page. ${message}`,
-  );
-};
-
-const warnTreeFallback = (language: AutoTranslateLanguage, error: unknown): void => {
-  const message = getAutoTranslateErrorMessage(error);
-  logAutoTranslateInfo("Serving source sidebar titles because title translation failed", {
-    language: formatAutoTranslateLanguageForLog(language),
-    error: message,
-  });
-  console.warn(
-    `[auto-translate] Failed to translate docs sidebar titles to ${language.name} (${language.code}); serving source English titles. ${message}`,
+    `[page-localization] Failed to load docs page localization for ${language.name} (${language.code}); serving source page. ${message}`,
   );
 };
 
@@ -86,11 +72,10 @@ export const loadDocsPageForLanguage = async ({
 }): Promise<DocsLanguageData<DocsPageWithSourceHeadings>> => {
   const sourcePage = await loadGitHubDoc(config, locator);
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
-  const shouldTranslate = shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language);
   const apiKeyEncrypted = store.settings.openRouter.apiKeyEncrypted;
   const model = store.settings.autoTranslate.openRouterModel.trim();
 
-  if (!shouldTranslate) {
+  if (isSourceLanguage(language)) {
     return {
       data: sourcePage,
       language,
@@ -98,31 +83,25 @@ export const loadDocsPageForLanguage = async ({
     };
   }
 
-  if (!apiKeyEncrypted || !model) {
-    warnPageFallback(language, new Error("Auto-translate is not fully configured."));
-    return {
-      data: sourcePage,
-      language,
-      contentLanguageCode: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-    };
-  }
-
   try {
-    const translatedPage = await translateGitHubDocPage({
-      apiKey: decryptSecret(apiKeyEncrypted).trim(),
+    const localized = await getLocalizedPageForSource({
+      apiKey: apiKeyEncrypted ? decryptSecret(apiKeyEncrypted).trim() : undefined,
       config,
       language,
+      localizationPath: store.settings.autoTranslate.localizationPath,
       model,
       origin,
       settings: store.settings.autoTranslate,
       siteTitle: store.settings.siteTitle || "Vicky Docs",
       sourcePage,
     });
+    const servedPage = resolveServedLocalizedPage(localized, language);
+    const contentLanguageCode = servedPage.sourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code;
 
     return {
-      data: { ...translatedPage, sourceHeadings: sourcePage.headings },
+      data: servedPage.sourceLanguage ? servedPage : { ...servedPage, sourceHeadings: localized.sourcePage.headings },
       language,
-      contentLanguageCode: language.code,
+      contentLanguageCode,
     };
   } catch (error: unknown) {
     warnPageFallback(language, error);
@@ -166,115 +145,50 @@ export const loadRenderedDocsPageForLanguage = async ({
   };
 };
 
-export const loadDocsTreeForLanguage = async ({
-  config,
-  origin,
-  requestedLanguageCode,
-  store,
-  waitForTitleIndex,
-}: {
+export const loadDocsTreeForLanguage = async (params: {
   config: GitHubRuntimeConfig;
   origin: string;
   requestedLanguageCode?: string;
   store: DocsStore;
   waitForTitleIndex?: boolean;
 }): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => {
-  const treeResult = await listMarkdownDocsTreeWithTitleStatus(config, { waitForTitleIndex });
-  const sourceItems = treeResult.items;
+  const { config, requestedLanguageCode, store } = params;
+  const { items: sourceItems, pages } = await listMarkdownDocsTreePagesWithTitles(config);
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
-  const shouldTranslate = shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language);
-  const apiKeyEncrypted = store.settings.openRouter.apiKeyEncrypted;
-  const model = store.settings.autoTranslate.openRouterModel.trim();
 
-  if (!shouldTranslate) {
+  if (isSourceLanguage(language)) {
     return {
       data: sourceItems,
       language,
-      titlesPending: !treeResult.titleIndexReady,
-    };
-  }
-
-  if (!apiKeyEncrypted || !model) {
-    warnTreeFallback(language, new Error("Auto-translate is not fully configured."));
-    return {
-      data: sourceItems,
-      language,
-      titlesPending: !treeResult.titleIndexReady,
+      titlesPending: false,
     };
   }
 
   try {
-    const apiKey = decryptSecret(apiKeyEncrypted).trim();
-    const warmTranslations = (titleItems: GitHubDocTreeItem[]) => {
-      warmTranslatedDocTreeTitles({
-        apiKey,
-        config,
-        items: titleItems,
-        language,
-        model,
-        origin,
-        settings: store.settings.autoTranslate,
-        siteTitle: store.settings.siteTitle || "Vicky Docs",
-      });
-    };
-
-    if (treeResult.titleIndexReady) {
-      if (waitForTitleIndex) {
-        const translatedItems = await loadTranslatedDocTreeTitles({
-          apiKey,
-          config,
-          items: sourceItems,
-          language,
-          model,
-          origin,
-          settings: store.settings.autoTranslate,
-          siteTitle: store.settings.siteTitle || "Vicky Docs",
-        });
-
-        return {
-          data: translatedItems,
-          language,
-          titlesPending: false,
-        };
-      }
-
-      warmTranslations(sourceItems);
-    } else {
-      void warmMarkdownDocsTitleIndex(config)
-        .then((titleItems) => {
-          warmTranslations(titleItems);
-        })
-        .catch((error: unknown) => {
-          const message = error instanceof Error ? error.message : String(error);
-          console.warn(`[docs] Failed to warm translated docs tree titles: ${message}`);
-        });
-    }
+    const localizedItems = await getCurrentLocalizedTreeItems({
+      config,
+      language,
+      localizationPath: store.settings.autoTranslate.localizationPath,
+      sourcePages: pages,
+    });
+    const data = sourceItems.map((item) => localizedItems.get(item.slug) ?? item);
 
     return {
-      data: applyCachedTranslatedDocTreeTitles({
-        config,
-        items: sourceItems,
-        language,
-        model,
-        settings: store.settings.autoTranslate,
-      }),
+      data,
       language,
-      titlesPending:
-        !treeResult.titleIndexReady ||
-        !hasCachedTranslatedDocTreeTitles({
-          config,
-          items: sourceItems,
-          language,
-          model,
-          settings: store.settings.autoTranslate,
-        }),
+      titlesPending: false,
     };
   } catch (error: unknown) {
-    warnTreeFallback(language, error);
+    const message = getAutoTranslateErrorMessage(error);
+    logAutoTranslateInfo("Serving source sidebar titles because localized title loading failed", {
+      language: formatAutoTranslateLanguageForLog(language),
+      error: message,
+    });
+
     return {
       data: sourceItems,
       language,
-      titlesPending: true,
+      titlesPending: false,
     };
   }
 };

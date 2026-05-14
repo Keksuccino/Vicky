@@ -1,13 +1,12 @@
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 
 import { buildDocTree, firstLeafPath, toAbsoluteDocPath } from "@/components/api";
 import type { DocPageChrome, DocTreeNode } from "@/components/types";
 import {
-  AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-  normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
+import { parseDocsRoutePath } from "@/lib/docs-routing";
 import {
   loadDocsTreeForLanguage,
   loadRenderedDocsPageForLanguage,
@@ -17,6 +16,7 @@ import { resolveRuntimeConfig } from "@/lib/github";
 import { getStore } from "@/lib/store";
 
 export type InitialDocsClientData = {
+  initialPath?: string;
   initialTree?: DocTreeNode[];
   initialPage?: DocPageChrome | null;
   initialLanguageCode: string;
@@ -49,15 +49,6 @@ const resolveRequestOrigin = async (): Promise<string> => {
   }
 };
 
-const readRequestedLanguageCode = async (): Promise<string> => {
-  try {
-    const cookieStore = await cookies();
-    return normalizeAutoTranslateLanguageCode(cookieStore.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value);
-  } catch {
-    return "";
-  }
-};
-
 const toClientDocPageChrome = (page: RenderedDocsPageWithSourceHeadings): DocPageChrome => ({
   title: page.title,
   description: page.description,
@@ -71,15 +62,17 @@ const toClientDocPageChrome = (page: RenderedDocsPageWithSourceHeadings): DocPag
 });
 
 export const loadInitialDocsClientData = async (requestedPath: string): Promise<InitialDocsClientData> => {
-  const requestedLanguageCode = await readRequestedLanguageCode();
-  const initialLanguageCode = requestedLanguageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
+  let initialLanguageCode = DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
 
   try {
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const origin = await resolveRequestOrigin();
-    const normalizedRequestedPath = toAbsoluteDocPath(requestedPath);
+    const route = parseDocsRoutePath(requestedPath, store.settings.autoTranslate.languages);
+    const requestedLanguageCode = route.languageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
+    initialLanguageCode = requestedLanguageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
+    const normalizedRequestedPath = toAbsoluteDocPath(route.pagePath);
 
     let initialTree: DocTreeNode[] | undefined;
     let initialTreeLanguageCode: string | undefined;
@@ -128,6 +121,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
     }
 
     return {
+      initialPath: normalizedRequestedPath,
       initialTree,
       initialPage,
       initialLanguageCode: initialPageLanguageCode ?? initialTreeLanguageCode ?? initialLanguageCode,
@@ -142,6 +136,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
     console.warn(`[docs] Failed to prepare initial docs data: ${message}`);
 
     return {
+      initialPath: requestedPath,
       initialLanguageCode,
       pageError: message,
     };

@@ -7,10 +7,10 @@ import { type CSSProperties, useEffect, useState } from "react";
 
 import { fetchPublicSiteSettings, getCurrentUser, logout } from "@/components/api";
 import { cn } from "@/components/cn";
-import { LanguageSelector } from "@/components/language-selector";
 import { MaterialIcon } from "@/components/material-icon";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import type { AuthUser, AutoTranslateLanguage } from "@/components/types";
+import { parseDocsRoutePath } from "@/lib/docs-routing";
 
 const ADMIN_NAVIGATION = {
   settingsHref: "/admin/settings",
@@ -35,14 +35,15 @@ const PLAINTEXT_EXPORT_NAVIGATION = {
 
 const DEFAULT_BRAND_TITLE = "Vicky Docs";
 
-function editorHrefForPathname(pathname: string): string {
+function editorHrefForPathname(pathname: string, languages: AutoTranslateLanguage[]): string {
   const docsPrefix = "/docs/";
 
   if (!pathname.startsWith(docsPrefix)) {
     return EDITOR_NAVIGATION.href;
   }
 
-  const docPath = pathname.slice(docsPrefix.length).replace(/\/+$/, "");
+  const parsed = parseDocsRoutePath(pathname.slice(docsPrefix.length), languages);
+  const docPath = parsed.pagePath.replace(/^\/+/, "").replace(/\/+$/, "");
   if (!docPath) {
     return EDITOR_NAVIGATION.href;
   }
@@ -60,7 +61,6 @@ export function AppHeader() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [hasConfiguredIcon, setHasConfiguredIcon] = useState<boolean | null>(null);
   const [iconLoadFailed, setIconLoadFailed] = useState(false);
-  const [autoTranslateEnabled, setAutoTranslateEnabled] = useState(false);
   const [autoTranslateLanguages, setAutoTranslateLanguages] = useState<AutoTranslateLanguage[]>([]);
 
   useEffect(() => {
@@ -80,7 +80,6 @@ export function AppHeader() {
         });
         setHasConfiguredIcon(Boolean(settings.docsIconPng180Url.trim()));
         setIconLoadFailed(false);
-        setAutoTranslateEnabled(settings.autoTranslateEnabled);
         setAutoTranslateLanguages(settings.autoTranslateLanguages);
       } catch {
         if (!active) {
@@ -91,7 +90,6 @@ export function AppHeader() {
         setSiteTitleGradient({ from: "", to: "" });
         setHasConfiguredIcon(false);
         setIconLoadFailed(false);
-        setAutoTranslateEnabled(false);
         setAutoTranslateLanguages([]);
       }
     };
@@ -141,7 +139,7 @@ export function AppHeader() {
     : undefined;
   const useCustomIcon = brandingReady && hasConfiguredIcon && !iconLoadFailed;
   const showFallbackIcon = brandingReady && !useCustomIcon;
-  const editorHref = editorHrefForPathname(pathname);
+  const editorHref = editorHrefForPathname(pathname, autoTranslateLanguages);
   const isAuthenticated = Boolean(currentUser);
   const isAdminAuthenticated = currentUser?.role === "admin";
   const loginHref = ADMIN_NAVIGATION.loginHref;
@@ -177,8 +175,6 @@ export function AppHeader() {
         </Link>
 
         <div className="app-header-actions">
-          {brandingReady ? <LanguageSelector enabled={autoTranslateEnabled} languages={autoTranslateLanguages} /> : null}
-
           <Link
             href={PLAINTEXT_EXPORT_NAVIGATION.href}
             className="btn btn-icon btn-pill admin-icon-link ui-tooltip"

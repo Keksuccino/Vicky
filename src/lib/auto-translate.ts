@@ -6,6 +6,7 @@ export const AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME = "vicky_docs_language";
 export const AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT = "vicky:languagechange";
 export const DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL = "openai/gpt-5.4-mini";
 export const DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON = "xx";
+export const DEFAULT_LOCALIZATION_PATH = "localizations";
 
 const DEFAULT_AUTO_TRANSLATE_LANGUAGE_ICONS: Record<string, string> = {
   "en-US": "us",
@@ -47,6 +48,7 @@ export const DEFAULT_AUTO_TRANSLATE_SETTINGS = (): AutoTranslateSettings => ({
   enabled: false,
   openRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
   languages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
+  localizationPath: DEFAULT_LOCALIZATION_PATH,
 });
 
 const LANGUAGE_CODE_PATTERN = /^[a-zA-Z0-9][a-zA-Z0-9_-]{0,31}$/;
@@ -173,6 +175,22 @@ export const normalizeAutoTranslateOpenRouterModel = (value: unknown): string =>
   return trimmed || DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL;
 };
 
+export const normalizeLocalizationPath = (value: unknown): string => {
+  const raw = typeof value === "string" ? value.trim() : DEFAULT_LOCALIZATION_PATH;
+  const normalized = raw
+    .replace(/\\+/g, "/")
+    .replace(/\/+/g, "/")
+    .replace(/^\/+/, "")
+    .replace(/\/+$/, "");
+  const segments = normalized.split("/").filter(Boolean);
+
+  if (!normalized || segments.some((segment) => segment === "." || segment === "..")) {
+    return DEFAULT_LOCALIZATION_PATH;
+  }
+
+  return segments.join("/");
+};
+
 export const normalizeAutoTranslateSettings = (value: unknown): AutoTranslateSettings => {
   const defaults = DEFAULT_AUTO_TRANSLATE_SETTINGS();
   const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
@@ -181,6 +199,7 @@ export const normalizeAutoTranslateSettings = (value: unknown): AutoTranslateSet
     enabled: typeof source.enabled === "boolean" ? source.enabled : defaults.enabled,
     openRouterModel: normalizeAutoTranslateOpenRouterModel(source.openRouterModel),
     languages: normalizeAutoTranslateLanguages(source.languages),
+    localizationPath: normalizeLocalizationPath(source.localizationPath ?? source.directory),
   };
 };
 
@@ -189,7 +208,7 @@ export const resolveAutoTranslateLanguage = (
   requestedCode: string | null | undefined,
 ): AutoTranslateLanguage => {
   const requested = normalizeAutoTranslateLanguageCode(requestedCode);
-  if (!settings.enabled || !requested) {
+  if (!requested) {
     return settings.languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ?? DEFAULT_AUTO_TRANSLATE_LANGUAGES[0];
   }
 

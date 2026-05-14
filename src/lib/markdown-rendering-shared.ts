@@ -1,5 +1,6 @@
 import { defaultSchema } from "rehype-sanitize";
 import type { Options as RehypeAutolinkHeadingsOptions } from "rehype-autolink-headings";
+import { docsHrefForPagePath } from "@/lib/docs-routing";
 
 export const MARKDOWN_RENDER_VERSION = "1";
 
@@ -9,7 +10,7 @@ const DOCS_HREF_REGEX = /^\/docs(?:[/?#]|$)/i;
 const RESERVED_ROOT_HREF_REGEX = /^\/(?:api|admin|editor|_next)(?:[/?#]|$)/i;
 const RESERVED_ROOT_FILE_HREF_REGEX = /^\/(?:favicon\.ico|robots\.txt|sitemap\.xml|manifest\.json)(?:[?#]|$)/i;
 
-export const normalizeInternalDocsLink = (href: string): string => {
+export const normalizeInternalDocsLink = (href: string, languageCode?: string): string => {
   if (!ROOT_RELATIVE_HREF_REGEX.test(href)) {
     return href;
   }
@@ -22,7 +23,7 @@ export const normalizeInternalDocsLink = (href: string): string => {
   const pathOnly = queryOrHashIndex >= 0 ? href.slice(0, queryOrHashIndex) : href;
   const suffix = queryOrHashIndex >= 0 ? href.slice(queryOrHashIndex) : "";
   const normalizedPath = pathOnly.replace(/\/{2,}/g, "/");
-  const docsPath = normalizedPath === "/" ? "/docs" : `/docs${normalizedPath}`;
+  const docsPath = docsHrefForPagePath(normalizedPath, languageCode);
 
   return `${docsPath}${suffix}`;
 };

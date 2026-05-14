@@ -3,12 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME,
   resolveAutoTranslateLanguage,
-  shouldTranslateAutoTranslateLanguage,
 } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { searchDocsCorpus } from "@/lib/docs-search";
 import { errorResponse } from "@/lib/http";
+import { isSourceLanguage } from "@/lib/page-localization";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -27,12 +27,11 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
     const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
-    const model = store.settings.autoTranslate.openRouterModel.trim();
     const translation =
-      shouldTranslateAutoTranslateLanguage(store.settings.autoTranslate, language) && model
+      !isSourceLanguage(language)
         ? {
             language,
-            model,
+            localizationPath: store.settings.autoTranslate.localizationPath,
           }
         : undefined;
     const results = await searchDocsCorpus(config, query, { limit, translation });

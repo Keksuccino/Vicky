@@ -48,6 +48,7 @@ export interface AutoTranslateSettings {
   enabled: boolean;
   openRouterModel: string;
   languages: AutoTranslateLanguage[];
+  localizationPath: string;
 }
 
 export interface ThemeCustomizationSettings {
@@ -172,7 +173,7 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 10;
+  version: 11;
   settings: AppSettings;
   moderators: ModeratorAccount[];
 }
@@ -222,6 +223,15 @@ export interface GitHubDocPage {
   includeInPlaintextExport: boolean;
   updatedAt?: string;
   updatedBy?: string;
+  languageCode?: string;
+  sourceLanguage?: boolean;
+  sourcePath?: string;
+  sourceSlug?: string;
+  sourceUpdatedAt?: string;
+  translationPath?: string;
+  translationUpdatedAt?: string;
+  translationStale?: boolean;
+  localizationStatus?: "source" | "current" | "outdated" | "missing";
 }
 
 export interface GitHubPlaintextDocPage {

@@ -3,7 +3,9 @@ import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
 
 import { normalizeCustomDomain } from "@/lib/domain-settings";
-import { loadGitHubDoc, resolveRuntimeConfig } from "@/lib/github";
+import { docsHrefForPagePath, parseDocsRoutePath } from "@/lib/docs-routing";
+import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
+import { resolveRuntimeConfig } from "@/lib/github";
 import { normalizeStartPage } from "@/lib/start-page";
 import { getStore } from "@/lib/store";
 
@@ -16,11 +18,6 @@ const normalizeDocsSlug = (value: string): string =>
     .replace(/^\/?docs(?=\/|$)/i, "")
     .replace(/^\/+/, "")
     .replace(/\/+$/, "");
-
-const toDocsPath = (slug: string): string => {
-  const normalizedSlug = normalizeDocsSlug(slug);
-  return normalizedSlug ? `/docs/${normalizedSlug}` : "/docs";
-};
 
 const prettyFromSlug = (slug: string): string => {
   const segment = slug.split("/").filter(Boolean).at(-1) ?? slug;
@@ -61,15 +58,24 @@ export async function generateDocsPageMetadata(slugSegments?: string[]): Promise
 
   try {
     const store = await getStore();
-    const requestedSlug = slugSegments?.length
+    const rawRequestedSlug = slugSegments?.length
       ? normalizeDocsSlug(slugSegments.join("/"))
       : normalizeStartPage(store.settings.startPage).slice(1);
+    const route = parseDocsRoutePath(rawRequestedSlug, store.settings.autoTranslate.languages);
+    const requestedSlug = route.pagePath.slice(1);
     const config = resolveRuntimeConfig(store.settings.github);
-    const page = await loadGitHubDoc(config, { slug: requestedSlug });
+    const origin = await resolveRequestOrigin(store.settings.domain.customDomain);
+    const { data: page, language } = await loadDocsPageForLanguage({
+      config,
+      locator: { slug: requestedSlug },
+      origin: origin ?? "http://localhost:3000",
+      requestedLanguageCode: route.languageCode,
+      store,
+    });
     const title = page.title.trim() || prettyFromSlug(page.slug || requestedSlug) || store.settings.siteTitle || FALLBACK_SITE_TITLE;
     const description = page.description.trim() || store.settings.siteDescription || FALLBACK_SITE_DESCRIPTION;
-    const canonicalPath = toDocsPath(page.slug || requestedSlug);
-    const canonicalUrl = absoluteUrl(await resolveRequestOrigin(store.settings.domain.customDomain), canonicalPath);
+    const canonicalPath = docsHrefForPagePath(page.slug || requestedSlug, language.code);
+    const canonicalUrl = absoluteUrl(origin, canonicalPath);
 
     return {
       title,

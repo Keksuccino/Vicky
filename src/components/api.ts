@@ -36,6 +36,8 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   DEFAULT_AUTO_TRANSLATE_LANGUAGES,
   DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  DEFAULT_LOCALIZATION_PATH,
+  normalizeLocalizationPath,
   normalizeAutoTranslateLanguage,
 } from "@/lib/auto-translate";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
@@ -123,6 +125,7 @@ const DEFAULT_SETTINGS: AdminSettings = {
   autoTranslateEnabled: false,
   autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
   autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
+  autoTranslateLocalizationPath: DEFAULT_LOCALIZATION_PATH,
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",
   themeDarkAccent: "#15A6E5",
@@ -532,6 +535,9 @@ function normalizeSettings(source: unknown): AdminSettings {
       DEFAULT_SETTINGS.autoTranslateOpenRouterModel,
     ),
     autoTranslateLanguages: normalizeAutoTranslateLanguageList(autoTranslate.languages),
+    autoTranslateLocalizationPath: normalizeLocalizationPath(
+      autoTranslate.localizationPath ?? autoTranslate.directory,
+    ),
     themeLightAccent: asString(theme.lightAccent, DEFAULT_SETTINGS.themeLightAccent),
     themeLightSurfaceAccent: asString(theme.lightSurfaceAccent, DEFAULT_SETTINGS.themeLightSurfaceAccent),
     themeDarkAccent: asString(theme.darkAccent, DEFAULT_SETTINGS.themeDarkAccent),
@@ -771,7 +777,11 @@ function normalizeAdminLanguageTranslationCacheStatuses(source: unknown): AdminL
 
       return {
         languageCode,
+        languageName: asString(payload.languageName).trim() || languageCode,
         cachedPages: Math.max(0, Math.round(asNumber(payload.cachedPages, 0))),
+        currentPages: Math.max(0, Math.round(asNumber(payload.currentPages, asNumber(payload.cachedPages, 0)))),
+        missingPages: Math.max(0, Math.round(asNumber(payload.missingPages, 0))),
+        outdatedPages: Math.max(0, Math.round(asNumber(payload.outdatedPages, 0))),
         totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
         sourceLanguage: asBoolean(payload.sourceLanguage, false),
       };
@@ -1227,11 +1237,12 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<AdminS
       openRouterModel: settings.openRouterModel,
     },
     openRouter: {},
-    autoTranslate: {
-      enabled: settings.autoTranslateEnabled,
-      openRouterModel: settings.autoTranslateOpenRouterModel,
-      languages: settings.autoTranslateLanguages,
-    },
+      autoTranslate: {
+        enabled: settings.autoTranslateEnabled,
+        openRouterModel: settings.autoTranslateOpenRouterModel,
+        languages: settings.autoTranslateLanguages,
+        localizationPath: settings.autoTranslateLocalizationPath,
+      },
   };
 
   const github = payload.github as Record<string, unknown>;
@@ -1283,11 +1294,25 @@ export async function refreshAdminDocsCache(): Promise<DocsRefreshResult> {
 }
 
 export async function requestAdminLanguageTranslations(
-  language: AutoTranslateLanguage,
+  languageOrOptions:
+    | AutoTranslateLanguage
+    | {
+        mode: "outdated" | "missing-and-outdated";
+        languages: AutoTranslateLanguage[];
+        localizationPath: string;
+      },
 ): Promise<AdminTranslationRequestResult> {
+  const body =
+    "mode" in languageOrOptions
+      ? {
+          mode: languageOrOptions.mode,
+          languages: languageOrOptions.languages,
+          localizationPath: languageOrOptions.localizationPath,
+        }
+      : { language: languageOrOptions };
   const response = await requestJson<unknown>("/api/admin/translations/request", {
     method: "POST",
-    body: JSON.stringify({ language }),
+    body: JSON.stringify(body),
   });
 
   return normalizeAdminTranslationRequestResult(response);
@@ -1296,10 +1321,11 @@ export async function requestAdminLanguageTranslations(
 export async function fetchAdminLanguageTranslationCacheStatuses(
   languages: AutoTranslateLanguage[],
   model: string,
+  localizationPath?: string,
 ): Promise<AdminLanguageTranslationCacheStatus[]> {
   const response = await requestJson<unknown>("/api/admin/translations/status", {
     method: "POST",
-    body: JSON.stringify({ languages, model }),
+    body: JSON.stringify({ languages, model, localizationPath }),
   });
 
   return normalizeAdminLanguageTranslationCacheStatuses(response);

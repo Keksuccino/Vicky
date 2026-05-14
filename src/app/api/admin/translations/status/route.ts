@@ -2,14 +2,13 @@ import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
-  isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguages,
 } from "@/lib/auto-translate";
-import { getGitHubDocPageTranslationCacheStatus } from "@/lib/auto-translate-server";
 import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse, parseJsonBody } from "@/lib/http";
+import { getPageLocalizationStatuses } from "@/lib/page-localization";
 import { getStore } from "@/lib/store";
 import type { AutoTranslateLanguage } from "@/lib/types";
 
@@ -28,12 +27,17 @@ const translationStatusSchema = z
   .object({
     languages: z.array(languageSchema).optional(),
     model: z.string().optional(),
+    localizationPath: z.string().optional(),
   })
   .strict();
 
 type LanguageTranslationCacheStatus = {
   languageCode: string;
+  languageName: string;
   cachedPages: number;
+  currentPages: number;
+  missingPages: number;
+  outdatedPages: number;
   totalPages: number;
   sourceLanguage: boolean;
 };
@@ -68,37 +72,25 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     const languages = uniqueLanguagesByCode(
       normalizeAutoTranslateLanguages(payload.languages ?? store.settings.autoTranslate.languages),
     );
-    const model = (payload.model ?? store.settings.autoTranslate.openRouterModel).trim();
-
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
     const { pages } = await listMarkdownDocsTreePagesWithTitles(config);
-    const totalPages = pages.length;
-    const statuses: LanguageTranslationCacheStatus[] = languages.map((language) => {
-      const sourceLanguage = isDefaultAutoTranslateLanguageCode(language.code);
-      if (sourceLanguage) {
-        return {
-          languageCode: language.code,
-          cachedPages: totalPages,
-          totalPages,
-          sourceLanguage,
-        };
-      }
-
-      const status = getGitHubDocPageTranslationCacheStatus({
-        config,
-        language,
-        model,
-        pages,
-      });
-
-      return {
-        languageCode: language.code,
-        cachedPages: status.cachedPages,
-        totalPages: status.totalPages,
-        sourceLanguage,
-      };
+    const statusResults = await getPageLocalizationStatuses({
+      config,
+      languages,
+      localizationPath: payload.localizationPath ?? store.settings.autoTranslate.localizationPath,
+      sourcePages: pages,
     });
+    const statuses: LanguageTranslationCacheStatus[] = statusResults.map((status) => ({
+      languageCode: status.languageCode,
+      languageName: status.languageName,
+      cachedPages: status.currentPages,
+      currentPages: status.currentPages,
+      missingPages: status.missingPages,
+      outdatedPages: status.outdatedPages,
+      totalPages: status.totalPages,
+      sourceLanguage: status.sourceLanguage,
+    }));
 
     return NextResponse.json({
       statuses,

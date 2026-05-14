@@ -13,6 +13,7 @@ import {
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguages,
   normalizeAutoTranslateOpenRouterModel,
+  normalizeLocalizationPath,
 } from "@/lib/auto-translate";
 import {
   formatAutoTranslateLanguageForLog,
@@ -97,6 +98,8 @@ const settingsPatchSchema = z
       .object({
         enabled: z.boolean().optional(),
         openRouterModel: z.string().optional(),
+        localizationPath: z.string().optional(),
+        directory: z.string().optional(),
         languages: z
           .array(
             z
@@ -355,6 +358,15 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
           store.settings.autoTranslate.openRouterModel = nextModel;
         }
 
+        const localizationPathPatch = patch.autoTranslate.localizationPath ?? patch.autoTranslate.directory;
+        if (localizationPathPatch !== undefined) {
+          const nextLocalizationPath = normalizeLocalizationPath(localizationPathPatch);
+          if (store.settings.autoTranslate.localizationPath !== nextLocalizationPath) {
+            shouldClearDocsCache = true;
+          }
+          store.settings.autoTranslate.localizationPath = nextLocalizationPath;
+        }
+
         if (patch.autoTranslate.languages !== undefined) {
           const previousLanguages = store.settings.autoTranslate.languages;
           const previousLanguageMap = autoTranslateLanguageMap(previousLanguages);
@@ -423,11 +435,11 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
       if (store.settings.autoTranslate.enabled) {
         if (!store.settings.autoTranslate.openRouterModel.trim()) {
-          throw badRequest("Auto Translate: OpenRouter model is required when auto-translate is enabled.");
+          throw badRequest("Page Localization: OpenRouter model is required when automatic translation updates are enabled.");
         }
 
         if (!store.settings.openRouter.apiKeyEncrypted) {
-          throw badRequest("Auto Translate: OpenRouter API key is required when auto-translate is enabled.");
+          throw badRequest("Page Localization: OpenRouter API key is required when automatic translation updates are enabled.");
         }
       }
     });

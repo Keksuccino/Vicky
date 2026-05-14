@@ -23,6 +23,7 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
+import { docsHrefForPagePath } from "@/lib/docs-routing";
 import type { DocPageChrome, DocSearchResult, DocTreeNode, MarkdownHeading } from "@/components/types";
 
 type DocsShellProps = {
@@ -62,12 +63,8 @@ function readSelectedLanguageCode(): string {
   return normalizeAutoTranslateLanguageCode(readCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)) || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
 }
 
-function toDocsHref(path: string): string {
-  const normalized = normalizePath(path);
-  if (normalized === "/") {
-    return "/docs";
-  }
-  return `/docs/${normalized.slice(1)}`;
+function toDocsHref(path: string, languageCode?: string): string {
+  return docsHrefForPagePath(path, languageCode);
 }
 
 function normalizeComparableText(value: string): string {
@@ -293,7 +290,6 @@ export function DocsShell({
   }, [normalizedInitialLanguageCode]);
 
   useEffect(() => {
-    setSelectedLanguageCode(readSelectedLanguageCode());
     setLanguageReady(true);
 
     const onLanguageChange = (event: Event) => {
@@ -465,7 +461,7 @@ export function DocsShell({
   useEffect(() => {
     if (rootPathNeedsReplaceRef.current && currentPath !== "/") {
       rootPathNeedsReplaceRef.current = false;
-      router.replace(toDocsHref(currentPath), { scroll: false });
+      router.replace(toDocsHref(currentPath, selectedLanguageCode), { scroll: false });
       return;
     }
 
@@ -473,10 +469,10 @@ export function DocsShell({
       const firstPath = firstLeafPath(tree);
       if (firstPath && firstPath !== currentPath) {
         setCurrentPath(firstPath);
-        router.replace(toDocsHref(firstPath), { scroll: false });
+        router.replace(toDocsHref(firstPath, selectedLanguageCode), { scroll: false });
       }
     }
-  }, [tree, treeLoading, currentPath, router]);
+  }, [tree, treeLoading, currentPath, router, selectedLanguageCode]);
 
   useEffect(() => {
     lastInitialHashScrollKeyRef.current = null;
@@ -772,7 +768,7 @@ export function DocsShell({
     setSearchResults([]);
     setSidebarOpen(false);
     const hash = hasAnchor ? `#${encodeURIComponent(anchor ?? "")}` : "";
-    router.push(`${toDocsHref(normalized)}${hash}`, { scroll: false });
+    router.push(`${toDocsHref(normalized, selectedLanguageCode)}${hash}`, { scroll: false });
   };
 
   const sidebarToggleButton = (

@@ -1,16 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  getCachedTranslatedDocPage: vi.fn(),
+  loadGitHubLocalizationSnapshot: vi.fn(),
   listMarkdownDocsTreePagesWithTitles: vi.fn(),
   toRuntimeConfigCacheKey: vi.fn(),
 }));
 
-vi.mock("@/lib/auto-translate-server", () => ({
-  getCachedTranslatedDocPage: mocks.getCachedTranslatedDocPage,
-}));
-
 vi.mock("@/lib/github", () => ({
+  loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
   listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles,
   toRuntimeConfigCacheKey: mocks.toRuntimeConfigCacheKey,
 }));
@@ -52,7 +49,7 @@ const translatedPage: GitHubDocPage = {
 describe("docs search", () => {
   beforeEach(() => {
     docsSearchCorpusCache.clear();
-    mocks.getCachedTranslatedDocPage.mockReset();
+    mocks.loadGitHubLocalizationSnapshot.mockReset();
     mocks.listMarkdownDocsTreePagesWithTitles.mockReset();
     mocks.toRuntimeConfigCacheKey.mockReset();
 
@@ -65,12 +62,17 @@ describe("docs search", () => {
 
   it("uses cached translated pages for translated search when available", async () => {
     const language = { name: "German", code: "de", icon: "de" };
-    mocks.getCachedTranslatedDocPage.mockReturnValue(translatedPage);
+    mocks.loadGitHubLocalizationSnapshot.mockResolvedValue({
+      fetchedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      tree: [],
+      pages: [translatedPage],
+    });
 
     const results = await searchDocsCorpus(config, "installiere", {
       translation: {
         language,
-        model: "openai/gpt-5.4-mini",
+        localizationPath: "localizations",
       },
     });
 
@@ -80,25 +82,30 @@ describe("docs search", () => {
       excerpt: "Einrichtung Installiere das Paket mit npm.",
       anchor: "einrichtung",
     });
-    expect(mocks.getCachedTranslatedDocPage).toHaveBeenCalledWith(
+    expect(mocks.loadGitHubLocalizationSnapshot).toHaveBeenCalledWith({
       config,
-      sourcePage,
       language,
-      "openai/gpt-5.4-mini",
-    );
+      localizationPath: "localizations",
+      sourcePages: [sourcePage],
+    });
   });
 
   it("does not create translations while searching translated content", async () => {
-    mocks.getCachedTranslatedDocPage.mockReturnValue(null);
+    mocks.loadGitHubLocalizationSnapshot.mockResolvedValue({
+      fetchedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 60_000).toISOString(),
+      tree: [],
+      pages: [],
+    });
 
     const results = await searchDocsCorpus(config, "einrichtung", {
       translation: {
         language: { name: "German", code: "de", icon: "de" },
-        model: "openai/gpt-5.4-mini",
+        localizationPath: "localizations",
       },
     });
 
     expect(results).toEqual([]);
-    expect(mocks.getCachedTranslatedDocPage).toHaveBeenCalledTimes(1);
+    expect(mocks.loadGitHubLocalizationSnapshot).toHaveBeenCalledTimes(1);
   });
 });

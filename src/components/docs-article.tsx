@@ -7,24 +7,19 @@ type DocsArticleProps = {
   page: RenderedDocsPageWithSourceHeadings;
 };
 
-function toDocsHref(path: string): string {
-  const normalized = path
+function toRawDocsHref(path: string, languageCode?: string): string {
+  const slug = path
     .trim()
     .replace(/\\+/g, "/")
     .replace(/^\/+/, "")
-    .replace(/\/+$/, "");
-
-  if (!normalized) {
-    return "/docs";
+    .replace(/\/+$/, "")
+    .replace(/\.(md|mdx)$/i, "");
+  const params = new URLSearchParams({ slug });
+  if (languageCode) {
+    params.set("language", languageCode);
   }
 
-  return `/docs/${normalized}`;
-}
-
-function toRawDocsHref(path: string): string {
-  const href = toDocsHref(path);
-  const separator = href.includes("?") ? "&" : "?";
-  return `${href}${separator}raw=1`;
+  return `/api/docs/raw?${params.toString()}`;
 }
 
 function formatDate(value?: string): string {
@@ -48,7 +43,7 @@ function formatDate(value?: string): string {
 }
 
 export function DocsArticle({ page }: DocsArticleProps) {
-  const rawPageHref = toRawDocsHref(page.path);
+  const rawPageHref = toRawDocsHref(page.path, page.languageCode);
   const articleKey = `${page.slug}:${page.sha}`;
 
   return (
