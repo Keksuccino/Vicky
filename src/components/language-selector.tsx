@@ -102,6 +102,7 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
               name: "English (US)",
               code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
               icon: "us",
+              enabled: true,
             },
           ],
     [languages],
@@ -145,6 +146,22 @@ export function LanguageSelector({ enabled, languages }: LanguageSelectorProps) 
       writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, resolvedSelectedLanguageCode);
     }
   }, [enabled, resolvedSelectedLanguageCode, routeLanguageCode]);
+
+  useEffect(() => {
+    const cookieLanguageCode = normalizeAutoTranslateLanguageCode(readCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME));
+    if (!cookieLanguageCode) {
+      return;
+    }
+
+    const resolvedCookieLanguageCode = resolveLanguageCode(availableLanguages, cookieLanguageCode);
+    if (languageCodesEqual(cookieLanguageCode, resolvedCookieLanguageCode)) {
+      return;
+    }
+
+    const fallbackLanguageCode = enabled && routeLanguageCode ? resolvedSelectedLanguageCode : resolvedCookieLanguageCode;
+    writeCookie(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME, fallbackLanguageCode);
+    dispatchLanguageChange(fallbackLanguageCode);
+  }, [availableLanguages, enabled, resolvedSelectedLanguageCode, routeLanguageCode]);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia(ICON_ONLY_LANGUAGE_SELECTOR_QUERY);

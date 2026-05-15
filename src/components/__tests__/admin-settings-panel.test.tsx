@@ -110,8 +110,8 @@ const INITIAL_SETTINGS: AdminSettings = {
   autoTranslateOpenRouterModel: "openai/gpt-5.4-mini",
   autoTranslateLocalizationPath: "localizations",
   autoTranslateLanguages: [
-    { name: "English (US)", code: "en-US", icon: "us" },
-    { name: "German", code: "de", icon: "de" },
+    { name: "English (US)", code: "en-US", icon: "us", enabled: true },
+    { name: "German", code: "de", icon: "de", enabled: true },
   ],
   themeLightAccent: "#006ecf",
   themeLightSurfaceAccent: "#7db8f0",

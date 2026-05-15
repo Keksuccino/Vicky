@@ -24,20 +24,27 @@ const DEFAULT_AUTO_TRANSLATE_LANGUAGE_ICONS: Record<string, string> = {
   "pt-BR": "br",
 };
 
+const defaultAutoTranslateLanguage = (name: string, code: string, icon: string): AutoTranslateLanguage => ({
+  name,
+  code,
+  icon,
+  enabled: true,
+});
+
 export const DEFAULT_AUTO_TRANSLATE_LANGUAGES: AutoTranslateLanguage[] = [
-  { name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME, code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE, icon: "us" },
-  { name: "German", code: "de", icon: "de" },
-  { name: "Polish", code: "pl", icon: "pl" },
-  { name: "Russian", code: "ru", icon: "ru" },
-  { name: "Ukrainian", code: "uk", icon: "ua" },
-  { name: "Japanese", code: "ja", icon: "jp" },
-  { name: "Korean", code: "ko", icon: "kr" },
-  { name: "Chinese (Simplified)", code: "zh-CN", icon: "cn" },
-  { name: "Thai", code: "th", icon: "th" },
-  { name: "French", code: "fr", icon: "fr" },
-  { name: "Spanish (Mexico)", code: "es-MX", icon: "mx" },
-  { name: "Spanish (Spain)", code: "es-ES", icon: "es" },
-  { name: "Portuguese (Brazil)", code: "pt-BR", icon: "br" },
+  defaultAutoTranslateLanguage(DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME, DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE, "us"),
+  defaultAutoTranslateLanguage("German", "de", "de"),
+  defaultAutoTranslateLanguage("Polish", "pl", "pl"),
+  defaultAutoTranslateLanguage("Russian", "ru", "ru"),
+  defaultAutoTranslateLanguage("Ukrainian", "uk", "ua"),
+  defaultAutoTranslateLanguage("Japanese", "ja", "jp"),
+  defaultAutoTranslateLanguage("Korean", "ko", "kr"),
+  defaultAutoTranslateLanguage("Chinese (Simplified)", "zh-CN", "cn"),
+  defaultAutoTranslateLanguage("Thai", "th", "th"),
+  defaultAutoTranslateLanguage("French", "fr", "fr"),
+  defaultAutoTranslateLanguage("Spanish (Mexico)", "es-MX", "mx"),
+  defaultAutoTranslateLanguage("Spanish (Spain)", "es-ES", "es"),
+  defaultAutoTranslateLanguage("Portuguese (Brazil)", "pt-BR", "br"),
 ];
 
 export const DEFAULT_OPENROUTER_SETTINGS = (): OpenRouterSettings => ({
@@ -115,6 +122,7 @@ export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLan
   const code = normalizeAutoTranslateLanguageCode(source.code);
   const name = normalizeAutoTranslateLanguageName(source.name);
   const icon = normalizeAutoTranslateLanguageIcon(source.icon, code);
+  const enabled = typeof source.enabled === "boolean" ? source.enabled : true;
 
   if (!code || !name) {
     return null;
@@ -125,6 +133,7 @@ export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLan
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
       icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
+      enabled: true,
     };
   }
 
@@ -132,6 +141,7 @@ export const normalizeAutoTranslateLanguage = (value: unknown): AutoTranslateLan
     name,
     code,
     icon,
+    enabled,
   };
 };
 
@@ -145,6 +155,7 @@ export const normalizeAutoTranslateLanguages = (value: unknown): AutoTranslateLa
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
       icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
+      enabled: true,
     },
   ];
   const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
@@ -164,6 +175,16 @@ export const normalizeAutoTranslateLanguages = (value: unknown): AutoTranslateLa
   }
 
   return languages;
+};
+
+export const isAutoTranslateLanguageUserVisible = (language: Pick<AutoTranslateLanguage, "code" | "enabled">): boolean =>
+  isDefaultAutoTranslateLanguageCode(language.code) || language.enabled !== false;
+
+export const getUserVisibleAutoTranslateLanguages = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
+  const normalizedLanguages = normalizeAutoTranslateLanguages(languages);
+  const visibleLanguages = normalizedLanguages.filter(isAutoTranslateLanguageUserVisible);
+
+  return visibleLanguages.length > 0 ? visibleLanguages : normalizedLanguages.slice(0, 1);
 };
 
 export const normalizeAutoTranslateOpenRouterModel = (value: unknown): string => {
@@ -208,14 +229,16 @@ export const resolveAutoTranslateLanguage = (
   requestedCode: string | null | undefined,
 ): AutoTranslateLanguage => {
   const requested = normalizeAutoTranslateLanguageCode(requestedCode);
+  const defaultLanguage =
+    settings.languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ?? DEFAULT_AUTO_TRANSLATE_LANGUAGES[0];
   if (!requested) {
-    return settings.languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ?? DEFAULT_AUTO_TRANSLATE_LANGUAGES[0];
+    return defaultLanguage;
   }
 
   return (
-    settings.languages.find((language) => languageCodesEqual(language.code, requested)) ??
-    settings.languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ??
-    DEFAULT_AUTO_TRANSLATE_LANGUAGES[0]
+    settings.languages.find(
+      (language) => isAutoTranslateLanguageUserVisible(language) && languageCodesEqual(language.code, requested),
+    ) ?? defaultLanguage
   );
 };
 

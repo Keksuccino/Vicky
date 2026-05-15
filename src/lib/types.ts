@@ -42,6 +42,7 @@ export interface AutoTranslateLanguage {
   name: string;
   code: string;
   icon: string;
+  enabled: boolean;
 }
 
 export interface AutoTranslateSettings {

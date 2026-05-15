@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { getUserVisibleAutoTranslateLanguages } from "@/lib/auto-translate";
 import { errorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
@@ -37,7 +38,7 @@ export const GET = async (): Promise<NextResponse> => {
         },
         autoTranslate: {
           enabled: store.settings.autoTranslate.enabled,
-          languages: store.settings.autoTranslate.languages,
+          languages: getUserVisibleAutoTranslateLanguages(store.settings.autoTranslate.languages),
         },
         theme: {
           lightAccent: store.settings.theme.lightAccent,

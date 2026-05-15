@@ -12,6 +12,7 @@ export type AutoTranslateLanguage = {
   name: string;
   code: string;
   icon: string;
+  enabled: boolean;
 };
 
 export type MarkdownHeading = {

@@ -39,6 +39,7 @@ const language: AutoTranslateLanguage = {
   name: "German",
   code: "de",
   icon: "de",
+  enabled: true,
 };
 
 const sourcePage: GitHubDocPage = {

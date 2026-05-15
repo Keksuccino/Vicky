@@ -94,6 +94,7 @@ const sourceLanguage = (): AutoTranslateLanguage => ({
   name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
   code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
+  enabled: true,
 });
 
 const uniqueLanguagesByCode = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {

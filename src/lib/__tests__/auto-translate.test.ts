@@ -24,9 +24,10 @@ describe("auto translate settings", () => {
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
       icon: "us",
+      enabled: true,
     });
-    expect(languages).toContainEqual({ name: "German", code: "de", icon: "de" });
-    expect(languages).toContainEqual({ name: "Portuguese (Brazil)", code: "pt-BR", icon: "br" });
+    expect(languages).toContainEqual({ name: "German", code: "de", icon: "de", enabled: true });
+    expect(languages).toContainEqual({ name: "Portuguese (Brazil)", code: "pt-BR", icon: "br", enabled: true });
     expect(languages.filter((language) => language.code.toLowerCase() === "de")).toHaveLength(1);
   });
 
@@ -42,8 +43,8 @@ describe("auto translate settings", () => {
     const settings = normalizeAutoTranslateSettings({
       enabled: true,
       languages: [
-        { name: "English (US)", code: "en-US", icon: "us" },
-        { name: "German", code: "de", icon: "de" },
+        { name: "English (US)", code: "en-US", icon: "us", enabled: true },
+        { name: "German", code: "de", icon: "de", enabled: true },
       ],
     });
 
@@ -52,7 +53,23 @@ describe("auto translate settings", () => {
 
     expect(english.code).toBe(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
     expect(shouldTranslateAutoTranslateLanguage(settings, english)).toBe(false);
-    expect(german).toEqual({ name: "German", code: "de", icon: "de" });
+    expect(german).toEqual({ name: "German", code: "de", icon: "de", enabled: true });
     expect(shouldTranslateAutoTranslateLanguage(settings, german)).toBe(true);
+  });
+
+  it("falls back to English US when a requested language is hidden from visitors", () => {
+    const settings = normalizeAutoTranslateSettings({
+      enabled: true,
+      languages: [
+        { name: "English (US)", code: "en-US", icon: "us", enabled: true },
+        { name: "German", code: "de", icon: "de", enabled: false },
+      ],
+    });
+
+    const language = resolveAutoTranslateLanguage(settings, "de");
+
+    expect(language.code).toBe(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
+    expect(settings.languages).toContainEqual({ name: "German", code: "de", icon: "de", enabled: false });
+    expect(shouldTranslateAutoTranslateLanguage(settings, settings.languages[1])).toBe(true);
   });
 });

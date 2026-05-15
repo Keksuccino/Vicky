@@ -20,6 +20,7 @@ const languageSchema = z
   .object({
     name: z.string(),
     code: z.string(),
+    enabled: z.boolean().optional(),
     icon: z.string(),
   })
   .strict();

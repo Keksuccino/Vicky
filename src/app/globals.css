@@ -2148,16 +2148,18 @@ select {
 }
 
 .field-inline.translation-language-fields {
-  grid-template-columns: minmax(8.8rem, 1.05fr) minmax(5.4rem, 0.58fr) minmax(4.35rem, 0.28fr);
+  display: flex;
   align-items: end;
-  gap: 0.42rem;
+  flex: 1 1 auto;
+  gap: 0.32rem;
+  min-width: 0;
 }
 
 .translation-language-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
   align-items: end;
-  gap: 0.45rem;
+  gap: 0.32rem;
+  flex-wrap: nowrap;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: var(--surface-muted);
@@ -2177,21 +2179,64 @@ select {
 }
 
 .translation-language-label-fields .field-label {
-  padding-left: 0.58rem;
+  white-space: nowrap;
 }
 
-.translation-language-label-fields .field-label:first-child {
-  padding-left: 0.32rem;
+.translation-language-label-fields .field-label:nth-child(1) {
+  flex: 0 0 2.8rem;
+}
+
+.translation-language-label-fields .field-label:nth-child(2) {
+  flex: 1 1 7.4rem;
+  margin-left: 0.72rem;
+  min-width: 0;
+}
+
+.translation-language-label-fields .field-label:nth-child(3) {
+  flex: 0 0 4.2rem;
+}
+
+.translation-language-label-fields .field-label:nth-child(4) {
+  flex: 0 0 4.35rem;
+}
+
+.translation-language-visibility-toggle {
+  align-self: center;
+  flex: 0 0 2.8rem;
+  gap: 0;
+  justify-self: start;
+}
+
+.translation-language-name-field {
+  flex: 1 1 7.4rem;
+  min-width: 0;
+}
+
+.translation-language-code-field {
+  flex: 0 0 4.2rem;
+}
+
+.translation-language-fields > .circle-flag-picker {
+  flex: 0 0 4.35rem;
+}
+
+.translation-language-visibility-toggle-disabled {
+  cursor: not-allowed;
+}
+
+.translation-language-visibility-toggle-disabled .toggle-control {
+  opacity: 0.68;
 }
 
 .translation-language-label-actions {
-  width: 10.35rem;
+  flex: 0 0 10rem;
 }
 
 .translation-language-actions {
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 0.32rem;
 }
 
@@ -2245,6 +2290,15 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
 
 .translation-language-fields .input {
   padding: 0.48rem 0.58rem;
+}
+
+.translation-language-fields > .translation-language-visibility-toggle + .field-row {
+  margin-left: 0.72rem;
+}
+
+.translation-language-fields > .field-row,
+.translation-language-fields > .circle-flag-picker {
+  min-width: 0;
 }
 
 .translation-log-panel {
@@ -4870,7 +4924,12 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   }
 
   .field-inline.translation-language-fields {
+    display: grid;
     grid-template-columns: 1fr;
+  }
+
+  .translation-language-fields > .translation-language-visibility-toggle + .field-row {
+    margin-left: 0;
   }
 
   .moderator-item {
@@ -4892,7 +4951,8 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   }
 
   .translation-language-item {
-    grid-template-columns: 1fr;
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .translation-language-actions {

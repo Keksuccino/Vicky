@@ -300,6 +300,7 @@ const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage
       name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
       code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
       icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
+      enabled: true,
     },
   ];
   const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
@@ -319,7 +320,7 @@ const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage
     }
 
     seenCodes.add(codeKey);
-    output.push({ name, code, icon });
+    output.push({ name, code, icon, enabled: language.enabled !== false });
   }
 
   return output;
@@ -338,6 +339,7 @@ const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): 
     name: "Custom Language",
     code,
     icon: DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON,
+    enabled: true,
   };
 };
 
@@ -2103,7 +2105,7 @@ export function AdminSettingsPanel() {
         const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
         const job = await requestAdminLanguageTranslations({
           mode: "missing-and-outdated",
-          languages: [{ name, code, icon }],
+          languages: [{ name, code, icon, enabled: language.enabled !== false }],
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
         setTranslationJob(job);
@@ -3551,6 +3553,7 @@ export function AdminSettingsPanel() {
                 <div className="translation-language-list">
                   <div className="translation-language-item translation-language-label-row" aria-hidden="true">
                     <div className="field-inline translation-language-fields translation-language-label-fields">
+                      <span className="field-label">Visible</span>
                       <span className="field-label">Display name</span>
                       <span className="field-label">ID</span>
                       <span className="field-label">Icon</span>
@@ -3559,6 +3562,7 @@ export function AdminSettingsPanel() {
                   </div>
                   {settings.autoTranslateLanguages.map((language, index) => {
                     const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
+                    const languageEnabled = isDefaultLanguage || language.enabled !== false;
                     const normalizedLanguageCode = normalizeAutoTranslateLanguageCode(language.code);
                     const languageIcon = isDefaultLanguage
                       ? getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE)
@@ -3589,7 +3593,41 @@ export function AdminSettingsPanel() {
                         key={languageKey}
                       >
                         <div className="field-inline translation-language-fields">
-                          <label className="field-row" htmlFor={`auto-translate-language-name-${index}`}>
+                          <label
+                            className={`toggle-row translation-language-visibility-toggle${
+                              isDefaultLanguage ? " translation-language-visibility-toggle-disabled" : ""
+                            } ui-tooltip`}
+                            data-ui-tooltip={isDefaultLanguage ? "Source language is always visible" : languageEnabled ? "Visible to visitors" : "Hidden from visitors"}
+                            htmlFor={`auto-translate-language-enabled-${index}`}
+                          >
+                            <input
+                              id={`auto-translate-language-enabled-${index}`}
+                              className="toggle-input"
+                              type="checkbox"
+                              checked={languageEnabled}
+                              disabled={isDefaultLanguage}
+                              aria-label={`${languageEnabled ? "Hide" : "Show"} ${isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name || "language"} in the public language selector`}
+                              onChange={(event) => {
+                                const nextEnabled = event.target.checked;
+                                const nextLanguages = settings.autoTranslateLanguages.map((entry, entryIndex) =>
+                                  entryIndex === index ? { ...entry, enabled: nextEnabled } : entry,
+                                );
+                                setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                                setAutoTranslateFieldErrors((prev) => ({
+                                  ...prev,
+                                  languages: validateAutoTranslateLanguages(nextLanguages),
+                                }));
+                              }}
+                            />
+                            <span className="toggle-control" aria-hidden="true">
+                              <span className="toggle-thumb" />
+                            </span>
+                          </label>
+
+                          <label
+                            className="field-row translation-language-name-field"
+                            htmlFor={`auto-translate-language-name-${index}`}
+                          >
                             <input
                               id={`auto-translate-language-name-${index}`}
                               className="input"
@@ -3609,7 +3647,10 @@ export function AdminSettingsPanel() {
                             />
                           </label>
 
-                          <label className="field-row" htmlFor={`auto-translate-language-code-${index}`}>
+                          <label
+                            className="field-row translation-language-code-field"
+                            htmlFor={`auto-translate-language-code-${index}`}
+                          >
                             <input
                               id={`auto-translate-language-code-${index}`}
                               className="input"

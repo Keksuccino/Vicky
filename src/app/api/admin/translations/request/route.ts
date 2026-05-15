@@ -30,6 +30,7 @@ const requestTranslationsSchema = z
       .object({
         name: z.string().min(1, "Language name is required."),
         code: z.string().min(1, "Language code is required."),
+        enabled: z.boolean().optional(),
         icon: z
           .string()
           .min(1, "Language icon is required.")
@@ -44,6 +45,7 @@ const requestTranslationsSchema = z
         .object({
           name: z.string(),
           code: z.string(),
+          enabled: z.boolean().optional(),
           icon: z
             .string()
             .refine(isCircleFlagIconId, "Language icon must be a Circle Flags icon ID."),

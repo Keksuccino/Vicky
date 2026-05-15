@@ -61,7 +61,7 @@ describe("docs search", () => {
   });
 
   it("uses cached translated pages for translated search when available", async () => {
-    const language = { name: "German", code: "de", icon: "de" };
+    const language = { name: "German", code: "de", icon: "de", enabled: true };
     mocks.loadGitHubLocalizationSnapshot.mockResolvedValue({
       fetchedAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 60_000).toISOString(),
@@ -100,7 +100,7 @@ describe("docs search", () => {
 
     const results = await searchDocsCorpus(config, "einrichtung", {
       translation: {
-        language: { name: "German", code: "de", icon: "de" },
+        language: { name: "German", code: "de", icon: "de", enabled: true },
         localizationPath: "localizations",
       },
     });
