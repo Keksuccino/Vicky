@@ -1,3 +1,5 @@
+import { getHeapStatistics } from "node:v8";
+
 import { ApiError } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
 import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
@@ -12,9 +14,11 @@ import {
 import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-logging";
 import {
   loadGitHubLocalizationSnapshot,
+  loadGitHubLocalizationStatusIndex,
   loadGitHubLocalizedDoc,
   saveGitHubLocalizedDoc,
   type GitHubLocalizedDocResult,
+  type GitHubLocalizationPageStatus,
 } from "@/lib/github";
 import type {
   AutoTranslateLanguage,
@@ -26,6 +30,8 @@ import type {
 
 const TRANSLATION_CONCURRENCY = 50;
 const TRANSLATION_MAX_RETRIES = 10;
+const TRANSLATION_MEMORY_CRITICAL_RATIO = 0.9;
+const TRANSLATION_MEMORY_POLL_INTERVAL_MS = 1_000;
 
 export type PageLocalizationLanguageStatus = {
   languageCode: string;
@@ -64,6 +70,8 @@ type TranslationCandidate = {
   sourcePage: GitHubDocPage;
 };
 
+type PageLocalizationEventSourcePage = Pick<GitHubDocPage, "path" | "slug">;
+
 export type PageLocalizationTranslationEvent =
   | {
       type: "prepared";
@@ -77,7 +85,7 @@ export type PageLocalizationTranslationEvent =
       attempt: number;
       maxAttempts: number;
       language: AutoTranslateLanguage;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "page-retry";
@@ -85,40 +93,40 @@ export type PageLocalizationTranslationEvent =
       maxAttempts: number;
       error: string;
       language: AutoTranslateLanguage;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "page-success";
       attempt: number;
       language: AutoTranslateLanguage;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "page-failed";
       attempts: number;
       error: string;
       language: AutoTranslateLanguage;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "upload-queued";
       flushAt: string;
       language: AutoTranslateLanguage;
       queueSize: number;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "upload-start";
       batchSize: number;
       language: AutoTranslateLanguage;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "upload-success";
       batchSize: number;
       commitSha: string;
       language: AutoTranslateLanguage;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "upload-retry";
@@ -126,7 +134,7 @@ export type PageLocalizationTranslationEvent =
       error: string;
       language: AutoTranslateLanguage;
       retryAt: string;
-      sourcePage: GitHubDocPage;
+      sourcePage: PageLocalizationEventSourcePage;
     };
 
 const SYSTEM_PROMPT = `You are a professional Markdown documentation page translator.
@@ -136,29 +144,139 @@ You receive pages as a JSON array with page title, page description, and page co
 Translate all three values, then return the translated content as the same JSON array syntax.
 Only return the JSON array.`;
 
-const mapWithConcurrency = async <T, R>(
-  values: T[],
-  concurrency: number,
-  iteratee: (value: T, index: number) => Promise<R>,
-): Promise<R[]> => {
-  if (values.length === 0) {
-    return [];
-  }
-
-  const workerCount = Math.max(1, Math.min(concurrency, values.length));
-  const output = new Array<R>(values.length);
-  let index = 0;
-
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (index < values.length) {
-      const currentIndex = index;
-      index += 1;
-      output[currentIndex] = await iteratee(values[currentIndex], currentIndex);
-    }
+const delay = (ms: number): Promise<void> =>
+  new Promise((resolve) => {
+    setTimeout(resolve, ms);
   });
 
-  await Promise.all(workers);
-  return output;
+const getHeapUsageRatio = (): number => {
+  const heapLimit = getHeapStatistics().heap_size_limit;
+  if (!Number.isFinite(heapLimit) || heapLimit <= 0) {
+    return 0;
+  }
+
+  return process.memoryUsage().heapUsed / heapLimit;
+};
+
+const getAdaptiveTranslationConcurrency = (maxConcurrency: number): number => {
+  const ratio = getHeapUsageRatio();
+
+  if (ratio >= 0.86) {
+    return 1;
+  }
+
+  if (ratio >= 0.78) {
+    return Math.min(maxConcurrency, 4);
+  }
+
+  if (ratio >= 0.7) {
+    return Math.min(maxConcurrency, 12);
+  }
+
+  if (ratio >= 0.62) {
+    return Math.min(maxConcurrency, 25);
+  }
+
+  return maxConcurrency;
+};
+
+const waitForTranslationMemoryHeadroom = async (): Promise<void> => {
+  while (getHeapUsageRatio() >= TRANSLATION_MEMORY_CRITICAL_RATIO) {
+    (globalThis as typeof globalThis & { gc?: () => void }).gc?.();
+    await delay(TRANSLATION_MEMORY_POLL_INTERVAL_MS);
+  }
+};
+
+const runWithAdaptiveConcurrency = async <T, R>({
+  iteratee,
+  maxConcurrency,
+  onResult,
+  values,
+}: {
+  iteratee: (value: T, index: number) => Promise<R>;
+  maxConcurrency: number;
+  onResult: (result: R, value: T, index: number) => void;
+  values: T[];
+}): Promise<void> => {
+  if (values.length === 0) {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    let active = 0;
+    let completed = 0;
+    let index = 0;
+    let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const schedulePump = () => {
+      if (timer || stopped) {
+        return;
+      }
+
+      timer = setTimeout(() => {
+        timer = null;
+        void pump();
+      }, TRANSLATION_MEMORY_POLL_INTERVAL_MS);
+    };
+
+    const pump = async () => {
+      if (stopped) {
+        return;
+      }
+
+      if (completed >= values.length) {
+        stopped = true;
+        resolve();
+        return;
+      }
+
+      try {
+        if (active === 0) {
+          await waitForTranslationMemoryHeadroom();
+        }
+      } catch (error: unknown) {
+        stopped = true;
+        reject(error);
+        return;
+      }
+
+      const allowedConcurrency = Math.max(
+        1,
+        Math.min(maxConcurrency, values.length, getAdaptiveTranslationConcurrency(maxConcurrency)),
+      );
+
+      if (index < values.length && active >= allowedConcurrency) {
+        schedulePump();
+        return;
+      }
+
+      while (index < values.length && active < allowedConcurrency) {
+        const currentIndex = index;
+        const value = values[currentIndex];
+        index += 1;
+        active += 1;
+
+        Promise.resolve(iteratee(value, currentIndex))
+          .then((result) => {
+            onResult(result, value, currentIndex);
+          })
+          .then(
+            () => {
+              active -= 1;
+              completed += 1;
+              void pump();
+            },
+            (error: unknown) => {
+              stopped = true;
+              reject(error);
+            },
+          );
+      }
+    };
+
+    void pump();
+  });
 };
 
 const stripJsonCodeFence = (value: string): string => {
@@ -288,7 +406,10 @@ export const getCurrentLocalizedTreeItems = async ({
   return output;
 };
 
-export const isLocalizedPageOutdated = (sourcePage: GitHubDocPage, localizedPage: GitHubDocPage): boolean => {
+export const isLocalizedPageOutdated = (
+  sourcePage: Pick<GitHubDocPage, "updatedAt">,
+  localizedPage: Pick<GitHubLocalizationPageStatus, "updatedAt">,
+): boolean => {
   const sourceTime = sourcePage.updatedAt ? Date.parse(sourcePage.updatedAt) : Number.NaN;
   const translationTime = localizedPage.updatedAt ? Date.parse(localizedPage.updatedAt) : Number.NaN;
 
@@ -447,7 +568,7 @@ export const translatePageToQueuedGitHubLocalization = async ({
   origin: string;
   siteTitle: string;
   sourcePage: GitHubDocPage;
-}): Promise<{ upload: Promise<GitHubDocPage> }> => {
+}): Promise<{ upload: Promise<void> }> => {
   const text = await requestOpenRouterChatCompletion({
     apiKey,
     model,
@@ -479,7 +600,7 @@ export const translatePageToQueuedGitHubLocalization = async ({
   });
 
   return {
-    upload: queued.upload.then((result) => result.page),
+    upload: queued.upload,
   };
 };
 
@@ -510,13 +631,12 @@ export const getPageLocalizationStatuses = async ({
         };
       }
 
-      const snapshot = await loadGitHubLocalizationSnapshot({
+      const localizedByPath = await loadGitHubLocalizationStatusIndex({
         config,
         language,
         localizationPath,
         sourcePages,
       });
-      const localizedByPath = new Map(snapshot.pages.map((page) => [page.path, page]));
       let currentPages = 0;
       let missingPages = 0;
       let outdatedPages = 0;
@@ -578,13 +698,12 @@ export const translatePageLocalizations = async ({
       continue;
     }
 
-    const snapshot = await loadGitHubLocalizationSnapshot({
+    const localizedByPath = await loadGitHubLocalizationStatusIndex({
       config,
       language,
       localizationPath,
       sourcePages,
     });
-    const localizedByPath = new Map(snapshot.pages.map((page) => [page.path, page]));
 
     for (const sourcePage of sourcePages) {
       const localizedPage = localizedByPath.get(sourcePage.path);
@@ -612,17 +731,22 @@ export const translatePageLocalizations = async ({
     targetLanguages: languages.filter((language) => !isSourceLanguage(language)).length,
   });
 
+  const toEventSourcePage = (sourcePage: GitHubDocPage): PageLocalizationEventSourcePage => ({
+    path: sourcePage.path,
+    slug: sourcePage.slug,
+  });
+
   const toUploadEvent = (
-    candidate: TranslationCandidate,
+    context: { language: AutoTranslateLanguage; sourcePage: PageLocalizationEventSourcePage },
     event: GitHubLocalizationUploadEvent,
   ): PageLocalizationTranslationEvent => {
     if (event.type === "queued") {
       return {
         type: "upload-queued",
         flushAt: event.flushAt,
-        language: candidate.language,
+        language: context.language,
         queueSize: event.queueSize,
-        sourcePage: candidate.sourcePage,
+        sourcePage: context.sourcePage,
       };
     }
 
@@ -630,8 +754,8 @@ export const translatePageLocalizations = async ({
       return {
         type: "upload-start",
         batchSize: event.batchSize,
-        language: candidate.language,
-        sourcePage: candidate.sourcePage,
+        language: context.language,
+        sourcePage: context.sourcePage,
       };
     }
 
@@ -640,8 +764,8 @@ export const translatePageLocalizations = async ({
         type: "upload-success",
         batchSize: event.batchSize,
         commitSha: event.commitSha,
-        language: candidate.language,
-        sourcePage: candidate.sourcePage,
+        language: context.language,
+        sourcePage: context.sourcePage,
       };
     }
 
@@ -649,14 +773,19 @@ export const translatePageLocalizations = async ({
       type: "upload-retry",
       batchSize: event.batchSize,
       error: event.error,
-      language: candidate.language,
+      language: context.language,
       retryAt: event.retryAt,
-      sourcePage: candidate.sourcePage,
+      sourcePage: context.sourcePage,
     };
   };
 
   const translateCandidate = async (candidate: TranslationCandidate) => {
     const maxAttempts = TRANSLATION_MAX_RETRIES + 1;
+    const eventSourcePage = toEventSourcePage(candidate.sourcePage);
+    const uploadEventContext = {
+      language: candidate.language,
+      sourcePage: eventSourcePage,
+    };
 
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
       onEvent?.({
@@ -664,7 +793,7 @@ export const translatePageLocalizations = async ({
         attempt,
         maxAttempts,
         language: candidate.language,
-        sourcePage: candidate.sourcePage,
+        sourcePage: eventSourcePage,
       });
 
       try {
@@ -676,7 +805,7 @@ export const translatePageLocalizations = async ({
                 language: candidate.language,
                 localizationPath,
                 model,
-                onUploadEvent: (event) => onEvent?.(toUploadEvent(candidate, event)),
+                onUploadEvent: (event) => onEvent?.(toUploadEvent(uploadEventContext, event)),
                 origin,
                 siteTitle,
                 sourcePage: candidate.sourcePage,
@@ -701,7 +830,7 @@ export const translatePageLocalizations = async ({
           type: "page-success",
           attempt,
           language: candidate.language,
-          sourcePage: candidate.sourcePage,
+          sourcePage: eventSourcePage,
         });
         return { ok: true as const, upload };
       } catch (error: unknown) {
@@ -714,7 +843,7 @@ export const translatePageLocalizations = async ({
             maxAttempts,
             error: message,
             language: candidate.language,
-            sourcePage: candidate.sourcePage,
+            sourcePage: eventSourcePage,
           });
           continue;
         }
@@ -724,7 +853,7 @@ export const translatePageLocalizations = async ({
           attempts: attempt,
           error: message,
           language: candidate.language,
-          sourcePage: candidate.sourcePage,
+          sourcePage: eventSourcePage,
         });
         return {
           ok: false as const,
@@ -739,34 +868,39 @@ export const translatePageLocalizations = async ({
     };
   };
 
-  const results = await mapWithConcurrency(candidates, TRANSLATION_CONCURRENCY, async (candidate) => {
-    return translateCandidate(candidate);
-  });
-  const uploads = results
-    .map((result) => (result.ok ? result.upload : undefined))
-    .filter((upload): upload is Promise<GitHubDocPage> => Boolean(upload));
-
-  if (uploads.length > 0) {
-    await Promise.all(uploads);
-  }
-
   const failures: PageLocalizationRequestResult["failures"] = [];
+  const uploads = new Set<Promise<void>>();
   let translatedPages = 0;
 
-  results.forEach((result, index) => {
-    if (!result.ok) {
-      const candidate = candidates[index];
-      failures.push({
-        slug: candidate.sourcePage.slug,
-        path: candidate.sourcePage.path,
-        languageCode: candidate.language.code,
-        error: result.error,
-      });
-      return;
-    }
+  await runWithAdaptiveConcurrency({
+    values: candidates,
+    maxConcurrency: TRANSLATION_CONCURRENCY,
+    iteratee: async (candidate) => translateCandidate(candidate),
+    onResult: (result, candidate) => {
+      if (!result.ok) {
+        failures.push({
+          slug: candidate.sourcePage.slug,
+          path: candidate.sourcePage.path,
+          languageCode: candidate.language.code,
+          error: result.error,
+        });
+        return;
+      }
 
-    translatedPages += 1;
+      translatedPages += 1;
+
+      if (result.upload) {
+        const trackedUpload = result.upload.finally(() => {
+          uploads.delete(trackedUpload);
+        });
+        uploads.add(trackedUpload);
+      }
+    },
   });
+
+  if (uploads.size > 0) {
+    await Promise.all(uploads);
+  }
 
   return {
     totalPages: sourcePages.length * Math.max(0, languages.filter((language) => !isSourceLanguage(language)).length),

@@ -2,6 +2,7 @@ import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-loggi
 import {
   saveGitHubLocalizedDocsBatch,
   toRuntimeConfigCacheKey,
+  type GitHubLocalizedDocSourcePage,
   type SaveGitHubLocalizedDocBatchItem,
 } from "@/lib/github";
 import type {
@@ -9,7 +10,6 @@ import type {
   GitHubDocPage,
   GitHubRuntimeConfig,
   SaveGitHubDocInput,
-  SaveGitHubDocResult,
 } from "@/lib/types";
 
 export const GITHUB_LOCALIZATION_UPLOAD_INTERVAL_MS = 5 * 60 * 1_000;
@@ -28,7 +28,6 @@ export type GitHubLocalizationUploadEvent =
       type: "upload-success";
       batchSize: number;
       commitSha: string;
-      result: SaveGitHubDocResult;
     }
   | {
       type: "upload-retry";
@@ -48,11 +47,12 @@ export type GitHubLocalizationUploadQueueInput = {
 
 export type GitHubLocalizationQueuedUpload = {
   flushAt: string;
-  upload: Promise<SaveGitHubDocResult>;
+  upload: Promise<void>;
 };
 
-type UploadQueueItem = GitHubLocalizationUploadQueueInput & {
-  resolve: (result: SaveGitHubDocResult) => void;
+type UploadQueueItem = Omit<GitHubLocalizationUploadQueueInput, "sourcePage"> & {
+  sourcePage: GitHubLocalizedDocSourcePage;
+  resolve: () => void;
 };
 
 type UploadQueueState = {
@@ -134,6 +134,15 @@ const toBatchItem = (item: UploadQueueItem): SaveGitHubLocalizedDocBatchItem => 
   sourcePage: item.sourcePage,
 });
 
+const compactSourcePage = (page: GitHubDocPage): GitHubLocalizedDocSourcePage => ({
+  path: page.path,
+  slug: page.slug,
+  sha: page.sha,
+  includeInPlaintextExport: page.includeInPlaintextExport,
+  updatedAt: page.updatedAt,
+  updatedBy: page.updatedBy,
+});
+
 const scheduleUploadFlush = (state: UploadQueueState): void => {
   if (state.timer || state.flushing || state.pending.length === 0) {
     return;
@@ -190,18 +199,17 @@ export const flushGitHubLocalizationUploads = async (): Promise<void> => {
       try {
         const result = await saveGitHubLocalizedDocsBatch({
           config: group[0].config,
+          includePages: false,
           items: group.map(toBatchItem),
         });
 
-        result.results.forEach((saveResult, index) => {
-          const item = group[index];
+        group.forEach((item) => {
           item.onEvent?.({
             type: "upload-success",
             batchSize: group.length,
             commitSha: result.commitSha,
-            result: saveResult,
           });
-          item.resolve(saveResult);
+          item.resolve();
         });
       } catch (error: unknown) {
         requeueUploadGroup(state, group, error);
@@ -218,13 +226,14 @@ export const enqueueGitHubLocalizationUpload = (
   input: GitHubLocalizationUploadQueueInput,
 ): GitHubLocalizationQueuedUpload => {
   const state = getUploadQueueState();
-  let resolve!: (result: SaveGitHubDocResult) => void;
-  const upload = new Promise<SaveGitHubDocResult>((promiseResolve) => {
+  let resolve!: () => void;
+  const upload = new Promise<void>((promiseResolve) => {
     resolve = promiseResolve;
   });
 
   const item = {
     ...input,
+    sourcePage: compactSourcePage(input.sourcePage),
     resolve,
   };
   state.pending.push(item);

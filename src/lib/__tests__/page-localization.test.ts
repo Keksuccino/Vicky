@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   loadGitHubLocalizationSnapshot: vi.fn(),
+  loadGitHubLocalizationStatusIndex: vi.fn(),
   loadGitHubLocalizedDoc: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
   saveGitHubLocalizedDoc: vi.fn(),
@@ -13,6 +14,7 @@ vi.mock("@/lib/openrouter", () => ({
 
 vi.mock("@/lib/github", () => ({
   loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
+  loadGitHubLocalizationStatusIndex: mocks.loadGitHubLocalizationStatusIndex,
   loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,
   saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
 }));
@@ -87,6 +89,7 @@ describe("page localization translations", () => {
       tree: [],
       pages: [],
     });
+    mocks.loadGitHubLocalizationStatusIndex.mockResolvedValue(new Map());
     mocks.saveGitHubLocalizedDoc.mockResolvedValue({
       localizedRepoPath: "localizations/de/home.md",
       page: sourcePage,
