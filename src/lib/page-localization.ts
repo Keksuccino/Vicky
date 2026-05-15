@@ -2,6 +2,10 @@ import { ApiError } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
 import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
 import {
+  enqueueGitHubLocalizationUpload,
+  type GitHubLocalizationUploadEvent,
+} from "@/lib/github-localization-upload-queue";
+import {
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
@@ -94,6 +98,34 @@ export type PageLocalizationTranslationEvent =
       attempts: number;
       error: string;
       language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "upload-queued";
+      flushAt: string;
+      language: AutoTranslateLanguage;
+      queueSize: number;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "upload-start";
+      batchSize: number;
+      language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "upload-success";
+      batchSize: number;
+      commitSha: string;
+      language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "upload-retry";
+      batchSize: number;
+      error: string;
+      language: AutoTranslateLanguage;
+      retryAt: string;
       sourcePage: GitHubDocPage;
     };
 
@@ -395,6 +427,62 @@ export const translatePageToGitHubLocalization = async ({
   return result.page;
 };
 
+export const translatePageToQueuedGitHubLocalization = async ({
+  apiKey,
+  config,
+  language,
+  localizationPath,
+  model,
+  onUploadEvent,
+  origin,
+  siteTitle,
+  sourcePage,
+}: {
+  apiKey: string;
+  config: GitHubRuntimeConfig;
+  language: AutoTranslateLanguage;
+  localizationPath: string;
+  model: string;
+  onUploadEvent?: (event: GitHubLocalizationUploadEvent) => void;
+  origin: string;
+  siteTitle: string;
+  sourcePage: GitHubDocPage;
+}): Promise<{ upload: Promise<GitHubDocPage> }> => {
+  const text = await requestOpenRouterChatCompletion({
+    apiKey,
+    model,
+    origin,
+    siteTitle,
+    messages: [
+      {
+        role: "system",
+        content: SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: buildTranslationPrompt(language.name, sourcePage),
+      },
+    ],
+  });
+  const markdown = toTranslatedMarkdown(sourcePage, normalizeTranslationResponse(text));
+  const queued = enqueueGitHubLocalizationUpload({
+    config,
+    language,
+    localizationPath,
+    onEvent: onUploadEvent,
+    sourcePage,
+    input: {
+      markdown,
+      includeInPlaintextExport: sourcePage.includeInPlaintextExport,
+      commitMessage: `docs: update ${language.code} localization for ${sourcePage.path}`,
+    },
+  });
+
+  return {
+    upload: queued.upload.then((result) => result.page),
+  };
+};
+
 export const getPageLocalizationStatuses = async ({
   config,
   languages,
@@ -466,6 +554,7 @@ export const translatePageLocalizations = async ({
   model,
   onEvent,
   origin,
+  queueUploads,
   siteTitle,
   sourcePages,
 }: {
@@ -477,6 +566,7 @@ export const translatePageLocalizations = async ({
   model: string;
   onEvent?: (event: PageLocalizationTranslationEvent) => void;
   origin: string;
+  queueUploads?: boolean;
   siteTitle: string;
   sourcePages: GitHubDocPage[];
 }): Promise<PageLocalizationRequestResult> => {
@@ -522,6 +612,49 @@ export const translatePageLocalizations = async ({
     targetLanguages: languages.filter((language) => !isSourceLanguage(language)).length,
   });
 
+  const toUploadEvent = (
+    candidate: TranslationCandidate,
+    event: GitHubLocalizationUploadEvent,
+  ): PageLocalizationTranslationEvent => {
+    if (event.type === "queued") {
+      return {
+        type: "upload-queued",
+        flushAt: event.flushAt,
+        language: candidate.language,
+        queueSize: event.queueSize,
+        sourcePage: candidate.sourcePage,
+      };
+    }
+
+    if (event.type === "upload-start") {
+      return {
+        type: "upload-start",
+        batchSize: event.batchSize,
+        language: candidate.language,
+        sourcePage: candidate.sourcePage,
+      };
+    }
+
+    if (event.type === "upload-success") {
+      return {
+        type: "upload-success",
+        batchSize: event.batchSize,
+        commitSha: event.commitSha,
+        language: candidate.language,
+        sourcePage: candidate.sourcePage,
+      };
+    }
+
+    return {
+      type: "upload-retry",
+      batchSize: event.batchSize,
+      error: event.error,
+      language: candidate.language,
+      retryAt: event.retryAt,
+      sourcePage: candidate.sourcePage,
+    };
+  };
+
   const translateCandidate = async (candidate: TranslationCandidate) => {
     const maxAttempts = TRANSLATION_MAX_RETRIES + 1;
 
@@ -535,23 +668,42 @@ export const translatePageLocalizations = async ({
       });
 
       try {
-        await translatePageToGitHubLocalization({
-          apiKey,
-          config,
-          language: candidate.language,
-          localizationPath,
-          model,
-          origin,
-          siteTitle,
-          sourcePage: candidate.sourcePage,
-        });
+        const upload = queueUploads
+          ? (
+              await translatePageToQueuedGitHubLocalization({
+                apiKey,
+                config,
+                language: candidate.language,
+                localizationPath,
+                model,
+                onUploadEvent: (event) => onEvent?.(toUploadEvent(candidate, event)),
+                origin,
+                siteTitle,
+                sourcePage: candidate.sourcePage,
+              })
+            ).upload
+          : undefined;
+
+        if (!queueUploads) {
+          await translatePageToGitHubLocalization({
+            apiKey,
+            config,
+            language: candidate.language,
+            localizationPath,
+            model,
+            origin,
+            siteTitle,
+            sourcePage: candidate.sourcePage,
+          });
+        }
+
         onEvent?.({
           type: "page-success",
           attempt,
           language: candidate.language,
           sourcePage: candidate.sourcePage,
         });
-        return { ok: true as const };
+        return { ok: true as const, upload };
       } catch (error: unknown) {
         const message = getDetailedAutoTranslateErrorMessage(error);
 
@@ -590,6 +742,13 @@ export const translatePageLocalizations = async ({
   const results = await mapWithConcurrency(candidates, TRANSLATION_CONCURRENCY, async (candidate) => {
     return translateCandidate(candidate);
   });
+  const uploads = results
+    .map((result) => (result.ok ? result.upload : undefined))
+    .filter((upload): upload is Promise<GitHubDocPage> => Boolean(upload));
+
+  if (uploads.length > 0) {
+    await Promise.all(uploads);
+  }
 
   const failures: PageLocalizationRequestResult["failures"] = [];
   let translatedPages = 0;

@@ -1862,3 +1862,158 @@ export const saveGitHubLocalizedDoc = async ({
     },
   };
 };
+
+export type SaveGitHubLocalizedDocBatchItem = {
+  input: Omit<SaveGitHubDocInput, "path" | "slug">;
+  language: Pick<AutoTranslateLanguage, "code">;
+  localizationPath: string;
+  sourcePage: GitHubDocPage;
+};
+
+export type SaveGitHubLocalizedDocsBatchResult = {
+  commitSha: string;
+  results: SaveGitHubDocResult[];
+};
+
+export const saveGitHubLocalizedDocsBatch = async ({
+  commitMessage,
+  config,
+  items,
+}: {
+  commitMessage?: string;
+  config: GitHubRuntimeConfig;
+  items: SaveGitHubLocalizedDocBatchItem[];
+}): Promise<SaveGitHubLocalizedDocsBatchResult> => {
+  const validation = validateGitHubRuntimeConfig(config);
+
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  if (items.length === 0) {
+    throw badRequest("At least one localized document is required.");
+  }
+
+  const octokit = createOctokit(config);
+  const refName = `heads/${config.branch}`;
+  const ref = await octokit.git.getRef({
+    owner: config.owner,
+    repo: config.repo,
+    ref: refName,
+  });
+  const baseCommitSha = ref.data.object.sha;
+  const baseCommit = await octokit.git.getCommit({
+    owner: config.owner,
+    repo: config.repo,
+    commit_sha: baseCommitSha,
+  });
+  const baseTreeSha = baseCommit.data.tree.sha;
+  const preparedItems = await mapWithConcurrency(items, FULL_DOCS_LOAD_CONCURRENCY, async (item) => {
+    const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, item.sourcePage);
+    const fullPath = localizedRepoPathForSourcePath(
+      item.localizationPath,
+      item.language.code,
+      resolvedSourcePage.path,
+    );
+    let baseTitle = resolvedSourcePage.title;
+    let baseDescription = resolvedSourcePage.description;
+    let baseContent = resolvedSourcePage.content;
+    let baseIncludeInPlaintextExport = resolvedSourcePage.includeInPlaintextExport;
+
+    if (item.input.markdown !== undefined) {
+      const parsedIncoming = parseMarkdownDocument(item.input.markdown);
+      baseTitle = parsedIncoming.title;
+      baseDescription = parsedIncoming.description;
+      baseContent = parsedIncoming.content;
+      baseIncludeInPlaintextExport = parsedIncoming.includeInPlaintextExport;
+    }
+
+    const markdown = serializeMarkdownDocument({
+      title: item.input.title ?? baseTitle,
+      description: item.input.description ?? baseDescription,
+      content: item.input.content ?? baseContent,
+      includeInPlaintextExport: item.input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
+    });
+    const parsedOutput = parseMarkdownDocument(markdown);
+    if (!parsedOutput.content.trim()) {
+      throw badRequest("Localized document content cannot be empty.");
+    }
+
+    const blob = await octokit.git.createBlob({
+      owner: config.owner,
+      repo: config.repo,
+      content: markdown,
+      encoding: "utf-8",
+    });
+
+    return {
+      fullPath,
+      item,
+      markdown,
+      resolvedSourcePage,
+      blobSha: blob.data.sha,
+    };
+  });
+  const tree = await octokit.git.createTree({
+    owner: config.owner,
+    repo: config.repo,
+    base_tree: baseTreeSha,
+    tree: preparedItems.map((item) => ({
+      path: item.fullPath,
+      mode: "100644" as const,
+      type: "blob" as const,
+      sha: item.blobSha,
+    })),
+  });
+  const commit = await octokit.git.createCommit({
+    owner: config.owner,
+    repo: config.repo,
+    message:
+      commitMessage?.trim() ||
+      `docs: update ${preparedItems.length} localization${preparedItems.length === 1 ? "" : "s"}`,
+    tree: tree.data.sha,
+    parents: [baseCommitSha],
+  });
+  await octokit.git.updateRef({
+    owner: config.owner,
+    repo: config.repo,
+    ref: refName,
+    sha: commit.data.sha,
+  });
+
+  const commitMeta = extractCommitMetadata(commit.data);
+  const updatedAt = commitMeta.updatedAt ?? new Date().toISOString();
+  const results = preparedItems.map((item): SaveGitHubDocResult => {
+    const page = createLocalizedDocPage({
+      commitMeta: {
+        updatedAt,
+        updatedBy: commitMeta.updatedBy,
+      },
+      file: {
+        sha: item.blobSha,
+        markdown: item.markdown,
+      },
+      languageCode: item.item.language.code,
+      localizedRepoPath: item.fullPath,
+      sourcePage: item.resolvedSourcePage,
+    });
+
+    clearLocalizationCaches(config, item.item.localizationPath, item.item.language.code);
+
+    return {
+      path: page.path,
+      slug: page.slug,
+      commitSha: commit.data.sha,
+      page: {
+        ...page,
+        translationStale: false,
+        localizationStatus: "current",
+      },
+    };
+  });
+
+  return {
+    commitSha: commit.data.sha,
+    results,
+  };
+};

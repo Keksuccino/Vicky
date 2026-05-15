@@ -214,9 +214,45 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
       ...job.result,
       translatedPages: job.result.translatedPages + 1,
     };
-    addJobLog(job, "success", `Finished ${page} to ${language}.`, {
+    addJobLog(job, "success", `Generated ${page} translation for ${language}.`, {
       ...pageContext,
-      details: `Completed on attempt ${event.attempt}.`,
+      details: `Translation completed on attempt ${event.attempt}. Waiting for the queued GitHub upload.`,
+    });
+    return;
+  }
+
+  if (event.type === "upload-queued") {
+    addJobLog(job, "info", `Queued GitHub upload for ${page} to ${language}.`, {
+      ...pageContext,
+      details: `Upload queue contains ${event.queueSize} item${event.queueSize === 1 ? "" : "s"}. Next upload window: ${new Date(
+        event.flushAt,
+      ).toLocaleString()}.`,
+    });
+    return;
+  }
+
+  if (event.type === "upload-start") {
+    addJobLog(job, "info", `Uploading ${page} to GitHub.`, {
+      ...pageContext,
+      details: `Batch size: ${event.batchSize} localization${event.batchSize === 1 ? "" : "s"}.`,
+    });
+    return;
+  }
+
+  if (event.type === "upload-success") {
+    addJobLog(job, "success", `Uploaded ${page} to GitHub.`, {
+      ...pageContext,
+      details: `Commit ${event.commitSha}. Batch size: ${event.batchSize}.`,
+    });
+    return;
+  }
+
+  if (event.type === "upload-retry") {
+    addJobLog(job, "warning", `GitHub upload for ${page} will retry.`, {
+      ...pageContext,
+      details: `Batch size: ${event.batchSize}. Next upload window: ${new Date(
+        event.retryAt,
+      ).toLocaleString()}. ${event.error}`,
     });
     return;
   }
@@ -260,6 +296,7 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
       model: input.model,
       onEvent: (event) => updateJobFromEvent(job, event),
       origin: input.origin,
+      queueUploads: true,
       sourcePages: pages,
       siteTitle: input.siteTitle,
     });
@@ -270,7 +307,7 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
     addJobLog(
       job,
       result.failedPages > 0 ? "warning" : "success",
-      `Translation job finished with ${result.translatedPages} translated, ${result.cachedPages} current, and ${result.failedPages} failed.`,
+      `Translation job finished with ${result.translatedPages} translated and uploaded, ${result.cachedPages} current, and ${result.failedPages} failed.`,
     );
     logAutoTranslateInfo("Page localization background job finished", {
       jobId: job.id,
