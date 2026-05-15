@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   loadGitHubLocalizedDoc: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
   saveGitHubLocalizedDoc: vi.fn(),
+  enqueueGitHubLocalizationUpload: vi.fn(),
 }));
 
 vi.mock("@/lib/openrouter", () => ({
@@ -17,6 +18,10 @@ vi.mock("@/lib/github", () => ({
   loadGitHubLocalizationStatusIndex: mocks.loadGitHubLocalizationStatusIndex,
   loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,
   saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
+}));
+
+vi.mock("@/lib/github-localization-upload-queue", () => ({
+  enqueueGitHubLocalizationUpload: mocks.enqueueGitHubLocalizationUpload,
 }));
 
 import {
@@ -80,6 +85,21 @@ const translatePages = (events: PageLocalizationTranslationEvent[] = []) =>
     sourcePages: [sourcePage],
   });
 
+const createDeferred = <T>() => {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+
+  return {
+    promise,
+    reject,
+    resolve,
+  };
+};
+
 describe("page localization translations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -94,6 +114,16 @@ describe("page localization translations", () => {
       localizedRepoPath: "localizations/de/home.md",
       page: sourcePage,
     });
+    mocks.enqueueGitHubLocalizationUpload.mockImplementation(
+      (input: { onEvent?: (event: { type: "queued"; flushAt: string; queueSize: number }) => void }) => {
+        const flushAt = "2026-05-04T15:42:03.000Z";
+        input.onEvent?.({ type: "queued", flushAt, queueSize: 1 });
+        return {
+          flushAt,
+          upload: Promise.resolve(),
+        };
+      },
+    );
   });
 
   it("retries a failing page translation before marking it translated", async () => {
@@ -128,6 +158,48 @@ describe("page localization translations", () => {
     expect(events.find((event) => event.type === "page-failed")).toMatchObject({
       attempts: 11,
       type: "page-failed",
+    });
+  });
+
+  it("reports when page translation is finished and queued GitHub uploads are still pending", async () => {
+    const events: PageLocalizationTranslationEvent[] = [];
+    const upload = createDeferred<void>();
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(translatedPayload);
+    mocks.enqueueGitHubLocalizationUpload.mockImplementation(
+      (input: { onEvent?: (event: { type: "queued"; flushAt: string; queueSize: number }) => void }) => {
+        const flushAt = "2026-05-04T15:42:03.000Z";
+        input.onEvent?.({ type: "queued", flushAt, queueSize: 1 });
+        return {
+          flushAt,
+          upload: upload.promise,
+        };
+      },
+    );
+
+    const run = translatePageLocalizations({
+      apiKey: "openrouter-key",
+      config,
+      languages: [language],
+      localizationPath: "localizations",
+      mode: "missing-and-outdated",
+      model: "openai/gpt-5.4-mini",
+      onEvent: (event) => events.push(event),
+      origin: "https://docs.example.com",
+      queueUploads: true,
+      siteTitle: "Vicky Docs",
+      sourcePages: [sourcePage],
+    });
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(events.find((event) => event.type === "uploads-waiting")).toMatchObject({
+      queuedUploads: 1,
+      type: "uploads-waiting",
+    });
+
+    upload.resolve();
+    await expect(run).resolves.toMatchObject({
+      translatedPages: 1,
     });
   });
 });

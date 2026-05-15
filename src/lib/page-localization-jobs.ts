@@ -185,6 +185,18 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
     return;
   }
 
+  if (event.type === "uploads-waiting") {
+    addJobLog(
+      job,
+      "warning",
+      "Finished translating pages. Waiting for the GitHub cooldown to sync translations to GitHub.",
+      {
+        details: `${event.queuedUploads} queued GitHub upload${event.queuedUploads === 1 ? "" : "s"} still pending.`,
+      },
+    );
+    return;
+  }
+
   const page = formatPage(event);
   const language = formatLanguage(event.language);
   const pageContext = {

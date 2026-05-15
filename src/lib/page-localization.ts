@@ -116,6 +116,10 @@ export type PageLocalizationTranslationEvent =
       sourcePage: PageLocalizationEventSourcePage;
     }
   | {
+      type: "uploads-waiting";
+      queuedUploads: number;
+    }
+  | {
       type: "upload-start";
       batchSize: number;
       language: AutoTranslateLanguage;
@@ -899,6 +903,10 @@ export const translatePageLocalizations = async ({
   });
 
   if (uploads.size > 0) {
+    onEvent?.({
+      type: "uploads-waiting",
+      queuedUploads: uploads.size,
+    });
     await Promise.all(uploads);
   }
 
