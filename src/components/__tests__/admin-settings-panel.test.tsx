@@ -16,6 +16,7 @@ const clearAdminMarkdownCacheMock = vi.fn();
 const createAdminModeratorMock = vi.fn();
 const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
+const fetchAdminLanguageTranslationStatusMock = vi.fn();
 const fetchAdminMarkdownCacheStatusMock = vi.fn();
 const fetchAdminModeratorsMock = vi.fn();
 const fetchAdminPerformanceStatsMock = vi.fn();
@@ -24,6 +25,7 @@ const fetchAdminVisitorStatsMock = vi.fn();
 const getCurrentUserMock = vi.fn();
 const logoutMock = vi.fn();
 const refreshAdminDocsCacheMock = vi.fn();
+const requestAdminLanguageTranslationsMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
 const testAdminConnectionMock = vi.fn();
 const updateAdminModeratorMock = vi.fn();
@@ -44,6 +46,7 @@ vi.mock("@/components/api", () => ({
   createAdminModerator: (...args: unknown[]) => createAdminModeratorMock(...args),
   deleteAdminModerator: (...args: unknown[]) => deleteAdminModeratorMock(...args),
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
+  fetchAdminLanguageTranslationStatus: (...args: unknown[]) => fetchAdminLanguageTranslationStatusMock(...args),
   fetchAdminMarkdownCacheStatus: (...args: unknown[]) => fetchAdminMarkdownCacheStatusMock(...args),
   fetchAdminModerators: (...args: unknown[]) => fetchAdminModeratorsMock(...args),
   fetchAdminPerformanceStats: (...args: unknown[]) => fetchAdminPerformanceStatsMock(...args),
@@ -53,6 +56,7 @@ vi.mock("@/components/api", () => ({
   getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),
   logout: (...args: unknown[]) => logoutMock(...args),
   refreshAdminDocsCache: (...args: unknown[]) => refreshAdminDocsCacheMock(...args),
+  requestAdminLanguageTranslations: (...args: unknown[]) => requestAdminLanguageTranslationsMock(...args),
   saveAdminSettings: (...args: unknown[]) => saveAdminSettingsMock(...args),
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
   updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
@@ -251,6 +255,11 @@ describe("AdminSettingsPanel", () => {
     fetchAdminSettingsMock.mockResolvedValue(INITIAL_SETTINGS);
     fetchAdminModeratorsMock.mockResolvedValue([]);
     fetchAdminDomainSslStatusMock.mockResolvedValue(SSL_STATUS);
+    fetchAdminLanguageTranslationStatusMock.mockResolvedValue({
+      statuses: [],
+      job: null,
+      updatedAt: "2026-03-10T12:00:00.000Z",
+    });
     fetchAdminMarkdownCacheStatusMock.mockResolvedValue(MARKDOWN_CACHE_STATUS);
     fetchAdminPerformanceStatsMock.mockResolvedValue(PERFORMANCE_STATS);
     fetchAdminVisitorStatsMock.mockResolvedValue(VISITOR_STATS);
@@ -272,6 +281,27 @@ describe("AdminSettingsPanel", () => {
       pageCount: 1,
       fetchedAt: "2026-03-10T12:00:00.000Z",
       expiresAt: "2026-03-10T13:00:00.000Z",
+    });
+    requestAdminLanguageTranslationsMock.mockResolvedValue({
+      id: "translation-test",
+      status: "running",
+      mode: "missing-and-outdated",
+      createdAt: "2026-03-10T12:00:00.000Z",
+      startedAt: "2026-03-10T12:00:00.000Z",
+      finishedAt: null,
+      languages: [{ name: "German", code: "de" }],
+      localizationPath: "localizations",
+      model: "openai/gpt-5.4-mini",
+      result: {
+        totalPages: 1,
+        cachedPages: 0,
+        requestedPages: 1,
+        translatedPages: 0,
+        failedPages: 0,
+        failures: [],
+      },
+      error: null,
+      logs: [],
     });
     testAdminConnectionMock.mockResolvedValue("ok");
     clearAdminMarkdownCacheMock.mockResolvedValue({

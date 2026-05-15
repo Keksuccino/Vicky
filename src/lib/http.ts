@@ -23,13 +23,32 @@ export const parseJsonBody = async <T>(request: Request): Promise<T> => {
   return JSON.parse(text) as T;
 };
 
-export const errorResponse = (error: unknown): NextResponse => {
+const formatDetailedError = (error: unknown): string => {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const parts = [`${error.name || "Error"}: ${error.message || "No error message provided."}`];
+  const cause = (error as Error & { cause?: unknown }).cause;
+
+  if (cause !== undefined) {
+    parts.push(`Cause: ${formatDetailedError(cause)}`);
+  }
+
+  return parts.join(" ");
+};
+
+export const errorResponse = (error: unknown, options: { exposeDetails?: boolean } = {}): NextResponse => {
   if (error instanceof ApiError) {
     return NextResponse.json({ error: error.message }, { status: error.status });
   }
 
   if (error instanceof ZodError) {
     return NextResponse.json({ error: error.issues[0]?.message ?? "Invalid request." }, { status: 400 });
+  }
+
+  if (options.exposeDetails) {
+    return NextResponse.json({ error: formatDetailedError(error) }, { status: 500 });
   }
 
   return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });

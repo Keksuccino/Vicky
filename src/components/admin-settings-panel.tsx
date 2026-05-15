@@ -21,7 +21,7 @@ import {
   createAdminModerator,
   deleteAdminModerator,
   fetchAdminDomainSslStatus,
-  fetchAdminLanguageTranslationCacheStatuses,
+  fetchAdminLanguageTranslationStatus,
   fetchAdminMarkdownCacheStatus,
   fetchAdminModerators,
   fetchAdminPerformanceStats,
@@ -68,6 +68,8 @@ import type {
   AdminMarkdownCachePageStatus,
   AdminMarkdownCacheStatus,
   AdminSettings,
+  AdminTranslationJobLogEntry,
+  AdminTranslationJobSnapshot,
   AutoTranslateLanguage,
   DomainSslRuntimeStatus,
   ModeratorAccount,
@@ -1349,6 +1351,56 @@ type TranslationRequestStatus = {
 
 type TranslationCacheStatusTone = "loading" | "empty" | "partial" | "complete";
 
+const getTranslationJobStatusLabel = (job: AdminTranslationJobSnapshot | null): string => {
+  if (!job) {
+    return "Idle";
+  }
+
+  if (job.status === "running") {
+    return "Running";
+  }
+
+  if (job.status === "completed") {
+    return "Complete";
+  }
+
+  if (job.status === "completed_with_failures") {
+    return "Complete with failures";
+  }
+
+  return "Failed";
+};
+
+const getTranslationJobStatusTone = (
+  job: AdminTranslationJobSnapshot | null,
+): "loading" | "complete" | "partial" | "empty" => {
+  if (!job || job.status === "running") {
+    return "loading";
+  }
+
+  if (job.status === "completed") {
+    return "complete";
+  }
+
+  return job.status === "completed_with_failures" ? "partial" : "empty";
+};
+
+const getTranslationLogIcon = (level: AdminTranslationJobLogEntry["level"]): string => {
+  if (level === "success") {
+    return "check_circle";
+  }
+
+  if (level === "warning") {
+    return "warning";
+  }
+
+  if (level === "error") {
+    return "error";
+  }
+
+  return "info";
+};
+
 const translationCacheStatusKey = (languageCode: string): string =>
   normalizeAutoTranslateLanguageCode(languageCode).toLowerCase();
 
@@ -1436,6 +1488,7 @@ export function AdminSettingsPanel() {
   );
   const [translationBulkAction, setTranslationBulkAction] = useState<"outdated" | "missing-and-outdated" | null>(null);
   const [translationRequestStatus, setTranslationRequestStatus] = useState<TranslationRequestStatus | null>(null);
+  const [translationJob, setTranslationJob] = useState<AdminTranslationJobSnapshot | null>(null);
   const [translationCacheStatuses, setTranslationCacheStatuses] = useState<
     Record<string, AdminLanguageTranslationCacheStatus>
   >({});
@@ -1485,6 +1538,8 @@ export function AdminSettingsPanel() {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const translationCacheStatusRequestRef = useRef(0);
   const translationCacheStatusInFlightRef = useRef(false);
+  const translationLogRef = useRef<HTMLDivElement | null>(null);
+  const lastTranslationJobStatusRef = useRef<AdminTranslationJobSnapshot["status"] | null>(null);
   const markdownCacheStatusRequestRef = useRef(0);
   const performanceStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
@@ -1513,6 +1568,8 @@ export function AdminSettingsPanel() {
       }),
     [settings.autoTranslateLanguages, settings.autoTranslateLocalizationPath, settings.autoTranslateOpenRouterModel],
   );
+  const activeTranslationMode = translationJob?.status === "running" ? translationJob.mode : translationBulkAction;
+  const translationLogEntries = translationJob?.logs ?? [];
 
   const refreshSslStatus = useCallback(async () => {
     setSslStatusLoading(true);
@@ -1827,7 +1884,7 @@ export function AdminSettingsPanel() {
 
     try {
       const draft = latestSettingsRef.current;
-      const statuses = await fetchAdminLanguageTranslationCacheStatuses(
+      const runtimeStatus = await fetchAdminLanguageTranslationStatus(
         draft.autoTranslateLanguages,
         draft.autoTranslateOpenRouterModel,
         draft.autoTranslateLocalizationPath,
@@ -1837,7 +1894,8 @@ export function AdminSettingsPanel() {
         return;
       }
 
-      setTranslationCacheStatuses(createTranslationCacheStatusMap(statuses));
+      setTranslationCacheStatuses(createTranslationCacheStatusMap(runtimeStatus.statuses));
+      setTranslationJob(runtimeStatus.job);
     } catch (error) {
       if (translationCacheStatusRequestRef.current === requestId) {
         setTranslationCacheStatusError(formatApiError(error));
@@ -1866,6 +1924,26 @@ export function AdminSettingsPanel() {
     setMarkdownCacheStatusError(result.error);
     setMarkdownCacheStatusLoading(false);
   }, []);
+
+  useEffect(() => {
+    const nextStatus = translationJob?.status ?? null;
+    const previousStatus = lastTranslationJobStatusRef.current;
+    lastTranslationJobStatusRef.current = nextStatus;
+
+    if (previousStatus === "running" && nextStatus && nextStatus !== "running") {
+      void refreshMarkdownCacheStatus();
+      void refreshTranslationCacheStatuses();
+    }
+  }, [refreshMarkdownCacheStatus, refreshTranslationCacheStatuses, translationJob?.status]);
+
+  useEffect(() => {
+    const logElement = translationLogRef.current;
+    if (!logElement) {
+      return;
+    }
+
+    logElement.scrollTop = logElement.scrollHeight;
+  }, [translationLogEntries.length, translationJob?.id]);
 
   const cacheMissingMarkdownHtml = useCallback(async () => {
     setWarmingMarkdownCache(true);
@@ -2018,49 +2096,19 @@ export function AdminSettingsPanel() {
         next.add(code.toLowerCase());
         return next;
       });
-      setTranslationRequestStatus({
-        tone: "warning",
-        message: `Requesting ${name} translations...`,
-      });
+      setTranslationRequestStatus(null);
 
       try {
         await persistLatestSettings();
         const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
-        const result = await requestAdminLanguageTranslations({
+        const job = await requestAdminLanguageTranslations({
           mode: "missing-and-outdated",
           languages: [{ name, code, icon }],
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
-        const pageLabel = result.totalPages === 1 ? "page" : "pages";
+        setTranslationJob(job);
+        lastTranslationJobStatusRef.current = job.status;
         void refreshTranslationCacheStatuses();
-        void refreshMarkdownCacheStatus();
-
-        if (result.failedPages > 0) {
-          setTranslationRequestStatus({
-            tone: "warning",
-            message: `${result.translatedPages} ${name} translation${
-              result.translatedPages === 1 ? "" : "s"
-            } finished, ${result.cachedPages} ${pageLabel} already had current localizations, and ${
-              result.failedPages
-            } failed.`,
-          });
-          return;
-        }
-
-        if (result.requestedPages === 0) {
-        setTranslationRequestStatus({
-          tone: "success",
-          message: `All ${result.totalPages} ${pageLabel} already have current ${name} localizations.`,
-        });
-          return;
-        }
-
-        setTranslationRequestStatus({
-          tone: "success",
-        message: `Finished ${result.translatedPages} ${name} translation${
-          result.translatedPages === 1 ? "" : "s"
-        }. ${result.cachedPages} ${pageLabel} already had current localizations.`,
-      });
       } catch (error) {
         setTranslationRequestStatus({
           tone: "error",
@@ -2074,7 +2122,7 @@ export function AdminSettingsPanel() {
         });
       }
     },
-    [persistLatestSettings, refreshMarkdownCacheStatus, refreshTranslationCacheStatuses, settings.autoTranslateLocalizationPath],
+    [persistLatestSettings, refreshTranslationCacheStatuses, settings.autoTranslateLocalizationPath],
   );
 
   const requestBulkTranslations = useCallback(
@@ -2096,46 +2144,18 @@ export function AdminSettingsPanel() {
       }
 
       setTranslationBulkAction(mode);
-      setTranslationRequestStatus({
-        tone: "warning",
-        message: mode === "outdated" ? "Updating outdated translations..." : "Translating missing and outdated pages...",
-      });
+      setTranslationRequestStatus(null);
 
       try {
         await persistLatestSettings();
-        const result = await requestAdminLanguageTranslations({
+        const job = await requestAdminLanguageTranslations({
           mode,
           languages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
-        const pageLabel = result.requestedPages === 1 ? "page" : "pages";
+        setTranslationJob(job);
+        lastTranslationJobStatusRef.current = job.status;
         void refreshTranslationCacheStatuses();
-        void refreshMarkdownCacheStatus();
-
-        if (result.failedPages > 0) {
-          setTranslationRequestStatus({
-            tone: "warning",
-            message: `Finished ${result.translatedPages} translation${
-              result.translatedPages === 1 ? "" : "s"
-            }; ${result.failedPages} failed.`,
-          });
-          return;
-        }
-
-        if (result.requestedPages === 0) {
-          setTranslationRequestStatus({
-            tone: "success",
-            message: "All localizations were already current.",
-          });
-          return;
-        }
-
-        setTranslationRequestStatus({
-          tone: "success",
-          message: `Finished ${result.translatedPages} translation${
-            result.translatedPages === 1 ? "" : "s"
-          } for ${result.requestedPages} ${pageLabel}.`,
-        });
       } catch (error) {
         setTranslationRequestStatus({
           tone: "error",
@@ -2147,7 +2167,6 @@ export function AdminSettingsPanel() {
     },
     [
       persistLatestSettings,
-      refreshMarkdownCacheStatus,
       refreshTranslationCacheStatuses,
       settings.autoTranslateLanguages,
       settings.autoTranslateLocalizationPath,
@@ -3506,26 +3525,26 @@ export function AdminSettingsPanel() {
                   <button
                     type="button"
                     className="btn"
-                    disabled={translationBulkAction !== null}
+                    disabled={activeTranslationMode !== null}
                     onClick={() => {
                       void requestBulkTranslations("outdated");
                     }}
                   >
-                    <MaterialIcon name={translationBulkAction === "outdated" ? "hourglass_top" : "sync"} />
-                    <span>{translationBulkAction === "outdated" ? "Updating..." : "Update All Outdated"}</span>
+                    <MaterialIcon name={activeTranslationMode === "outdated" ? "hourglass_top" : "sync"} />
+                    <span>{activeTranslationMode === "outdated" ? "Updating..." : "Update All Outdated"}</span>
                   </button>
 
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    disabled={translationBulkAction !== null}
+                    disabled={activeTranslationMode !== null}
                     onClick={() => {
                       void requestBulkTranslations("missing-and-outdated");
                     }}
                   >
-                    <MaterialIcon name={translationBulkAction === "missing-and-outdated" ? "hourglass_top" : "translate"} />
+                    <MaterialIcon name={activeTranslationMode === "missing-and-outdated" ? "hourglass_top" : "translate"} />
                     <span>
-                      {translationBulkAction === "missing-and-outdated" ? "Translating..." : "Translate All Missing/Outdated"}
+                      {activeTranslationMode === "missing-and-outdated" ? "Translating..." : "Translate All Missing/Outdated"}
                     </span>
                   </button>
                 </div>
@@ -3547,7 +3566,7 @@ export function AdminSettingsPanel() {
                         getDefaultAutoTranslateLanguageIcon(normalizedLanguageCode || language.code);
                     const translationRequestDisabled =
                       isDefaultLanguage ||
-                      translationBulkAction !== null ||
+                      activeTranslationMode !== null ||
                       (normalizedLanguageCode
                         ? requestedTranslationLanguageCodes.has(normalizedLanguageCode.toLowerCase())
                         : false);
@@ -3694,9 +3713,53 @@ export function AdminSettingsPanel() {
                     );
                   })}
                 </div>
-                {translationRequestStatus ? (
-                  <p className={`${translationRequestStatus.tone}-text`}>{translationRequestStatus.message}</p>
-                ) : null}
+                <div className="translation-log-panel">
+                  <div className="translation-log-header">
+                    <span className="field-label">Translation log</span>
+                    <span
+                      className={`translation-language-cache-status translation-language-cache-status-${getTranslationJobStatusTone(
+                        translationJob,
+                      )}`}
+                    >
+                      {getTranslationJobStatusLabel(translationJob)}
+                    </span>
+                  </div>
+
+                  {translationJob ? (
+                    <div className="translation-log-summary">
+                      <span>
+                        {translationJob.result.translatedPages}/{translationJob.result.requestedPages} translated
+                      </span>
+                      <span>{translationJob.result.cachedPages} current</span>
+                      <span>{translationJob.result.failedPages} failed</span>
+                    </div>
+                  ) : null}
+
+                  <div className="translation-log-scroll" ref={translationLogRef} aria-live="polite">
+                    {translationRequestStatus ? (
+                      <div className={`translation-log-entry translation-log-entry-${translationRequestStatus.tone}`}>
+                        <MaterialIcon name={translationRequestStatus.tone === "error" ? "error" : "warning"} />
+                        <div className="translation-log-entry-body">
+                          <span className="translation-log-entry-message">{translationRequestStatus.message}</span>
+                        </div>
+                      </div>
+                    ) : null}
+                    {translationLogEntries.length > 0 ? (
+                      translationLogEntries.map((entry) => (
+                        <div className={`translation-log-entry translation-log-entry-${entry.level}`} key={entry.id}>
+                          <MaterialIcon name={getTranslationLogIcon(entry.level)} />
+                          <div className="translation-log-entry-body">
+                            <span className="translation-log-entry-time">{formatStatusTimestamp(entry.createdAt)}</span>
+                            <span className="translation-log-entry-message">{entry.message}</span>
+                            {entry.details ? <span className="translation-log-entry-details">{entry.details}</span> : null}
+                          </div>
+                        </div>
+                      ))
+                    ) : !translationRequestStatus ? (
+                      <p className="muted-text translation-log-empty">No translation activity yet.</p>
+                    ) : null}
+                  </div>
+                </div>
 
                 <div className="action-row">
                   <button

@@ -151,6 +151,38 @@ export type AdminTranslationRequestResult = {
   }>;
 };
 
+export type AdminTranslationJobLogEntry = {
+  id: number;
+  createdAt: string;
+  level: "info" | "success" | "warning" | "error";
+  message: string;
+  details?: string;
+  languageCode?: string;
+  path?: string;
+  slug?: string;
+};
+
+export type AdminTranslationJobSnapshot = {
+  id: string;
+  status: "running" | "completed" | "completed_with_failures" | "failed";
+  mode: "outdated" | "missing-and-outdated";
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  languages: Array<Pick<AutoTranslateLanguage, "code" | "name">>;
+  localizationPath: string;
+  model: string;
+  result: AdminTranslationRequestResult;
+  error: string | null;
+  logs: AdminTranslationJobLogEntry[];
+};
+
+export type AdminTranslationRuntimeStatus = {
+  statuses: AdminLanguageTranslationCacheStatus[];
+  job: AdminTranslationJobSnapshot | null;
+  updatedAt: string;
+};
+
 export type AdminLanguageTranslationCacheStatus = {
   languageCode: string;
   languageName: string;

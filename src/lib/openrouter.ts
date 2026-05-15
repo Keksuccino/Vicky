@@ -81,6 +81,21 @@ export const extractOpenRouterAssistantText = (content: unknown): string => {
   return "";
 };
 
+const formatRequestFailure = (error: unknown): string => {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const parts = [`${error.name || "Error"}: ${error.message || "No error message provided."}`];
+  const cause = (error as Error & { cause?: unknown }).cause;
+
+  if (cause !== undefined) {
+    parts.push(`Cause: ${formatRequestFailure(cause)}`);
+  }
+
+  return parts.join(" ");
+};
+
 export const requestOpenRouterChatCompletion = async ({
   apiKey,
   messages,
@@ -94,20 +109,26 @@ export const requestOpenRouterChatCompletion = async ({
   origin: string;
   siteTitle: string;
 }): Promise<string> => {
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": origin,
-      "X-Title": siteTitle || "Vicky Docs",
-    },
-    body: JSON.stringify({
-      model: model.trim(),
-      messages,
-    }),
-    cache: "no-store",
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(OPENROUTER_API_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json",
+        "HTTP-Referer": origin,
+        "X-Title": siteTitle || "Vicky Docs",
+      },
+      body: JSON.stringify({
+        model: model.trim(),
+        messages,
+      }),
+      cache: "no-store",
+    });
+  } catch (error: unknown) {
+    throw new ApiError(502, `OpenRouter request could not be completed. ${formatRequestFailure(error)}`);
+  }
 
   const rawText = await response.text();
   const parsed = rawText ? safeJsonParse(rawText) : null;

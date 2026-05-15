@@ -5,6 +5,7 @@ import {
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
+import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-logging";
 import {
   loadGitHubLocalizationSnapshot,
   loadGitHubLocalizedDoc,
@@ -19,7 +20,8 @@ import type {
   GitHubDocTreeItem,
 } from "@/lib/types";
 
-const TRANSLATION_CONCURRENCY = 2;
+const TRANSLATION_CONCURRENCY = 50;
+const TRANSLATION_MAX_RETRIES = 10;
 
 export type PageLocalizationLanguageStatus = {
   languageCode: string;
@@ -57,6 +59,43 @@ type TranslationCandidate = {
   language: AutoTranslateLanguage;
   sourcePage: GitHubDocPage;
 };
+
+export type PageLocalizationTranslationEvent =
+  | {
+      type: "prepared";
+      totalPages: number;
+      currentPages: number;
+      requestedPages: number;
+      targetLanguages: number;
+    }
+  | {
+      type: "page-start";
+      attempt: number;
+      maxAttempts: number;
+      language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "page-retry";
+      attempt: number;
+      maxAttempts: number;
+      error: string;
+      language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "page-success";
+      attempt: number;
+      language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    }
+  | {
+      type: "page-failed";
+      attempts: number;
+      error: string;
+      language: AutoTranslateLanguage;
+      sourcePage: GitHubDocPage;
+    };
 
 const SYSTEM_PROMPT = `You are a professional Markdown documentation page translator.
 Translate documentation pages into natural, clear language for the target audience.
@@ -425,6 +464,7 @@ export const translatePageLocalizations = async ({
   localizationPath,
   mode,
   model,
+  onEvent,
   origin,
   siteTitle,
   sourcePages,
@@ -435,6 +475,7 @@ export const translatePageLocalizations = async ({
   localizationPath: string;
   mode: PageLocalizationRequestMode;
   model: string;
+  onEvent?: (event: PageLocalizationTranslationEvent) => void;
   origin: string;
   siteTitle: string;
   sourcePages: GitHubDocPage[];
@@ -473,25 +514,81 @@ export const translatePageLocalizations = async ({
     }
   }
 
-  const results = await mapWithConcurrency(candidates, TRANSLATION_CONCURRENCY, async (candidate) => {
-    try {
-      await translatePageToGitHubLocalization({
-        apiKey,
-        config,
+  onEvent?.({
+    type: "prepared",
+    totalPages: sourcePages.length * Math.max(0, languages.filter((language) => !isSourceLanguage(language)).length),
+    currentPages,
+    requestedPages: candidates.length,
+    targetLanguages: languages.filter((language) => !isSourceLanguage(language)).length,
+  });
+
+  const translateCandidate = async (candidate: TranslationCandidate) => {
+    const maxAttempts = TRANSLATION_MAX_RETRIES + 1;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      onEvent?.({
+        type: "page-start",
+        attempt,
+        maxAttempts,
         language: candidate.language,
-        localizationPath,
-        model,
-        origin,
-        siteTitle,
         sourcePage: candidate.sourcePage,
       });
-      return { ok: true as const };
-    } catch (error: unknown) {
-      return {
-        ok: false as const,
-        error: error instanceof Error ? error.message : String(error),
-      };
+
+      try {
+        await translatePageToGitHubLocalization({
+          apiKey,
+          config,
+          language: candidate.language,
+          localizationPath,
+          model,
+          origin,
+          siteTitle,
+          sourcePage: candidate.sourcePage,
+        });
+        onEvent?.({
+          type: "page-success",
+          attempt,
+          language: candidate.language,
+          sourcePage: candidate.sourcePage,
+        });
+        return { ok: true as const };
+      } catch (error: unknown) {
+        const message = getDetailedAutoTranslateErrorMessage(error);
+
+        if (attempt <= TRANSLATION_MAX_RETRIES) {
+          onEvent?.({
+            type: "page-retry",
+            attempt,
+            maxAttempts,
+            error: message,
+            language: candidate.language,
+            sourcePage: candidate.sourcePage,
+          });
+          continue;
+        }
+
+        onEvent?.({
+          type: "page-failed",
+          attempts: attempt,
+          error: message,
+          language: candidate.language,
+          sourcePage: candidate.sourcePage,
+        });
+        return {
+          ok: false as const,
+          error: message,
+        };
+      }
     }
+
+    return {
+      ok: false as const,
+      error: "Translation failed without a reported error.",
+    };
+  };
+
+  const results = await mapWithConcurrency(candidates, TRANSLATION_CONCURRENCY, async (candidate) => {
+    return translateCandidate(candidate);
   });
 
   const failures: PageLocalizationRequestResult["failures"] = [];

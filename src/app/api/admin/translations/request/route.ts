@@ -7,20 +7,17 @@ import {
 } from "@/lib/auto-translate";
 import {
   formatAutoTranslateLanguageForLog,
-  getAutoTranslateErrorMessage,
+  getDetailedAutoTranslateErrorMessage,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
 import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { decryptSecret } from "@/lib/encryption";
-import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
+import { resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
-import {
-  normalizeRequestedLocalizationLanguageCodes,
-  translatePageLocalizations,
-  type PageLocalizationRequestMode,
-} from "@/lib/page-localization";
+import { startPageLocalizationJob } from "@/lib/page-localization-jobs";
+import { normalizeRequestedLocalizationLanguageCodes, type PageLocalizationRequestMode } from "@/lib/page-localization";
 import { getStore } from "@/lib/store";
 import type { AutoTranslateLanguage } from "@/lib/types";
 
@@ -105,14 +102,12 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
-    const { pages } = await listMarkdownDocsTreePagesWithTitles(config, { bypassCache: true });
     logAutoTranslateInfo("Admin requested page localization translations", {
       language: languages.map((language) => formatAutoTranslateLanguageForLog(language)).join(", "),
-      totalPages: pages.length,
       model,
     });
 
-    const result = await translatePageLocalizations({
+    const job = startPageLocalizationJob({
       apiKey,
       config,
       languages,
@@ -120,26 +115,21 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       mode,
       model,
       origin: resolveRequestOrigin(request),
-      sourcePages: pages,
       siteTitle: store.settings.siteTitle || "Vicky Docs",
     });
 
-    logAutoTranslateInfo("Admin page localization request finished", {
+    logAutoTranslateInfo("Admin page localization background job queued", {
       language: languages.map((language) => formatAutoTranslateLanguageForLog(language)).join(", "),
-      totalPages: result.totalPages,
-      cachedPages: result.cachedPages,
-      requestedPages: result.requestedPages,
-      translatedPages: result.translatedPages,
-      failedPages: result.failedPages,
+      jobId: job.id,
       model,
     });
 
-    return NextResponse.json({ result }, { status: result.failedPages > 0 ? 207 : 200 });
+    return NextResponse.json({ job }, { status: 202 });
   } catch (error: unknown) {
     logAutoTranslateInfo("Admin page localization request failed", {
       language: requestLanguage ? formatAutoTranslateLanguageForLog(requestLanguage) : undefined,
-      error: getAutoTranslateErrorMessage(error),
+      error: getDetailedAutoTranslateErrorMessage(error),
     });
-    return errorResponse(error);
+    return errorResponse(error, { exposeDetails: true });
   }
 };

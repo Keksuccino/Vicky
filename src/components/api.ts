@@ -6,10 +6,13 @@ import {
   type AdminMarkdownCachePageStatus,
   type AdminMarkdownCacheStatus,
   type AdminMarkdownCacheWarmResult,
+  type AdminTranslationJobLogEntry,
+  type AdminTranslationJobSnapshot,
   type AiChatReply,
   type AuthUser,
   type AutoTranslateLanguage,
   type AdminTranslationRequestResult,
+  type AdminTranslationRuntimeStatus,
   type DocPage,
   type DocsRefreshResult,
   type DocSearchResult,
@@ -227,16 +230,23 @@ function extractMessage(payload: unknown, fallback: string): string {
 }
 
 async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(input, {
-    ...init,
-    credentials: "include",
-    cache: "no-store",
-    headers: {
-      Accept: "application/json",
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...init?.headers,
-    },
-  });
+  let response: Response;
+
+  try {
+    response = await fetch(input, {
+      ...init,
+      credentials: "include",
+      cache: "no-store",
+      headers: {
+        Accept: "application/json",
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+        ...init?.headers,
+      },
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    throw new ApiError(`Request to ${input} could not be completed. ${message}`, 0, error);
+  }
 
   const rawText = await response.text();
   const payload = rawText ? safeJsonParse(rawText) : null;
@@ -757,6 +767,90 @@ function normalizeAdminTranslationRequestResult(source: unknown): AdminTranslati
     translatedPages: Math.max(0, Math.round(asNumber(payload.translatedPages, 0))),
     failedPages: Math.max(0, Math.round(asNumber(payload.failedPages, failures.length))),
     failures,
+  };
+}
+
+function normalizeAdminTranslationJobLogEntry(source: unknown): AdminTranslationJobLogEntry | null {
+  const payload = asRecord(source);
+  const id = Math.max(0, Math.round(asNumber(payload.id, 0)));
+  const createdAt = asString(payload.createdAt).trim();
+  const level = asString(payload.level).trim();
+  const message = asString(payload.message).trim();
+  const details = asString(payload.details).trim();
+  const languageCode = asString(payload.languageCode).trim();
+  const path = asString(payload.path).trim();
+  const slug = asString(payload.slug).trim();
+
+  if (!message) {
+    return null;
+  }
+
+  return {
+    id,
+    createdAt: createdAt || new Date(0).toISOString(),
+    level: level === "success" || level === "warning" || level === "error" ? level : "info",
+    message,
+    ...(details ? { details } : {}),
+    ...(languageCode ? { languageCode } : {}),
+    ...(path ? { path } : {}),
+    ...(slug ? { slug } : {}),
+  };
+}
+
+function normalizeAdminTranslationJob(source: unknown): AdminTranslationJobSnapshot | null {
+  const payload = asRecord(asRecord(source).job ?? source);
+  const id = asString(payload.id).trim();
+  const status = asString(payload.status).trim();
+  const mode = asString(payload.mode).trim();
+
+  if (!id) {
+    return null;
+  }
+
+  const rawLanguages = payload.languages;
+  const languages = Array.isArray(rawLanguages)
+    ? rawLanguages
+        .map((entry) => {
+          const language = asRecord(entry);
+          const code = asString(language.code).trim();
+          const name = asString(language.name).trim() || code;
+
+          return code ? { code, name } : null;
+        })
+        .filter((entry): entry is Array<Pick<AutoTranslateLanguage, "code" | "name">>[number] => Boolean(entry))
+    : [];
+  const rawLogs = payload.logs;
+  const logs = Array.isArray(rawLogs)
+    ? rawLogs
+        .map((entry) => normalizeAdminTranslationJobLogEntry(entry))
+        .filter((entry): entry is AdminTranslationJobLogEntry => Boolean(entry))
+    : [];
+  const startedAt = asString(payload.startedAt).trim();
+  const finishedAt = asString(payload.finishedAt).trim();
+  const error = asString(payload.error).trim();
+
+  return {
+    id,
+    status:
+      status === "completed" || status === "completed_with_failures" || status === "failed" ? status : "running",
+    mode: mode === "outdated" ? "outdated" : "missing-and-outdated",
+    createdAt: asString(payload.createdAt).trim() || new Date(0).toISOString(),
+    startedAt: startedAt || null,
+    finishedAt: finishedAt || null,
+    languages,
+    localizationPath: asString(payload.localizationPath).trim(),
+    model: asString(payload.model).trim(),
+    result: normalizeAdminTranslationRequestResult(payload.result),
+    error: error || null,
+    logs,
+  };
+}
+
+function normalizeAdminTranslationRuntimeStatus(source: unknown): AdminTranslationRuntimeStatus {
+  return {
+    statuses: normalizeAdminLanguageTranslationCacheStatuses(source),
+    job: normalizeAdminTranslationJob(asRecord(source).job),
+    updatedAt: asString(asRecord(source).updatedAt).trim() || new Date().toISOString(),
   };
 }
 
@@ -1301,7 +1395,7 @@ export async function requestAdminLanguageTranslations(
         languages: AutoTranslateLanguage[];
         localizationPath: string;
       },
-): Promise<AdminTranslationRequestResult> {
+): Promise<AdminTranslationJobSnapshot> {
   const body =
     "mode" in languageOrOptions
       ? {
@@ -1315,7 +1409,25 @@ export async function requestAdminLanguageTranslations(
     body: JSON.stringify(body),
   });
 
-  return normalizeAdminTranslationRequestResult(response);
+  const job = normalizeAdminTranslationJob(response);
+  if (!job) {
+    throw new ApiError("Translation request did not return a job.", 500, response);
+  }
+
+  return job;
+}
+
+export async function fetchAdminLanguageTranslationStatus(
+  languages: AutoTranslateLanguage[],
+  model: string,
+  localizationPath?: string,
+): Promise<AdminTranslationRuntimeStatus> {
+  const response = await requestJson<unknown>("/api/admin/translations/status", {
+    method: "POST",
+    body: JSON.stringify({ languages, model, localizationPath }),
+  });
+
+  return normalizeAdminTranslationRuntimeStatus(response);
 }
 
 export async function fetchAdminLanguageTranslationCacheStatuses(
@@ -1323,12 +1435,8 @@ export async function fetchAdminLanguageTranslationCacheStatuses(
   model: string,
   localizationPath?: string,
 ): Promise<AdminLanguageTranslationCacheStatus[]> {
-  const response = await requestJson<unknown>("/api/admin/translations/status", {
-    method: "POST",
-    body: JSON.stringify({ languages, model, localizationPath }),
-  });
-
-  return normalizeAdminLanguageTranslationCacheStatuses(response);
+  const response = await fetchAdminLanguageTranslationStatus(languages, model, localizationPath);
+  return response.statuses;
 }
 
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {

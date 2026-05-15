@@ -8,6 +8,7 @@ import { requireAdminRequest } from "@/lib/auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse, parseJsonBody } from "@/lib/http";
+import { getLatestPageLocalizationJob } from "@/lib/page-localization-jobs";
 import { getPageLocalizationStatuses } from "@/lib/page-localization";
 import { getStore } from "@/lib/store";
 import type { AutoTranslateLanguage } from "@/lib/types";
@@ -94,9 +95,10 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     return NextResponse.json({
       statuses,
+      job: getLatestPageLocalizationJob(),
       updatedAt: new Date().toISOString(),
     });
   } catch (error: unknown) {
-    return errorResponse(error);
+    return errorResponse(error, { exposeDetails: true });
   }
 };

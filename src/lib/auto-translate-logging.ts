@@ -37,6 +37,21 @@ export const formatAutoTranslateLanguageForLog = (language: Pick<AutoTranslateLa
 export const getAutoTranslateErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error);
 
+export const getDetailedAutoTranslateErrorMessage = (error: unknown): string => {
+  if (!(error instanceof Error)) {
+    return String(error);
+  }
+
+  const parts = [`${error.name || "Error"}: ${error.message || "No error message provided."}`];
+  const cause = (error as Error & { cause?: unknown }).cause;
+
+  if (cause !== undefined) {
+    parts.push(`Cause: ${getDetailedAutoTranslateErrorMessage(cause)}`);
+  }
+
+  return parts.join(" ");
+};
+
 export const logAutoTranslateInfo = (message: string, context: LogContext = {}): void => {
   console.info(`[auto-translate] ${message}${formatLogContext(context)}`);
 };
