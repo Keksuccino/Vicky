@@ -3713,6 +3713,47 @@ export function AdminSettingsPanel() {
                     );
                   })}
                 </div>
+
+                <div className="action-row">
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => {
+                      const nextLanguages = [
+                        ...settings.autoTranslateLanguages,
+                        createCustomAutoTranslateLanguage(settings.autoTranslateLanguages),
+                      ];
+                      setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                      setAutoTranslateFieldErrors((prev) => ({
+                        ...prev,
+                        languages: validateAutoTranslateLanguages(nextLanguages),
+                      }));
+                    }}
+                  >
+                    <MaterialIcon name="add" />
+                    <span>Add language</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-ghost"
+                    disabled={
+                      JSON.stringify(settings.autoTranslateLanguages) ===
+                      JSON.stringify(DEFAULT_AUTO_TRANSLATE_LANGUAGES)
+                    }
+                    onClick={() => {
+                      const nextLanguages = DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language }));
+                      setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
+                      setAutoTranslateFieldErrors((prev) => ({
+                        ...prev,
+                        languages: validateAutoTranslateLanguages(nextLanguages),
+                      }));
+                    }}
+                  >
+                    Reset languages
+                  </button>
+                </div>
+
                 <div className="translation-log-panel">
                   <div className="translation-log-header">
                     <span className="field-label">Translation log</span>
@@ -3759,46 +3800,6 @@ export function AdminSettingsPanel() {
                       <p className="muted-text translation-log-empty">No translation activity yet.</p>
                     ) : null}
                   </div>
-                </div>
-
-                <div className="action-row">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => {
-                      const nextLanguages = [
-                        ...settings.autoTranslateLanguages,
-                        createCustomAutoTranslateLanguage(settings.autoTranslateLanguages),
-                      ];
-                      setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
-                      setAutoTranslateFieldErrors((prev) => ({
-                        ...prev,
-                        languages: validateAutoTranslateLanguages(nextLanguages),
-                      }));
-                    }}
-                  >
-                    <MaterialIcon name="add" />
-                    <span>Add language</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    className="btn btn-ghost"
-                    disabled={
-                      JSON.stringify(settings.autoTranslateLanguages) ===
-                      JSON.stringify(DEFAULT_AUTO_TRANSLATE_LANGUAGES)
-                    }
-                    onClick={() => {
-                      const nextLanguages = DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language }));
-                      setSettings((prev) => ({ ...prev, autoTranslateLanguages: nextLanguages }));
-                      setAutoTranslateFieldErrors((prev) => ({
-                        ...prev,
-                        languages: validateAutoTranslateLanguages(nextLanguages),
-                      }));
-                    }}
-                  >
-                    Reset languages
-                  </button>
                 </div>
 
                 <span className="field-hint">

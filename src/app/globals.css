@@ -2139,6 +2139,14 @@ select {
   margin-top: 0.23rem;
 }
 
+.action-row + .translation-language-list {
+  margin-top: 0.23rem;
+}
+
+.translation-language-list + .action-row + .translation-log-panel {
+  margin-top: 0.23rem;
+}
+
 .field-inline.translation-language-fields {
   grid-template-columns: minmax(8.8rem, 1.05fr) minmax(5.4rem, 0.58fr) minmax(4.35rem, 0.28fr);
   align-items: end;
