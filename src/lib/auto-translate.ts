@@ -7,6 +7,8 @@ export const AUTO_TRANSLATE_LANGUAGE_CHANGE_EVENT = "vicky:languagechange";
 export const DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL = "openai/gpt-5.4-mini";
 export const DEFAULT_AUTO_TRANSLATE_FALLBACK_LANGUAGE_ICON = "xx";
 export const DEFAULT_LOCALIZATION_PATH = "localizations";
+export const DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS = 5 * 60 * 1_000;
+export const MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS = 10 * 1_000;
 
 const DEFAULT_AUTO_TRANSLATE_LANGUAGE_ICONS: Record<string, string> = {
   "en-US": "us",
@@ -54,6 +56,7 @@ export const DEFAULT_OPENROUTER_SETTINGS = (): OpenRouterSettings => ({
 export const DEFAULT_AUTO_TRANSLATE_SETTINGS = (): AutoTranslateSettings => ({
   enabled: false,
   openRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  requestTimeoutMs: DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   languages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
   localizationPath: DEFAULT_LOCALIZATION_PATH,
 });
@@ -196,6 +199,22 @@ export const normalizeAutoTranslateOpenRouterModel = (value: unknown): string =>
   return trimmed || DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL;
 };
 
+export const normalizeAutoTranslateRequestTimeoutMs = (value: unknown): number => {
+  let numeric = Number.NaN;
+
+  if (typeof value === "number") {
+    numeric = value;
+  } else if (typeof value === "string" && value.trim()) {
+    numeric = Number(value);
+  }
+
+  if (!Number.isFinite(numeric)) {
+    return DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS;
+  }
+
+  return Math.max(MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS, Math.round(numeric));
+};
+
 export const normalizeLocalizationPath = (value: unknown): string => {
   const raw = typeof value === "string" ? value.trim() : DEFAULT_LOCALIZATION_PATH;
   const normalized = raw
@@ -219,6 +238,7 @@ export const normalizeAutoTranslateSettings = (value: unknown): AutoTranslateSet
   return {
     enabled: typeof source.enabled === "boolean" ? source.enabled : defaults.enabled,
     openRouterModel: normalizeAutoTranslateOpenRouterModel(source.openRouterModel),
+    requestTimeoutMs: normalizeAutoTranslateRequestTimeoutMs(source.requestTimeoutMs),
     languages: normalizeAutoTranslateLanguages(source.languages),
     localizationPath: normalizeLocalizationPath(source.localizationPath ?? source.directory),
   };

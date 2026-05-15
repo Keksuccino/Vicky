@@ -1,6 +1,7 @@
 import { ApiError } from "@/lib/http";
 
 export const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const MAX_TIMEOUT_CHUNK_MS = 2_147_483_647;
 
 export type OpenRouterMessage =
   | {
@@ -96,20 +97,83 @@ const formatRequestFailure = (error: unknown): string => {
   return parts.join(" ");
 };
 
+const formatDuration = (ms: number): string => {
+  const seconds = Math.max(1, Math.round(ms / 1_000));
+
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `${minutes} minute${minutes === 1 ? "" : "s"}`;
+  }
+
+  return `${seconds} second${seconds === 1 ? "" : "s"}`;
+};
+
+const normalizeRequestTimeoutMs = (value: unknown): number | null => {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return null;
+  }
+
+  return Math.round(value);
+};
+
+const createTimeoutSignal = (
+  timeoutMs: number | null,
+): { signal?: AbortSignal; timedOut: () => boolean; cleanup: () => void } => {
+  if (timeoutMs === null) {
+    return {
+      timedOut: () => false,
+      cleanup: () => undefined,
+    };
+  }
+
+  const controller = new AbortController();
+  const deadline = Date.now() + timeoutMs;
+  let timeoutReached = false;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
+  const schedule = () => {
+    const remainingMs = deadline - Date.now();
+    if (remainingMs <= 0) {
+      timeoutReached = true;
+      controller.abort();
+      return;
+    }
+
+    timer = setTimeout(schedule, Math.min(remainingMs, MAX_TIMEOUT_CHUNK_MS));
+  };
+
+  schedule();
+
+  return {
+    signal: controller.signal,
+    timedOut: () => timeoutReached,
+    cleanup: () => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    },
+  };
+};
+
 export const requestOpenRouterChatCompletion = async ({
   apiKey,
   messages,
   model,
   origin,
   siteTitle,
+  timeoutMs,
 }: {
   apiKey: string;
   messages: OpenRouterMessage[];
   model: string;
   origin: string;
   siteTitle: string;
+  timeoutMs?: number;
 }): Promise<string> => {
   let response: Response;
+  let rawText = "";
+  const normalizedTimeoutMs = normalizeRequestTimeoutMs(timeoutMs);
+  const timeout = createTimeoutSignal(normalizedTimeoutMs);
 
   try {
     response = await fetch(OPENROUTER_API_URL, {
@@ -125,12 +189,19 @@ export const requestOpenRouterChatCompletion = async ({
         messages,
       }),
       cache: "no-store",
+      signal: timeout.signal,
     });
+    rawText = await response.text();
   } catch (error: unknown) {
+    if (timeout.timedOut() && normalizedTimeoutMs !== null) {
+      throw new ApiError(504, `OpenRouter request timed out after ${formatDuration(normalizedTimeoutMs)}.`);
+    }
+
     throw new ApiError(502, `OpenRouter request could not be completed. ${formatRequestFailure(error)}`);
+  } finally {
+    timeout.cleanup();
   }
 
-  const rawText = await response.text();
   const parsed = rawText ? safeJsonParse(rawText) : null;
 
   if (!response.ok) {

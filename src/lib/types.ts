@@ -48,6 +48,7 @@ export interface AutoTranslateLanguage {
 export interface AutoTranslateSettings {
   enabled: boolean;
   openRouterModel: string;
+  requestTimeoutMs: number;
   languages: AutoTranslateLanguage[];
   localizationPath: string;
 }

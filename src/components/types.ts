@@ -279,6 +279,7 @@ export type AdminSettings = {
   openRouterApiKeyConfigured: boolean;
   autoTranslateEnabled: boolean;
   autoTranslateOpenRouterModel: string;
+  autoTranslateRequestTimeoutSeconds: number;
   autoTranslateLanguages: AutoTranslateLanguage[];
   autoTranslateLocalizationPath: string;
   themeLightAccent: string;

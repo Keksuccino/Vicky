@@ -62,6 +62,7 @@ type StartPageLocalizationJobInput = {
   mode: PageLocalizationRequestMode;
   model: string;
   origin: string;
+  requestTimeoutMs: number;
   siteTitle: string;
 };
 
@@ -309,6 +310,7 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
       onEvent: (event) => updateJobFromEvent(job, event),
       origin: input.origin,
       queueUploads: true,
+      requestTimeoutMs: input.requestTimeoutMs,
       sourcePages: pages,
       siteTitle: input.siteTitle,
     });

@@ -421,6 +421,7 @@ const loadTitleOnlyTranslations = async ({
   language,
   model,
   origin,
+  requestTimeoutMs,
   siteTitle,
 }: {
   apiKey: string;
@@ -429,6 +430,7 @@ const loadTitleOnlyTranslations = async ({
   language: AutoTranslateLanguage;
   model: string;
   origin: string;
+  requestTimeoutMs: number;
   siteTitle: string;
 }): Promise<Map<string, string>> => {
   const queueState = getTranslationQueueState();
@@ -478,6 +480,7 @@ const loadTitleOnlyTranslations = async ({
           model,
           origin,
           siteTitle,
+          timeoutMs: requestTimeoutMs,
           messages: [
             {
               role: "system",
@@ -687,6 +690,7 @@ export const loadTranslatedDocTreeTitles = async ({
     language,
     model,
     origin,
+    requestTimeoutMs: settings.requestTimeoutMs,
     siteTitle,
   });
 
@@ -857,6 +861,7 @@ export const translateGitHubDocPage = async ({
           model,
           origin,
           siteTitle,
+          timeoutMs: settings.requestTimeoutMs,
           messages: [
             {
               role: "system",
@@ -1037,6 +1042,7 @@ export const translateGitHubDocTreeTitles = async ({
     language,
     model,
     origin,
+    requestTimeoutMs: settings.requestTimeoutMs,
     siteTitle,
   });
 

@@ -117,6 +117,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       mode,
       model,
       origin: resolveRequestOrigin(request),
+      requestTimeoutMs: store.settings.autoTranslate.requestTimeoutMs,
       siteTitle: store.settings.siteTitle || "Vicky Docs",
     });
 

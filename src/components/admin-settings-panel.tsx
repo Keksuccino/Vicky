@@ -56,11 +56,14 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGES,
   DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   DEFAULT_LOCALIZATION_PATH,
+  MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   getDefaultAutoTranslateLanguageIcon,
   isDefaultAutoTranslateLanguageCode,
   languageCodesEqual,
   normalizeAutoTranslateLanguageCode,
+  normalizeAutoTranslateRequestTimeoutMs,
   normalizeLocalizationPath,
 } from "@/lib/auto-translate";
 import type {
@@ -135,6 +138,7 @@ const INITIAL_SETTINGS: AdminSettings = {
   openRouterApiKeyConfigured: false,
   autoTranslateEnabled: false,
   autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  autoTranslateRequestTimeoutSeconds: DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000,
   autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
   autoTranslateLocalizationPath: DEFAULT_LOCALIZATION_PATH,
   themeLightAccent: THEME_DEFAULTS.lightAccent,
@@ -174,12 +178,14 @@ const EMPTY_OPENROUTER_FIELD_ERRORS: OpenRouterFieldErrors = {
 
 type AutoTranslateFieldErrors = {
   openRouterModel: string | null;
+  requestTimeout: string | null;
   localizationPath: string | null;
   languages: string | null;
 };
 
 const EMPTY_AUTO_TRANSLATE_FIELD_ERRORS: AutoTranslateFieldErrors = {
   openRouterModel: null,
+  requestTimeout: null,
   localizationPath: null,
   languages: null,
 };
@@ -267,6 +273,18 @@ const validateAutoTranslateLanguages = (languages: AutoTranslateLanguage[]): str
   return hasDefaultLanguage ? null : `${DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME} must stay in the language list.`;
 };
 
+const normalizeAutoTranslateRequestTimeoutSeconds = (value: number): number =>
+  Math.round(normalizeAutoTranslateRequestTimeoutMs(value * 1_000) / 1_000);
+
+const validateAutoTranslateRequestTimeoutSeconds = (value: number): string | null => {
+  if (!Number.isFinite(value)) {
+    return "Enter a timeout in seconds.";
+  }
+
+  const minSeconds = MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000;
+  return value >= minSeconds ? null : `Use at least ${minSeconds} seconds.`;
+};
+
 const validateAutoTranslateFields = (settings: AdminSettings): AutoTranslateFieldErrors => {
   const rawLocalizationPath = settings.autoTranslateLocalizationPath.trim();
   const localizationPath = normalizeLocalizationPath(settings.autoTranslateLocalizationPath);
@@ -279,6 +297,7 @@ const validateAutoTranslateFields = (settings: AdminSettings): AutoTranslateFiel
   if (!settings.autoTranslateEnabled) {
     return {
       openRouterModel: null,
+      requestTimeout: validateAutoTranslateRequestTimeoutSeconds(settings.autoTranslateRequestTimeoutSeconds),
       localizationPath: localizationPathError,
       languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
     };
@@ -286,13 +305,14 @@ const validateAutoTranslateFields = (settings: AdminSettings): AutoTranslateFiel
 
   return {
     openRouterModel: settings.autoTranslateOpenRouterModel.trim() ? null : "Enter an OpenRouter model identifier.",
+    requestTimeout: validateAutoTranslateRequestTimeoutSeconds(settings.autoTranslateRequestTimeoutSeconds),
     localizationPath: localizationPathError,
     languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
   };
 };
 
 const hasAutoTranslateFieldErrors = (errors: AutoTranslateFieldErrors): boolean =>
-  Boolean(errors.openRouterModel || errors.localizationPath || errors.languages);
+  Boolean(errors.openRouterModel || errors.requestTimeout || errors.localizationPath || errors.languages);
 
 const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
   const output: AutoTranslateLanguage[] = [
@@ -348,6 +368,9 @@ const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings =>
   customDomain: normalizeCustomDomain(settings.customDomain),
   letsEncryptEmail: normalizeLetsEncryptEmail(settings.letsEncryptEmail),
   autoTranslateLocalizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
+  autoTranslateRequestTimeoutSeconds: normalizeAutoTranslateRequestTimeoutSeconds(
+    settings.autoTranslateRequestTimeoutSeconds,
+  ),
   autoTranslateLanguages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
 });
 
@@ -3516,6 +3539,61 @@ export function AdminSettingsPanel() {
                     </span>
                     {autoTranslateFieldErrors.openRouterModel ? (
                       <span className="error-text">{autoTranslateFieldErrors.openRouterModel}</span>
+                    ) : null}
+                  </div>
+
+                  <div className="field-row">
+                    <label className="field-label" htmlFor="auto-translate-request-timeout">
+                      Request timeout
+                    </label>
+                    <div className="field-control-row">
+                      <input
+                        id="auto-translate-request-timeout"
+                        className="input"
+                        type="number"
+                        min={MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000}
+                        step={1}
+                        value={settings.autoTranslateRequestTimeoutSeconds}
+                        aria-invalid={Boolean(autoTranslateFieldErrors.requestTimeout)}
+                        onChange={(event) => {
+                          const rawValue = Number(event.target.value);
+                          const value = Number.isFinite(rawValue)
+                            ? rawValue
+                            : MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000;
+                          setSettings((prev) => ({ ...prev, autoTranslateRequestTimeoutSeconds: value }));
+                          setAutoTranslateFieldErrors((prev) => ({
+                            ...prev,
+                            requestTimeout: validateAutoTranslateRequestTimeoutSeconds(value),
+                          }));
+                        }}
+                        onBlur={(event) => {
+                          const normalized = normalizeAutoTranslateRequestTimeoutSeconds(
+                            Number(event.currentTarget.value),
+                          );
+                          setSettings((prev) => ({ ...prev, autoTranslateRequestTimeoutSeconds: normalized }));
+                          setAutoTranslateFieldErrors((prev) => ({ ...prev, requestTimeout: null }));
+                        }}
+                      />
+                      <ResetToDefaultButton
+                        disabled={
+                          settings.autoTranslateRequestTimeoutSeconds ===
+                          DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000
+                        }
+                        onClick={() => {
+                          setSettings((prev) => ({
+                            ...prev,
+                            autoTranslateRequestTimeoutSeconds: DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000,
+                          }));
+                          setAutoTranslateFieldErrors((prev) => ({ ...prev, requestTimeout: null }));
+                        }}
+                      />
+                    </div>
+                    <span className="field-hint">
+                      Seconds per OpenRouter translation request. Default:{" "}
+                      <code>{DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000}</code>.
+                    </span>
+                    {autoTranslateFieldErrors.requestTimeout ? (
+                      <span className="error-text">{autoTranslateFieldErrors.requestTimeout}</span>
                     ) : null}
                   </div>
                 </div>

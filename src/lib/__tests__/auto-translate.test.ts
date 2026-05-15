@@ -5,7 +5,10 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
   DEFAULT_AUTO_TRANSLATE_LANGUAGES,
   DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
+  MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   normalizeAutoTranslateLanguages,
+  normalizeAutoTranslateRequestTimeoutMs,
   normalizeAutoTranslateSettings,
   resolveAutoTranslateLanguage,
   shouldTranslateAutoTranslateLanguage,
@@ -36,7 +39,14 @@ describe("auto translate settings", () => {
 
     expect(settings.enabled).toBe(false);
     expect(settings.openRouterModel).toBe(DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL);
+    expect(settings.requestTimeoutMs).toBe(DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS);
     expect(settings.languages).toEqual(DEFAULT_AUTO_TRANSLATE_LANGUAGES);
+  });
+
+  it("normalizes translation request timeouts without an upper cap", () => {
+    expect(normalizeAutoTranslateRequestTimeoutMs(5_000)).toBe(MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS);
+    expect(normalizeAutoTranslateRequestTimeoutMs("600000")).toBe(600_000);
+    expect(normalizeAutoTranslateRequestTimeoutMs(90 * 24 * 60 * 60 * 1_000)).toBe(90 * 24 * 60 * 60 * 1_000);
   });
 
   it("falls back to English US unless a configured non-default language is selected while enabled", () => {

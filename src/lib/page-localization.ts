@@ -8,6 +8,7 @@ import {
   type GitHubLocalizationUploadEvent,
 } from "@/lib/github-localization-upload-queue";
 import {
+  DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
@@ -427,6 +428,7 @@ export const getLocalizedPageForSource = async ({
   localizationPath,
   model,
   origin,
+  requestTimeoutMs,
   settings,
   siteTitle,
   sourcePage,
@@ -437,6 +439,7 @@ export const getLocalizedPageForSource = async ({
   localizationPath: string;
   model?: string;
   origin: string;
+  requestTimeoutMs?: number;
   settings: AutoTranslateSettings;
   siteTitle: string;
   sourcePage: GitHubDocPage;
@@ -473,6 +476,7 @@ export const getLocalizedPageForSource = async ({
     localizationPath,
     model,
     origin,
+    requestTimeoutMs: requestTimeoutMs ?? settings.requestTimeoutMs,
     siteTitle,
     sourcePage: localized.sourcePage,
   });
@@ -507,6 +511,7 @@ export const translatePageToGitHubLocalization = async ({
   localizationPath,
   model,
   origin,
+  requestTimeoutMs = DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   siteTitle,
   sourcePage,
 }: {
@@ -516,6 +521,7 @@ export const translatePageToGitHubLocalization = async ({
   localizationPath: string;
   model: string;
   origin: string;
+  requestTimeoutMs?: number;
   siteTitle: string;
   sourcePage: GitHubDocPage;
 }): Promise<GitHubDocPage> => {
@@ -524,6 +530,7 @@ export const translatePageToGitHubLocalization = async ({
     model,
     origin,
     siteTitle,
+    timeoutMs: requestTimeoutMs,
     messages: [
       {
         role: "system",
@@ -560,6 +567,7 @@ export const translatePageToQueuedGitHubLocalization = async ({
   model,
   onUploadEvent,
   origin,
+  requestTimeoutMs = DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   siteTitle,
   sourcePage,
 }: {
@@ -570,6 +578,7 @@ export const translatePageToQueuedGitHubLocalization = async ({
   model: string;
   onUploadEvent?: (event: GitHubLocalizationUploadEvent) => void;
   origin: string;
+  requestTimeoutMs?: number;
   siteTitle: string;
   sourcePage: GitHubDocPage;
 }): Promise<{ upload: Promise<void> }> => {
@@ -578,6 +587,7 @@ export const translatePageToQueuedGitHubLocalization = async ({
     model,
     origin,
     siteTitle,
+    timeoutMs: requestTimeoutMs,
     messages: [
       {
         role: "system",
@@ -679,6 +689,7 @@ export const translatePageLocalizations = async ({
   onEvent,
   origin,
   queueUploads,
+  requestTimeoutMs = DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   siteTitle,
   sourcePages,
 }: {
@@ -691,6 +702,7 @@ export const translatePageLocalizations = async ({
   onEvent?: (event: PageLocalizationTranslationEvent) => void;
   origin: string;
   queueUploads?: boolean;
+  requestTimeoutMs?: number;
   siteTitle: string;
   sourcePages: GitHubDocPage[];
 }): Promise<PageLocalizationRequestResult> => {
@@ -811,6 +823,7 @@ export const translatePageLocalizations = async ({
                 model,
                 onUploadEvent: (event) => onEvent?.(toUploadEvent(uploadEventContext, event)),
                 origin,
+                requestTimeoutMs,
                 siteTitle,
                 sourcePage: candidate.sourcePage,
               })
@@ -825,6 +838,7 @@ export const translatePageLocalizations = async ({
             localizationPath,
             model,
             origin,
+            requestTimeoutMs,
             siteTitle,
             sourcePage: candidate.sourcePage,
           });

@@ -39,7 +39,10 @@ import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   DEFAULT_AUTO_TRANSLATE_LANGUAGES,
   DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   DEFAULT_LOCALIZATION_PATH,
+  MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
+  normalizeAutoTranslateRequestTimeoutMs,
   normalizeLocalizationPath,
   normalizeAutoTranslateLanguage,
 } from "@/lib/auto-translate";
@@ -127,6 +130,7 @@ const DEFAULT_SETTINGS: AdminSettings = {
   openRouterApiKeyConfigured: false,
   autoTranslateEnabled: false,
   autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
+  autoTranslateRequestTimeoutSeconds: DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000,
   autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
   autoTranslateLocalizationPath: DEFAULT_LOCALIZATION_PATH,
   themeLightAccent: "#006ecf",
@@ -178,6 +182,15 @@ function msToMinutes(value: number): number {
 
 function minutesToMs(value: number): number {
   return clampInteger(value, MIN_DOCS_REFRESH_INTERVAL_MINUTES, MAX_DOCS_REFRESH_INTERVAL_MINUTES) * 60_000;
+}
+
+function msToSeconds(value: number): number {
+  return Math.max(MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000, Math.round(value / 1_000));
+}
+
+function secondsToMs(value: number): number {
+  const seconds = typeof value === "number" && Number.isFinite(value) ? value : DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000;
+  return normalizeAutoTranslateRequestTimeoutMs(seconds * 1_000);
 }
 
 function toAbsoluteDocPath(value: string): string {
@@ -543,6 +556,9 @@ function normalizeSettings(source: unknown): AdminSettings {
     autoTranslateOpenRouterModel: asString(
       autoTranslate.openRouterModel,
       DEFAULT_SETTINGS.autoTranslateOpenRouterModel,
+    ),
+    autoTranslateRequestTimeoutSeconds: msToSeconds(
+      normalizeAutoTranslateRequestTimeoutMs(autoTranslate.requestTimeoutMs),
     ),
     autoTranslateLanguages: normalizeAutoTranslateLanguageList(autoTranslate.languages),
     autoTranslateLocalizationPath: normalizeLocalizationPath(
@@ -1334,6 +1350,7 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<AdminS
       autoTranslate: {
         enabled: settings.autoTranslateEnabled,
         openRouterModel: settings.autoTranslateOpenRouterModel,
+        requestTimeoutMs: secondsToMs(settings.autoTranslateRequestTimeoutSeconds),
         languages: settings.autoTranslateLanguages,
         localizationPath: settings.autoTranslateLocalizationPath,
       },

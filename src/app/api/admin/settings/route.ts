@@ -13,6 +13,7 @@ import {
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguages,
   normalizeAutoTranslateOpenRouterModel,
+  normalizeAutoTranslateRequestTimeoutMs,
   normalizeLocalizationPath,
 } from "@/lib/auto-translate";
 import {
@@ -98,6 +99,7 @@ const settingsPatchSchema = z
       .object({
         enabled: z.boolean().optional(),
         openRouterModel: z.string().optional(),
+        requestTimeoutMs: z.union([z.number(), z.string()]).optional(),
         localizationPath: z.string().optional(),
         directory: z.string().optional(),
         languages: z
@@ -357,6 +359,12 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
             });
           }
           store.settings.autoTranslate.openRouterModel = nextModel;
+        }
+
+        if (patch.autoTranslate.requestTimeoutMs !== undefined) {
+          store.settings.autoTranslate.requestTimeoutMs = normalizeAutoTranslateRequestTimeoutMs(
+            patch.autoTranslate.requestTimeoutMs,
+          );
         }
 
         const localizationPathPatch = patch.autoTranslate.localizationPath ?? patch.autoTranslate.directory;

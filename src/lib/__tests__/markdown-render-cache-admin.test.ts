@@ -41,6 +41,7 @@ const store = {
     autoTranslate: {
       enabled: true,
       openRouterModel: "openai/gpt-5.4-mini",
+      requestTimeoutMs: 300_000,
       localizationPath: "localizations",
       languages: [
         { name: "English (US)", code: "en-US", icon: "us", enabled: true },
