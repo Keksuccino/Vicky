@@ -24,8 +24,7 @@ import { requireAdminRequest } from "@/lib/auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
-import { encryptSecret } from "@/lib/encryption";
-import { clearGitHubDocsCache } from "@/lib/github";
+import { decryptSecret, encryptSecret } from "@/lib/encryption";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { normalizeStartPage } from "@/lib/start-page";
 import { getPublicSettings, getStore, updateStore } from "@/lib/store";
@@ -126,6 +125,18 @@ const autoTranslateLanguageKey = (language: AutoTranslateLanguage): string => la
 const autoTranslateLanguageMap = (languages: AutoTranslateLanguage[]): Map<string, AutoTranslateLanguage> =>
   new Map(languages.map((language) => [autoTranslateLanguageKey(language), language]));
 
+const decryptStoredSecret = (encrypted: string | null): string => {
+  if (!encrypted) {
+    return "";
+  }
+
+  try {
+    return decryptSecret(encrypted).trim();
+  } catch {
+    return "";
+  }
+};
+
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const unauthorizedResponse = await requireAdminRequest(request);
@@ -152,7 +163,6 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
 
     const body = await parseJsonBody<unknown>(request);
     const patch = settingsPatchSchema.parse(body);
-    let shouldClearDocsCache = false;
     const autoTranslateSettingLogs: Array<() => void> = [];
 
     const updatedStore = await updateStore(async (store) => {
@@ -197,9 +207,6 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
       }
 
       if (patch.docsCacheTtlMs !== undefined) {
-        if (store.settings.docsCacheTtlMs !== patch.docsCacheTtlMs) {
-          shouldClearDocsCache = true;
-        }
         store.settings.docsCacheTtlMs = patch.docsCacheTtlMs;
       }
 
@@ -250,41 +257,31 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
       if (patch.github) {
         if (patch.github.owner !== undefined) {
           const nextOwner = patch.github.owner.trim();
-          if (store.settings.github.owner !== nextOwner) {
-            shouldClearDocsCache = true;
-          }
           store.settings.github.owner = nextOwner;
         }
 
         if (patch.github.repo !== undefined) {
           const nextRepo = patch.github.repo.trim();
-          if (store.settings.github.repo !== nextRepo) {
-            shouldClearDocsCache = true;
-          }
           store.settings.github.repo = nextRepo;
         }
 
         if (patch.github.branch !== undefined) {
           const nextBranch = patch.github.branch.trim() || "main";
-          if (store.settings.github.branch !== nextBranch) {
-            shouldClearDocsCache = true;
-          }
           store.settings.github.branch = nextBranch;
         }
 
         if (patch.github.docsPath !== undefined) {
           const nextDocsPath = patch.github.docsPath.trim() || "docs";
-          if (store.settings.github.docsPath !== nextDocsPath) {
-            shouldClearDocsCache = true;
-          }
           store.settings.github.docsPath = nextDocsPath;
         }
 
         if (patch.github.token !== undefined) {
-          shouldClearDocsCache = true;
-          store.settings.github.tokenEncrypted = patch.github.token.trim()
-            ? encryptSecret(patch.github.token.trim())
-            : null;
+          const nextToken = patch.github.token.trim();
+          if (!nextToken) {
+            store.settings.github.tokenEncrypted = null;
+          } else if (decryptStoredSecret(store.settings.github.tokenEncrypted) !== nextToken) {
+            store.settings.github.tokenEncrypted = encryptSecret(nextToken);
+          }
         }
       }
 
@@ -322,16 +319,22 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
         }
 
         if (patch.aiChat.openRouterApiKey !== undefined) {
-          store.settings.openRouter.apiKeyEncrypted = patch.aiChat.openRouterApiKey.trim()
-            ? encryptSecret(patch.aiChat.openRouterApiKey.trim())
-            : null;
+          const nextApiKey = patch.aiChat.openRouterApiKey.trim();
+          if (!nextApiKey) {
+            store.settings.openRouter.apiKeyEncrypted = null;
+          } else if (decryptStoredSecret(store.settings.openRouter.apiKeyEncrypted) !== nextApiKey) {
+            store.settings.openRouter.apiKeyEncrypted = encryptSecret(nextApiKey);
+          }
         }
       }
 
       if (patch.openRouter?.apiKey !== undefined) {
-        store.settings.openRouter.apiKeyEncrypted = patch.openRouter.apiKey.trim()
-          ? encryptSecret(patch.openRouter.apiKey.trim())
-          : null;
+        const nextApiKey = patch.openRouter.apiKey.trim();
+        if (!nextApiKey) {
+          store.settings.openRouter.apiKeyEncrypted = null;
+        } else if (decryptStoredSecret(store.settings.openRouter.apiKeyEncrypted) !== nextApiKey) {
+          store.settings.openRouter.apiKeyEncrypted = encryptSecret(nextApiKey);
+        }
       }
 
       if (patch.autoTranslate) {
@@ -370,9 +373,6 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
         const localizationPathPatch = patch.autoTranslate.localizationPath ?? patch.autoTranslate.directory;
         if (localizationPathPatch !== undefined) {
           const nextLocalizationPath = normalizeLocalizationPath(localizationPathPatch);
-          if (store.settings.autoTranslate.localizationPath !== nextLocalizationPath) {
-            shouldClearDocsCache = true;
-          }
           store.settings.autoTranslate.localizationPath = nextLocalizationPath;
         }
 
@@ -454,9 +454,6 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
     });
 
     setDocsCacheTtlMs(updatedStore.settings.docsCacheTtlMs);
-    if (shouldClearDocsCache) {
-      clearGitHubDocsCache();
-    }
     autoTranslateSettingLogs.forEach((writeLog) => writeLog());
 
     return NextResponse.json({

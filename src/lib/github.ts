@@ -23,7 +23,10 @@ import {
 } from "@/lib/docs-snapshot-store";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
-import { deletePersistentRenderedMarkdownWhere } from "@/lib/markdown-render-cache-store";
+import {
+  deletePersistentRenderedMarkdownWhere,
+  recordRenderedMarkdownCacheMutation,
+} from "@/lib/markdown-render-cache-store";
 import type {
   GitHubDocPage,
   GitHubPlaintextDocPage,
@@ -193,8 +196,100 @@ const translatedDocsTitleCachePrefix = (config: GitHubRuntimeConfig): string =>
 const renderedMarkdownCachePrefix = (config: GitHubRuntimeConfig): string =>
   `${toRuntimeConfigCacheKey(config)}|markdown-render|`;
 
+type RenderedMarkdownCachePruneTarget = {
+  languageCode?: string;
+  slug: string;
+};
+
 const titleSourceSignature = (items: GitHubDocTreeItem[]): string =>
   JSON.stringify(items.map((item) => ({ slug: item.slug, path: item.path, name: item.name })));
+
+const normalizeRenderedMarkdownLanguageCode = (languageCode: string): string => languageCode.trim().replace(/_/g, "-").toLowerCase();
+
+const renderedMarkdownCacheKeyMatchesTarget = (
+  config: GitHubRuntimeConfig,
+  key: string,
+  target: RenderedMarkdownCachePruneTarget,
+): boolean => {
+  const prefix = renderedMarkdownCachePrefix(config);
+  if (!key.startsWith(prefix)) {
+    return false;
+  }
+
+  const [rendererVersion, slug, languageCode] = key.slice(prefix.length).split("|");
+  if (!rendererVersion || !slug || !languageCode || slug !== target.slug) {
+    return false;
+  }
+
+  return !target.languageCode || languageCode === normalizeRenderedMarkdownLanguageCode(target.languageCode);
+};
+
+const pruneRenderedMarkdownCache = async ({
+  config,
+  reason,
+  targets,
+}: {
+  config: GitHubRuntimeConfig;
+  reason: string;
+  targets: RenderedMarkdownCachePruneTarget[];
+}): Promise<number> => {
+  const normalizedTargets = new Map<string, RenderedMarkdownCachePruneTarget>();
+
+  for (const target of targets) {
+    const slug = target.slug.trim();
+    if (!slug) {
+      continue;
+    }
+
+    const languageCode = target.languageCode?.trim()
+      ? normalizeRenderedMarkdownLanguageCode(target.languageCode)
+      : undefined;
+    normalizedTargets.set(`${slug}|${languageCode ?? "*"}`, {
+      slug,
+      ...(languageCode ? { languageCode } : {}),
+    });
+  }
+
+  const targetList = Array.from(normalizedTargets.values());
+  if (targetList.length === 0) {
+    return 0;
+  }
+
+  const matchesTarget = (key: string): boolean =>
+    targetList.some((target) => renderedMarkdownCacheKeyMatchesTarget(config, key, target));
+
+  renderedMarkdownCache.deleteWhere((key) => typeof key === "string" && matchesTarget(key));
+  const deletedEntries = await deletePersistentRenderedMarkdownWhere(matchesTarget);
+  await recordRenderedMarkdownCacheMutation({
+    deletedEntries,
+    reason,
+    scope: targetList.length === 1 ? "page" : "pages",
+    target: targetList
+      .map((target) => (target.languageCode ? `${target.slug}:${target.languageCode}` : target.slug))
+      .join(","),
+  });
+
+  return deletedEntries;
+};
+
+const renderedMarkdownPruneTargetsForSnapshotChange = (
+  previous: GitHubDocsSnapshot,
+  next: GitHubDocsSnapshot,
+): RenderedMarkdownCachePruneTarget[] => {
+  const nextPagesBySlug = new Map(next.pages.map((page) => [page.slug, page]));
+  const targets: RenderedMarkdownCachePruneTarget[] = [];
+
+  for (const previousPage of previous.pages) {
+    const nextPage = nextPagesBySlug.get(previousPage.slug);
+    if (nextPage && nextPage.content === previousPage.content) {
+      continue;
+    }
+
+    targets.push({ slug: previousPage.slug });
+  }
+
+  return targets;
+};
 
 const docsSourceLogContext = (config: GitHubRuntimeConfig): Record<string, string> => ({
   owner: config.owner,
@@ -407,18 +502,16 @@ export const resolveRuntimeConfig = (
   };
 };
 
-export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
+export const clearGitHubDocsCache = async (config?: GitHubRuntimeConfig): Promise<void> => {
   if (!config) {
     docsSnapshotCache.clear();
     docsTreeCache.clear();
     docsPageCache.clear();
     docsSearchCorpusCache.clear();
     aiPlaintextDocsCache.clear();
-    renderedMarkdownCache.clear();
     translatedDocsPageCache.clear();
     translatedDocsTitleCache.clear();
-    void deleteAllPersistentGitHubDocsSnapshots();
-    void deletePersistentRenderedMarkdownWhere(() => true);
+    await deleteAllPersistentGitHubDocsSnapshots();
     logAutoTranslateInfo("Cleared all in-memory translation caches after docs cache reset");
     return;
   }
@@ -429,35 +522,53 @@ export const clearGitHubDocsCache = (config?: GitHubRuntimeConfig): void => {
   docsPageCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
-  renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
-  void deletePersistentGitHubDocsSnapshot(config);
-  void deletePersistentRenderedMarkdownWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
+  await deletePersistentGitHubDocsSnapshot(config);
   logAutoTranslateInfo("Cleared in-memory translation caches for docs source", docsSourceLogContext(config));
 };
 
-const clearDerivedGitHubDocsCache = (
+const clearDerivedGitHubDocsCache = async (
   config: GitHubRuntimeConfig,
-  snapshots?: { previous?: GitHubDocsSnapshot; next?: GitHubDocsSnapshot },
-): void => {
+  options?: {
+    changedSourceSlugs?: string[];
+    snapshots?: { previous?: GitHubDocsSnapshot; next?: GitHubDocsSnapshot };
+  },
+): Promise<void> => {
   const prefix = `${toRuntimeConfigCacheKey(config)}|`;
+  const snapshots = options?.snapshots;
   if (!snapshots?.next) {
     docsTreeCache.deleteWhere((key) => key.startsWith(`${prefix}title-index|`));
   }
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
-  renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
-  void deletePersistentRenderedMarkdownWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
 
   if (snapshots?.previous && snapshots.next) {
     clearLocalizationCaches(config);
     pruneTranslatedDocsCacheForSnapshotChange(config, snapshots.previous, snapshots.next);
+    await pruneRenderedMarkdownCache({
+      config,
+      reason: "docs-snapshot-change",
+      targets: renderedMarkdownPruneTargetsForSnapshotChange(snapshots.previous, snapshots.next),
+    });
     return;
   }
 
   clearLocalizationCaches(config);
-  translatedDocsPageCache.deleteWhere((key) => key.startsWith(translatedDocsPageCachePrefix(config)));
+  if (options?.changedSourceSlugs !== undefined) {
+    if (options.changedSourceSlugs.length > 0) {
+      for (const slug of options.changedSourceSlugs) {
+        pruneTranslatedPageCacheForSlug(config, slug);
+      }
+      await pruneRenderedMarkdownCache({
+        config,
+        reason: "source-page-change",
+        targets: options.changedSourceSlugs.map((slug) => ({ slug })),
+      });
+    }
+  } else {
+    translatedDocsPageCache.deleteWhere((key) => key.startsWith(translatedDocsPageCachePrefix(config)));
+  }
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(translatedDocsTitleCachePrefix(config)));
   logAutoTranslateInfo("Cleared derived in-memory translation caches for docs source", docsSourceLogContext(config));
 };
@@ -946,7 +1057,7 @@ const pruneTranslatedPageCacheForSlug = (config: GitHubRuntimeConfig, slug: stri
   });
 };
 
-const cacheGitHubDocPage = (config: GitHubRuntimeConfig, page: GitHubDocPage): void => {
+const cacheGitHubDocPage = (config: GitHubRuntimeConfig, page: GitHubDocPage): GitHubDocPage | null => {
   const revisionKey = pageRevisionCacheKey(config, page);
   const previousPage = readPageFromCache(config, { relativePath: page.path }, "peek");
 
@@ -958,15 +1069,7 @@ const cacheGitHubDocPage = (config: GitHubRuntimeConfig, page: GitHubDocPage): v
     sha: page.sha,
   } satisfies GitHubDocPageLocatorCacheEntry);
 
-  if (previousPage && previousPage.markdown !== page.markdown) {
-    logAutoTranslateInfo("Source page content changed; existing page translation cache is stale", {
-      ...docsSourceLogContext(config),
-      slug: page.slug,
-      path: page.path,
-    });
-    clearDerivedGitHubDocsCache(config);
-    pruneTranslatedPageCacheForSlug(config, page.slug);
-  }
+  return previousPage ?? null;
 };
 
 const loadFreshGitHubDocsSnapshot = async (
@@ -1021,12 +1124,16 @@ const loadGitHubDocsSnapshot = async (
   options?: { bypassCache?: boolean; store?: boolean },
 ): Promise<GitHubDocsSnapshot> => {
   const cacheKey = snapshotCacheKey(config);
-  const previousSnapshot = docsSnapshotCache.peek(cacheKey) as GitHubDocsSnapshot | undefined;
   const shouldStore = options?.store !== false;
+  let previousSnapshot = docsSnapshotCache.peek(cacheKey) as GitHubDocsSnapshot | undefined;
   const cached = options?.bypassCache ? undefined : docsSnapshotCache.get(cacheKey);
 
   if (cached) {
     return cached as GitHubDocsSnapshot;
+  }
+
+  if (!previousSnapshot && shouldStore) {
+    previousSnapshot = (await readPersistentGitHubDocsSnapshot(config, { allowExpired: true })) ?? undefined;
   }
 
   if (!options?.bypassCache && shouldStore) {
@@ -1050,10 +1157,10 @@ const loadGitHubDocsSnapshot = async (
   }
 
   const loadPromise = loadFreshGitHubDocsSnapshot(config)
-    .then((snapshot) => {
+    .then(async (snapshot) => {
       docsSnapshotCache.set(cacheKey, snapshot);
-      void writePersistentGitHubDocsSnapshot(config, snapshot);
-      clearDerivedGitHubDocsCache(config, { previous: previousSnapshot, next: snapshot });
+      await writePersistentGitHubDocsSnapshot(config, snapshot);
+      await clearDerivedGitHubDocsCache(config, { snapshots: { previous: previousSnapshot, next: snapshot } });
       return snapshot;
     })
     .finally(() => {
@@ -1313,7 +1420,6 @@ const clearLocalizationCaches = (
 
   docsSnapshotCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(`${toRuntimeConfigCacheKey(config)}|`));
-  renderedMarkdownCache.deleteWhere((key) => key.startsWith(renderedMarkdownCachePrefix(config)));
 };
 
 const findTreeItemBySlug = async (
@@ -1484,8 +1590,16 @@ const loadGitHubDocTarget = async (
   }
 
   const loadPromise = loadFreshGitHubDocPage(config, target)
-    .then((page) => {
-      cacheGitHubDocPage(config, page);
+    .then(async (page) => {
+      const previousPage = cacheGitHubDocPage(config, page);
+      if (previousPage && previousPage.content !== page.content) {
+        logAutoTranslateInfo("Source page content changed; existing page translation caches are stale", {
+          ...docsSourceLogContext(config),
+          slug: page.slug,
+          path: page.path,
+        });
+        await clearDerivedGitHubDocsCache(config, { changedSourceSlugs: [page.slug] });
+      }
       return mergeCachedCommitMetadata(config, page);
     })
     .finally(() => {
@@ -1565,17 +1679,23 @@ const readPageFromPersistentSnapshot = async (
   return mergeCachedCommitMetadata(config, page);
 };
 
-const upsertGitHubDocPageInSnapshotCache = (config: GitHubRuntimeConfig, page: GitHubDocPage): void => {
+const upsertGitHubDocPageInSnapshotCache = async (
+  config: GitHubRuntimeConfig,
+  page: GitHubDocPage,
+  options?: { previousContent?: string },
+): Promise<void> => {
   cacheGitHubDocPage(config, page);
   docsTreeCache.delete(treeCacheKey(config));
   docsTreeCache.deleteWhere((key) => key.startsWith(`${toRuntimeConfigCacheKey(config)}|title-index|`));
 
   const cacheKey = snapshotCacheKey(config);
   const cached = docsSnapshotCache.get(cacheKey) as GitHubDocsSnapshot | undefined;
+  const changedSourceSlugs =
+    options?.previousContent !== undefined && options.previousContent !== page.content ? [page.slug] : [];
 
   if (!cached) {
-    void deletePersistentGitHubDocsSnapshot(config);
-    clearDerivedGitHubDocsCache(config);
+    await deletePersistentGitHubDocsSnapshot(config);
+    await clearDerivedGitHubDocsCache(config, { changedSourceSlugs });
     return;
   }
 
@@ -1591,8 +1711,8 @@ const upsertGitHubDocPageInSnapshotCache = (config: GitHubRuntimeConfig, page: G
   };
 
   docsSnapshotCache.set(cacheKey, nextSnapshot);
-  void writePersistentGitHubDocsSnapshot(config, nextSnapshot);
-  clearDerivedGitHubDocsCache(config, { previous: cached, next: nextSnapshot });
+  await writePersistentGitHubDocsSnapshot(config, nextSnapshot);
+  await clearDerivedGitHubDocsCache(config, { snapshots: { previous: cached, next: nextSnapshot } });
 };
 
 export const refreshGitHubDocsCache = async (
@@ -1761,6 +1881,8 @@ export const saveGitHubDoc = async (
   let baseDescription = "";
   let baseContent = "";
   let baseIncludeInPlaintextExport = true;
+  const parsedExisting = existingMarkdown ? parseMarkdownDocument(existingMarkdown) : null;
+  const previousContent = parsedExisting?.content;
 
   if (input.markdown !== undefined) {
     const parsedIncoming = parseMarkdownDocument(input.markdown);
@@ -1768,8 +1890,7 @@ export const saveGitHubDoc = async (
     baseDescription = parsedIncoming.description;
     baseContent = parsedIncoming.content;
     baseIncludeInPlaintextExport = parsedIncoming.includeInPlaintextExport;
-  } else if (existingMarkdown) {
-    const parsedExisting = parseMarkdownDocument(existingMarkdown);
+  } else if (parsedExisting) {
     baseTitle = parsedExisting.title;
     baseDescription = parsedExisting.description;
     baseContent = parsedExisting.content;
@@ -1822,7 +1943,7 @@ export const saveGitHubDoc = async (
     },
   );
 
-  upsertGitHubDocPageInSnapshotCache(config, page);
+  await upsertGitHubDocPageInSnapshotCache(config, page, { previousContent });
 
   return {
     path: target.relativePath,
@@ -1934,6 +2055,11 @@ export const saveGitHubLocalizedDoc = async ({
   });
 
   clearLocalizationCaches(config, localizationPath, language.code);
+  await pruneRenderedMarkdownCache({
+    config,
+    reason: "localized-page-save",
+    targets: [{ languageCode: language.code, slug: page.slug }],
+  });
 
   return {
     path: page.path,
@@ -2072,6 +2198,14 @@ export const saveGitHubLocalizedDocsBatch = async ({
   for (const item of preparedItems) {
     clearLocalizationCaches(config, item.item.localizationPath, item.item.language.code);
   }
+  await pruneRenderedMarkdownCache({
+    config,
+    reason: "localized-page-batch-save",
+    targets: preparedItems.map((item) => ({
+      languageCode: item.item.language.code,
+      slug: item.resolvedSourcePage.slug,
+    })),
+  });
 
   const results = includePages
     ? preparedItems.map((item): SaveGitHubDocResult => {

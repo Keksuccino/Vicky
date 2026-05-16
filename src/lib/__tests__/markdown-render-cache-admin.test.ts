@@ -111,6 +111,11 @@ describe("markdown render cache admin helpers", () => {
     expect(firstWarm.skippedVariants).toBe(0);
     expect(firstWarm.failedVariants).toBe(0);
     expect(await listPersistentRenderedMarkdownCacheEntries()).toHaveLength(3);
+    const warmedStatus = await createMarkdownRenderCacheStatus({ config, store });
+    expect(warmedStatus.cacheDirectory).toBe(cacheDir);
+    expect(warmedStatus.currentSourceEntries).toBe(3);
+    expect(warmedStatus.globalEntries).toBe(3);
+    expect(warmedStatus.otherSourceEntries).toBe(0);
 
     const secondWarm = await warmMarkdownRenderCache({ config, store });
     expect(secondWarm.renderedVariants).toBe(0);
@@ -122,11 +127,23 @@ describe("markdown render cache admin helpers", () => {
 
     const afterHomeClear = await createMarkdownRenderCacheStatus({ config, store });
     expect(afterHomeClear.cachedVariants).toBe(1);
+    expect(afterHomeClear.lastMutation).toMatchObject({
+      deletedEntries: 2,
+      reason: "admin-clear-page",
+      scope: "page",
+      target: "home",
+    });
     expect(afterHomeClear.pages.find((page) => page.slug === "home")?.cachedVariants).toBe(0);
     expect(afterHomeClear.pages.find((page) => page.slug === "advanced")?.cachedVariants).toBe(1);
 
     const allClear = await clearMarkdownRenderCache({ config });
     expect(allClear).toMatchObject({ clearedEntries: 1, scope: "all" });
-    expect((await createMarkdownRenderCacheStatus({ config, store })).cachedVariants).toBe(0);
+    const afterAllClear = await createMarkdownRenderCacheStatus({ config, store });
+    expect(afterAllClear.cachedVariants).toBe(0);
+    expect(afterAllClear.lastMutation).toMatchObject({
+      deletedEntries: 1,
+      reason: "admin-clear-current-source",
+      scope: "all",
+    });
   });
 });

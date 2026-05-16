@@ -7,6 +7,7 @@ import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
 import type { MarkdownHeading } from "@/lib/types";
 
 const MARKDOWN_RENDER_CACHE_ENTRY_VERSION = 1;
+const MARKDOWN_RENDER_CACHE_METADATA_VERSION = 1;
 const DEFAULT_MARKDOWN_RENDER_CACHE_DIR = path.join(process.cwd(), "data", "markdown-cache");
 
 export type PersistedRenderedMarkdown = {
@@ -24,6 +25,12 @@ type PersistedRenderedMarkdownEntry = {
   headings: MarkdownHeading[];
 };
 
+type PersistedRenderedMarkdownCacheMetadata = {
+  version: typeof MARKDOWN_RENDER_CACHE_METADATA_VERSION;
+  kind: "rendered-markdown-cache-metadata";
+  lastMutation: RenderedMarkdownCacheMutation | null;
+};
+
 export type RenderedMarkdownCacheEntryMetadata = {
   fileName: string;
   headingCount: number;
@@ -33,12 +40,46 @@ export type RenderedMarkdownCacheEntryMetadata = {
   savedAt: string;
 };
 
+export type RenderedMarkdownCacheMutation = {
+  at: string;
+  deletedEntries: number;
+  reason: string;
+  scope: "all" | "page" | "pages";
+  target?: string;
+};
+
+type RenderedMarkdownCacheMutationState = {
+  cacheDir: string;
+  lastMutation: RenderedMarkdownCacheMutation | null;
+};
+
+const RENDERED_MARKDOWN_CACHE_MUTATION_STATE_KEY = Symbol.for("vicky.markdownRender.cacheMutationState");
+
+const getRenderedMarkdownCacheMutationState = (): RenderedMarkdownCacheMutationState => {
+  const globalState = globalThis as typeof globalThis & Record<symbol, RenderedMarkdownCacheMutationState | undefined>;
+  let state = globalState[RENDERED_MARKDOWN_CACHE_MUTATION_STATE_KEY];
+
+  if (!state) {
+    state = {
+      cacheDir: "",
+      lastMutation: null,
+    };
+    globalState[RENDERED_MARKDOWN_CACHE_MUTATION_STATE_KEY] = state;
+  }
+
+  return state;
+};
+
 const getMarkdownRenderCacheDir = (): string =>
   process.env.WIKI_MARKDOWN_CACHE_DIR?.trim() || DEFAULT_MARKDOWN_RENDER_CACHE_DIR;
+
+export const getPersistentRenderedMarkdownCacheDir = (): string => getMarkdownRenderCacheDir();
 
 const hashCacheKey = (key: string): string => createHash("sha256").update(key).digest("hex");
 
 const cachePagesDir = (): string => path.join(getMarkdownRenderCacheDir(), "pages");
+
+const cacheMetadataFilePath = (): string => path.join(getMarkdownRenderCacheDir(), "metadata.json");
 
 const cacheFilePath = (key: string): string => path.join(getMarkdownRenderCacheDir(), "pages", `${hashCacheKey(key)}.json`);
 
@@ -160,6 +201,101 @@ const writeJsonFile = async (filePath: string, value: unknown): Promise<void> =>
   const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
   await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
   await rename(tempPath, filePath);
+};
+
+const normalizeRenderedMarkdownCacheMutation = (value: unknown): RenderedMarkdownCacheMutation | null => {
+  const source = asRecord(value);
+  if (!source) {
+    return null;
+  }
+
+  const at = asString(source.at);
+  const reason = asString(source.reason);
+  const scope = asString(source.scope);
+  const deletedEntries = source.deletedEntries;
+  const target = asString(source.target);
+
+  if (
+    !at ||
+    Number.isNaN(Date.parse(at)) ||
+    !reason ||
+    (scope !== "all" && scope !== "page" && scope !== "pages") ||
+    typeof deletedEntries !== "number" ||
+    !Number.isFinite(deletedEntries)
+  ) {
+    return null;
+  }
+
+  return {
+    at,
+    deletedEntries: Math.max(0, Math.floor(deletedEntries)),
+    reason,
+    scope,
+    ...(target ? { target } : {}),
+  };
+};
+
+const readRenderedMarkdownCacheMetadata = async (): Promise<PersistedRenderedMarkdownCacheMetadata | null> => {
+  try {
+    const raw = await readFile(cacheMetadataFilePath(), "utf8");
+    const source = asRecord(JSON.parse(raw) as unknown);
+    if (
+      !source ||
+      source.version !== MARKDOWN_RENDER_CACHE_METADATA_VERSION ||
+      source.kind !== "rendered-markdown-cache-metadata"
+    ) {
+      return null;
+    }
+
+    return {
+      version: MARKDOWN_RENDER_CACHE_METADATA_VERSION,
+      kind: "rendered-markdown-cache-metadata",
+      lastMutation: normalizeRenderedMarkdownCacheMutation(source.lastMutation),
+    };
+  } catch (error: unknown) {
+    if (!isMissingFileError(error)) {
+      warnCacheFileFailure("read metadata from", "metadata.json", error);
+    }
+
+    return null;
+  }
+};
+
+export const recordRenderedMarkdownCacheMutation = async (
+  mutation: Omit<RenderedMarkdownCacheMutation, "at">,
+): Promise<RenderedMarkdownCacheMutation> => {
+  const recorded = {
+    ...mutation,
+    at: new Date().toISOString(),
+  };
+  const state = getRenderedMarkdownCacheMutationState();
+  state.cacheDir = getMarkdownRenderCacheDir();
+  state.lastMutation = recorded;
+
+  try {
+    await writeJsonFile(cacheMetadataFilePath(), {
+      version: MARKDOWN_RENDER_CACHE_METADATA_VERSION,
+      kind: "rendered-markdown-cache-metadata",
+      lastMutation: recorded,
+    } satisfies PersistedRenderedMarkdownCacheMetadata);
+  } catch (error: unknown) {
+    warnCacheFileFailure("write metadata to", "metadata.json", error);
+  }
+
+  return recorded;
+};
+
+export const getRenderedMarkdownCacheLastMutation = async (): Promise<RenderedMarkdownCacheMutation | null> => {
+  const state = getRenderedMarkdownCacheMutationState();
+  const cacheDir = getMarkdownRenderCacheDir();
+  if (state.cacheDir === cacheDir && state.lastMutation) {
+    return state.lastMutation;
+  }
+
+  const metadata = await readRenderedMarkdownCacheMetadata();
+  state.cacheDir = cacheDir;
+  state.lastMutation = metadata?.lastMutation ?? null;
+  return state.lastMutation;
 };
 
 const listPersistentRenderedMarkdownFileNames = async (): Promise<string[]> => {

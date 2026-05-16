@@ -13,9 +13,13 @@ import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot } f
 import { badRequest } from "@/lib/http";
 import {
   deletePersistentRenderedMarkdownWhere,
+  getPersistentRenderedMarkdownCacheDir,
+  getRenderedMarkdownCacheLastMutation,
   listPersistentRenderedMarkdownCacheEntries,
+  recordRenderedMarkdownCacheMutation,
   readPersistentRenderedMarkdownMetadata,
   writePersistentRenderedMarkdown,
+  type RenderedMarkdownCacheMutation,
 } from "@/lib/markdown-render-cache-store";
 import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
 import {
@@ -50,7 +54,16 @@ export type MarkdownRenderCachePageStatus = {
 };
 
 export type MarkdownRenderCacheStatus = {
+  cacheDirectory: string;
   cachedVariants: number;
+  currentSourceHtmlBytes: number;
+  currentSourceEntries: number;
+  globalEntries: number;
+  globalHtmlBytes: number;
+  globalStaleEntries: number;
+  lastMutation: RenderedMarkdownCacheMutation | null;
+  otherSourceEntries: number;
+  processId: number;
   rendererVersion: string;
   sourcePagesCached: number;
   staleEntries: number;
@@ -247,10 +260,12 @@ export const createMarkdownRenderCacheStatus = async ({
   store: DocsStore;
 }): Promise<MarkdownRenderCacheStatus> => {
   const prefix = markdownRenderCachePrefix(config);
-  const [cacheEntries, variantData] = await Promise.all([
-    listPersistentRenderedMarkdownCacheEntries(prefix),
+  const [allCacheEntries, lastMutation, variantData] = await Promise.all([
+    listPersistentRenderedMarkdownCacheEntries(),
+    getRenderedMarkdownCacheLastMutation(),
     buildMarkdownRenderCacheVariants({ config, store }),
   ]);
+  const cacheEntries = allCacheEntries.filter((entry) => entry.key.startsWith(prefix));
   const cacheEntriesByKey = new Map(cacheEntries.map((entry) => [entry.key, entry]));
   const expectedKeys = new Set<string>();
   const variantsBySlug = new Map<string, MarkdownRenderCacheLanguageStatus[]>();
@@ -307,9 +322,21 @@ export const createMarkdownRenderCacheStatus = async ({
   });
   const totalVariants = variantData.variants.length;
   const staleEntries = cacheEntries.reduce((count, entry) => count + (expectedKeys.has(entry.key) ? 0 : 1), 0);
+  const globalStaleEntries = allCacheEntries.reduce((count, entry) => count + (expectedKeys.has(entry.key) ? 0 : 1), 0);
+  const currentSourceHtmlBytes = cacheEntries.reduce((bytes, entry) => bytes + entry.htmlBytes, 0);
+  const globalHtmlBytes = allCacheEntries.reduce((bytes, entry) => bytes + entry.htmlBytes, 0);
 
   return {
+    cacheDirectory: getPersistentRenderedMarkdownCacheDir(),
     cachedVariants,
+    currentSourceHtmlBytes,
+    currentSourceEntries: cacheEntries.length,
+    globalEntries: allCacheEntries.length,
+    globalHtmlBytes,
+    globalStaleEntries,
+    lastMutation,
+    otherSourceEntries: Math.max(0, allCacheEntries.length - cacheEntries.length),
+    processId: process.pid,
     rendererVersion: MARKDOWN_RENDER_VERSION,
     sourcePagesCached,
     staleEntries,
@@ -406,6 +433,11 @@ export const clearMarkdownRenderCache = async ({
     const prefix = markdownRenderCachePrefix(config);
     renderedMarkdownCache.deleteWhere((key) => typeof key === "string" && key.startsWith(prefix));
     const clearedEntries = await deletePersistentRenderedMarkdownWhere((key) => key.startsWith(prefix));
+    await recordRenderedMarkdownCacheMutation({
+      deletedEntries: clearedEntries,
+      reason: "admin-clear-current-source",
+      scope: "all",
+    });
 
     return {
       clearedEntries,
@@ -420,6 +452,12 @@ export const clearMarkdownRenderCache = async ({
   const clearedEntries = await deletePersistentRenderedMarkdownWhere((key) =>
     markdownRenderCacheKeyMatchesSlug(config, normalizedSlug, key),
   );
+  await recordRenderedMarkdownCacheMutation({
+    deletedEntries: clearedEntries,
+    reason: "admin-clear-page",
+    scope: "page",
+    target: normalizedSlug,
+  });
 
   return {
     clearedEntries,

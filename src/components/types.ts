@@ -216,7 +216,16 @@ export type AdminMarkdownCachePageStatus = {
 };
 
 export type AdminMarkdownCacheStatus = {
+  cacheDirectory: string;
   cachedVariants: number;
+  currentSourceEntries: number;
+  currentSourceHtmlBytes: number;
+  globalEntries: number;
+  globalHtmlBytes: number;
+  globalStaleEntries: number;
+  lastMutation: AdminMarkdownCacheMutation | null;
+  otherSourceEntries: number;
+  processId: number;
   rendererVersion: string;
   sourcePagesCached: number;
   staleEntries: number;
@@ -227,6 +236,14 @@ export type AdminMarkdownCacheStatus = {
   uncachedVariants: number;
   updatedAt: string;
   pages: AdminMarkdownCachePageStatus[];
+};
+
+export type AdminMarkdownCacheMutation = {
+  at: string;
+  deletedEntries: number;
+  reason: string;
+  scope: "all" | "page" | "pages";
+  target?: string;
 };
 
 export type AdminMarkdownCacheWarmResult = {

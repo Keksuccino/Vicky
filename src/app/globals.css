@@ -3103,6 +3103,16 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
   gap: 0.38rem 0.72rem;
 }
 
+.markdown-cache-cache-path-row {
+  align-items: baseline;
+}
+
+.markdown-cache-cache-path {
+  min-width: 0;
+  font-family: var(--font-geist-mono), "SFMono-Regular", Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
 .markdown-cache-page-list {
   display: grid;
   gap: 0.48rem;

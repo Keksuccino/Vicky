@@ -750,7 +750,12 @@ function MarkdownCacheCard({
   const pageRatio = status ? `${formatVisitorCount(status.sourcePagesCached)}/${formatVisitorCount(status.totalPages)}` : "...";
   const translatedVariantLabel = status ? formatVisitorCount(status.translatedVariants) : "...";
   const staleEntryLabel = status ? formatVisitorCount(status.staleEntries) : "...";
+  const globalEntryLabel = status ? formatVisitorCount(status.globalEntries) : "...";
   const storageLabel = status ? formatByteSize(status.totalHtmlBytes) : "...";
+  const globalStorageLabel = status ? formatByteSize(status.globalHtmlBytes) : "...";
+  const lastMutationLabel = status?.lastMutation
+    ? `${formatVisitorCount(status.lastMutation.deletedEntries)} removed ${formatStatusTimestamp(status.lastMutation.at)}`
+    : "No clear recorded";
 
   return (
     <section className="panel-card panel-card-markdown-cache">
@@ -797,7 +802,14 @@ function MarkdownCacheCard({
       <div className="markdown-cache-meta-row">
         <span>Renderer v{status?.rendererVersion || "..."}</span>
         <span>{staleEntryLabel} unused entr{status?.staleEntries === 1 ? "y" : "ies"}</span>
+        <span>{globalEntryLabel} files globally</span>
+        <span>{globalStorageLabel} globally</span>
+        <span>PID {status?.processId || "..."}</span>
         <span>{status ? `Updated ${formatStatusTimestamp(status.updatedAt)}` : "Loading cache status..."}</span>
+      </div>
+      <div className="markdown-cache-meta-row markdown-cache-cache-path-row">
+        <span className="markdown-cache-cache-path">{status?.cacheDirectory || "..."}</span>
+        <span>{lastMutationLabel}</span>
       </div>
 
       <div className="action-row">
@@ -1781,27 +1793,44 @@ export function AdminSettingsPanel() {
         draft.customDomain !== lastSavedDomainRef.current.customDomain ||
         draft.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
       const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft));
-      const nextSettings: AdminSettings = {
+      const persistedSettings: AdminSettings = {
         ...saved,
-          githubToken: draft.githubToken,
-          openRouterApiKey: draft.openRouterApiKey,
-        };
+        githubToken: "",
+        openRouterApiKey: "",
+      };
       const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
 
-      lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings);
+      lastSavedSnapshotRef.current = createSaveSnapshot(persistedSettings);
       lastSavedDomainRef.current = {
-        customDomain: nextSettings.customDomain,
-        letsEncryptEmail: nextSettings.letsEncryptEmail,
+        customDomain: persistedSettings.customDomain,
+        letsEncryptEmail: persistedSettings.letsEncryptEmail,
       };
 
-      if (!hasNewerLocalChanges) {
+      if (hasNewerLocalChanges) {
+        const latestSettings = latestSettingsRef.current;
+        const nextSettings: AdminSettings = {
+          ...latestSettings,
+          openRouterApiKey:
+            draft.openRouterApiKey.trim() && latestSettings.openRouterApiKey === draft.openRouterApiKey
+              ? ""
+              : latestSettings.openRouterApiKey,
+          openRouterApiKeyConfigured: persistedSettings.openRouterApiKeyConfigured,
+          githubToken:
+            draft.githubToken.trim() && latestSettings.githubToken === draft.githubToken
+              ? ""
+              : latestSettings.githubToken,
+          tokenConfigured: persistedSettings.tokenConfigured,
+        };
         latestSettingsRef.current = nextSettings;
         setSettings(nextSettings);
-        setThemeSettings(themeCustomizationFromSettings(saved));
-        setDomainFieldErrors(validateDomainFields(saved.customDomain, saved.letsEncryptEmail));
-        setAiChatFieldErrors(validateAiChatFields(saved));
-        setOpenRouterFieldErrors(validateOpenRouterFields(saved));
-        setAutoTranslateFieldErrors(validateAutoTranslateFields(saved));
+      } else {
+        latestSettingsRef.current = persistedSettings;
+        setSettings(persistedSettings);
+        setThemeSettings(themeCustomizationFromSettings(persistedSettings));
+        setDomainFieldErrors(validateDomainFields(persistedSettings.customDomain, persistedSettings.letsEncryptEmail));
+        setAiChatFieldErrors(validateAiChatFields(persistedSettings));
+        setOpenRouterFieldErrors(validateOpenRouterFields(persistedSettings));
+        setAutoTranslateFieldErrors(validateAutoTranslateFields(persistedSettings));
       }
 
       if (shouldRefreshSslStatus) {

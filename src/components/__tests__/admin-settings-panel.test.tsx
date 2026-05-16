@@ -206,7 +206,16 @@ const PERFORMANCE_STATS = {
 };
 
 const MARKDOWN_CACHE_STATUS = {
+  cacheDirectory: "/wiki/data/markdown-cache",
   cachedVariants: 1,
+  currentSourceEntries: 1,
+  currentSourceHtmlBytes: 1024,
+  globalEntries: 3,
+  globalHtmlBytes: 3072,
+  globalStaleEntries: 2,
+  lastMutation: null,
+  otherSourceEntries: 2,
+  processId: 1234,
   rendererVersion: "1",
   sourcePagesCached: 1,
   staleEntries: 0,
@@ -375,5 +384,36 @@ describe("AdminSettingsPanel", () => {
     await waitFor(() => {
       expect(siteTitleInput.value).toBe("Vicky Docs 12");
     });
+  });
+
+  it("clears saved GitHub token input before later settings saves", async () => {
+    saveAdminSettingsMock.mockResolvedValue({
+      ...INITIAL_SETTINGS,
+      tokenConfigured: true,
+    });
+
+    render(<AdminSettingsPanel />);
+
+    const tokenInput = (await screen.findByLabelText(/^GitHub token\b/)) as HTMLInputElement;
+
+    fireEvent.change(tokenInput, {
+      target: { value: "ghp_saved" },
+    });
+
+    await waitFor(() => {
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(tokenInput.value).toBe("");
+    });
+
+    const siteTitleInput = screen.getByRole("textbox", { name: /^Site title\b/ }) as HTMLInputElement;
+    fireEvent.change(siteTitleInput, {
+      target: { value: "Vicky Docs without secret resend" },
+    });
+
+    await waitFor(() => {
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
+    });
+
+    expect((saveAdminSettingsMock.mock.calls[1] ?? [])[0]?.githubToken).toBe("");
   });
 });

@@ -949,6 +949,25 @@ function normalizeAdminMarkdownCachePageStatus(source: unknown): AdminMarkdownCa
   };
 }
 
+function normalizeAdminMarkdownCacheMutation(source: unknown): AdminMarkdownCacheStatus["lastMutation"] {
+  const payload = asRecord(source);
+  const at = asString(payload.at).trim();
+  const scope = asString(payload.scope).trim();
+  const reason = asString(payload.reason).trim();
+
+  if (!at || !reason) {
+    return null;
+  }
+
+  return {
+    at,
+    deletedEntries: Math.max(0, Math.round(asNumber(payload.deletedEntries, 0))),
+    reason,
+    scope: scope === "page" || scope === "pages" ? scope : "all",
+    ...(asString(payload.target).trim() ? { target: asString(payload.target).trim() } : {}),
+  };
+}
+
 function normalizeAdminMarkdownCacheStatus(source: unknown): AdminMarkdownCacheStatus {
   const payload = asRecord(asRecord(source).status ?? source);
   const rawPages = payload.pages;
@@ -961,7 +980,16 @@ function normalizeAdminMarkdownCacheStatus(source: unknown): AdminMarkdownCacheS
   const cachedVariants = Math.max(0, Math.round(asNumber(payload.cachedVariants, 0)));
 
   return {
+    cacheDirectory: asString(payload.cacheDirectory).trim(),
     cachedVariants,
+    currentSourceEntries: Math.max(0, Math.round(asNumber(payload.currentSourceEntries, 0))),
+    currentSourceHtmlBytes: Math.max(0, Math.round(asNumber(payload.currentSourceHtmlBytes, 0))),
+    globalEntries: Math.max(0, Math.round(asNumber(payload.globalEntries, cachedVariants))),
+    globalHtmlBytes: Math.max(0, Math.round(asNumber(payload.globalHtmlBytes, asNumber(payload.totalHtmlBytes, 0)))),
+    globalStaleEntries: Math.max(0, Math.round(asNumber(payload.globalStaleEntries, asNumber(payload.staleEntries, 0)))),
+    lastMutation: payload.lastMutation === null ? null : normalizeAdminMarkdownCacheMutation(payload.lastMutation),
+    otherSourceEntries: Math.max(0, Math.round(asNumber(payload.otherSourceEntries, 0))),
+    processId: Math.max(0, Math.round(asNumber(payload.processId, 0))),
     rendererVersion: asString(payload.rendererVersion).trim(),
     sourcePagesCached: Math.max(0, Math.round(asNumber(payload.sourcePagesCached, 0))),
     staleEntries: Math.max(0, Math.round(asNumber(payload.staleEntries, 0))),
