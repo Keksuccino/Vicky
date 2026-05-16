@@ -2,6 +2,14 @@ import type { NextConfig } from "next";
 
 const DEV_CHUNK_LOAD_TIMEOUT_MS = 5 * 60 * 1000;
 
+const wikiJsCompatibilityRedirects = [
+  {
+    source: "/en/:path*",
+    destination: "/docs/en-US/:path*",
+    permanent: true,
+  },
+];
+
 const nextConfig: NextConfig = {
   serverExternalPackages: ["better-sqlite3"],
   turbopack: {},
@@ -11,6 +19,9 @@ const nextConfig: NextConfig = {
     }
 
     return config;
+  },
+  async redirects() {
+    return wikiJsCompatibilityRedirects;
   },
   async rewrites() {
     return {
