@@ -102,6 +102,13 @@ const resetAnalyticsSchema = (db: SqliteDatabase): void => {
   db.pragma("foreign_keys = ON");
 };
 
+const ensureVisitorEventIdColumn = (db: SqliteDatabase): void => {
+  const columns = getTableColumns(db, "visitor_events");
+  if (columns.size > 0 && !columns.has("event_id")) {
+    db.exec("ALTER TABLE visitor_events ADD COLUMN event_id TEXT;");
+  }
+};
+
 const initDatabase = (db: SqliteDatabase): void => {
   if (hasIncompatibleAnalyticsSchema(db)) {
     resetAnalyticsSchema(db);
@@ -125,6 +132,7 @@ const initDatabase = (db: SqliteDatabase): void => {
 
     CREATE TABLE IF NOT EXISTS visitor_events (
       id TEXT PRIMARY KEY,
+      event_id TEXT,
       page_slug TEXT NOT NULL REFERENCES visitor_pages(slug) ON DELETE CASCADE,
       visitor_id TEXT NOT NULL,
       visited_at TEXT NOT NULL,
@@ -139,6 +147,12 @@ const initDatabase = (db: SqliteDatabase): void => {
     CREATE INDEX IF NOT EXISTS visitor_events_day_page_visitor_idx ON visitor_events(visited_day, page_slug, visitor_id);
     CREATE INDEX IF NOT EXISTS visitor_events_hour_page_visitor_idx ON visitor_events(visited_hour, page_slug, visitor_id);
     CREATE INDEX IF NOT EXISTS visitor_events_page_visitor_idx ON visitor_events(page_slug, visitor_id);
+  `);
+  ensureVisitorEventIdColumn(db);
+  db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS visitor_events_visitor_event_id_idx
+      ON visitor_events(visitor_id, event_id)
+      WHERE event_id IS NOT NULL;
   `);
 };
 
@@ -228,41 +242,46 @@ const normalizePage = (page: VisitorPageIdentity): VisitorPageIdentity => {
 
 const toCount = (value: number | null | undefined): number => Math.max(0, Math.round(value ?? 0));
 
-const getMetaValue = (key: string): string | null => {
-  const row = getDatabase().prepare<[string], { value: string }>("SELECT value FROM analytics_meta WHERE key = ?").get(key);
+const getMetaValueFromDb = (db: SqliteDatabase, key: string): string | null => {
+  const row = db.prepare<[string], { value: string }>("SELECT value FROM analytics_meta WHERE key = ?").get(key);
   return row?.value ?? null;
 };
 
-const setMetaValue = (key: string, value: string): void => {
-  getDatabase()
-    .prepare<[string, string]>(
-      "INSERT INTO analytics_meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-    )
-    .run(key, value);
+const getMetaValue = (key: string): string | null => getMetaValueFromDb(getDatabase(), key);
+
+const normalizeEventId = (value: string | null | undefined): string | null => {
+  const normalized = value?.trim().slice(0, 128) ?? "";
+  return normalized || null;
 };
 
 export const getVisitorAnalyticsSalt = async (): Promise<string> => {
-  const existing = getMetaValue("ip_hash_salt");
+  const db = getDatabase();
+  const existing = getMetaValueFromDb(db, "ip_hash_salt");
   if (existing) {
     return existing;
   }
 
-  const salt = randomUUID();
-  setMetaValue("ip_hash_salt", salt);
-  return salt;
+  return db.transaction(() => {
+    const salt = randomUUID();
+    db.prepare<[string]>("INSERT OR IGNORE INTO analytics_meta (key, value) VALUES ('ip_hash_salt', ?)").run(salt);
+    return getMetaValueFromDb(db, "ip_hash_salt") ?? salt;
+  })();
 };
 
 export const recordVisitorEvent = async ({
+  eventId,
   page,
   visitedAt = new Date(),
   visitorId,
 }: {
+  eventId?: string | null;
   page: VisitorPageIdentity;
   visitedAt?: Date;
   visitorId: string;
 }): Promise<boolean> => {
   const normalizedPage = normalizePage(page);
   const normalizedVisitorId = visitorId.trim();
+  const normalizedEventId = normalizeEventId(eventId);
   if (!normalizedPage.slug || !normalizedVisitorId) {
     return false;
   }
@@ -272,7 +291,7 @@ export const recordVisitorEvent = async ({
   const hour = formatHourKey(visitedAt);
   const db = getDatabase();
 
-  db.transaction(() => {
+  const recorded = db.transaction(() => {
     db.prepare<[string, string, string, string]>(
       `INSERT INTO visitor_pages (slug, path, title, updated_at)
        VALUES (?, ?, ?, ?)
@@ -282,19 +301,27 @@ export const recordVisitorEvent = async ({
          updated_at = excluded.updated_at`,
     ).run(normalizedPage.slug, normalizedPage.path, normalizedPage.title, timestamp);
 
-    db.prepare<[string, string, string, string, string, string]>(
-      `INSERT INTO visitor_events (id, page_slug, visitor_id, visited_at, visited_day, visited_hour)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    ).run(randomUUID(), normalizedPage.slug, normalizedVisitorId, timestamp, day, hour);
+    const result = db
+      .prepare<[string, string | null, string, string, string, string, string]>(
+        `INSERT OR IGNORE INTO visitor_events (id, event_id, page_slug, visitor_id, visited_at, visited_day, visited_hour)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(randomUUID(), normalizedEventId, normalizedPage.slug, normalizedVisitorId, timestamp, day, hour);
+
+    if (result.changes === 0) {
+      return false;
+    }
 
     db.prepare<[string]>(
       `INSERT INTO analytics_meta (key, value)
        VALUES ('updated_at', ?)
        ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
     ).run(timestamp);
+
+    return true;
   })();
 
-  return true;
+  return recorded;
 };
 
 const countAllTime = (): CountRow => {

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import {
+  createDisplayedDocPageVisitEventId,
   fetchDocPage,
   fetchDocPageMetadata,
   fetchDocsTreeState,
@@ -747,8 +748,9 @@ export function DocsClient({
       return;
     }
 
+    const visitEventId = createDisplayedDocPageVisitEventId();
     recordedVisitKeyRef.current = visitKey;
-    void recordDisplayedDocPageVisit(page).catch((error: unknown) => {
+    void recordDisplayedDocPageVisit(page, visitEventId).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[visitors] Failed to queue docs page visit: ${message}`);
     });

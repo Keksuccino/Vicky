@@ -9,6 +9,7 @@ export const dynamic = "force-dynamic";
 
 const visitSchema = z
   .object({
+    eventId: z.string().trim().min(1).max(128),
     path: z.string().min(1),
     slug: z.string().min(1),
     title: z.string().optional().default(""),
@@ -18,7 +19,7 @@ const visitSchema = z
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const payload = visitSchema.parse(await parseJsonBody<unknown>(request));
-    const queued = enqueueDocPageVisit(request, payload);
+    const queued = enqueueDocPageVisit(request, payload, payload.eventId);
 
     return NextResponse.json({ queued }, { status: 202 });
   } catch (error: unknown) {

@@ -22,6 +22,7 @@ type VisitorStorageBackend = {
   getVisitorAnalyticsSalt: () => Promise<string>;
   loadVisitorStatsSummary: (now?: Date, knownPages?: VisitorPageIdentity[]) => Promise<VisitorStatsSummary>;
   recordVisitorEvent: (event: {
+    eventId?: string | null;
     page: VisitorPageIdentity;
     visitedAt?: Date;
     visitorId: string;
@@ -35,6 +36,7 @@ const defaultVisitorStorageLoader: VisitorStorageLoader = () => import("@/lib/vi
 let visitorStorageLoader: VisitorStorageLoader = defaultVisitorStorageLoader;
 
 type QueuedDocPageVisit = {
+  eventId: string | null;
   ipAddress: string;
   page: VisitorPageIdentity;
   attempts: number;
@@ -301,10 +303,19 @@ export const recordVisitorInStats = (
   return true;
 };
 
-const recordPageIdentityVisitForIp = async (ipAddress: string, page: VisitorPageIdentity): Promise<void> => {
+const normalizeVisitEventId = (eventId: string | null | undefined): string | null => {
+  const normalized = eventId?.trim().slice(0, 128) ?? "";
+  return normalized || null;
+};
+
+const recordPageIdentityVisitForIp = async (
+  ipAddress: string,
+  page: VisitorPageIdentity,
+  eventId?: string | null,
+): Promise<void> => {
   const storage = await loadVisitorStorage();
   const visitorId = hashVisitorIp(ipAddress, await storage.getVisitorAnalyticsSalt());
-  await storage.recordVisitorEvent({ page, visitorId });
+  await storage.recordVisitorEvent({ eventId: normalizeVisitEventId(eventId), page, visitorId });
 };
 
 const flushQueuedVisits = async (): Promise<void> => {
@@ -322,7 +333,7 @@ const flushQueuedVisits = async (): Promise<void> => {
       }
 
       try {
-        await recordPageIdentityVisitForIp(visit.ipAddress, visit.page);
+        await recordPageIdentityVisitForIp(visit.ipAddress, visit.page, visit.eventId);
       } catch (error: unknown) {
         const nextAttempts = visit.attempts + 1;
         const message = error instanceof Error ? error.message : String(error);
@@ -351,13 +362,18 @@ export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPa
   await recordPageIdentityVisitForIp(getRequestIpAddress(request), normalizeVisitorPageIdentity(page));
 };
 
-export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdentity): boolean => {
+export const enqueueDocPageVisit = (
+  request: NextRequest,
+  page: VisitorPageIdentity,
+  eventId?: string | null,
+): boolean => {
   const normalizedPage = normalizeVisitPage(page);
   if (!normalizedPage.slug) {
     return false;
   }
 
   visitQueue.push({
+    eventId: normalizeVisitEventId(eventId),
     ipAddress: getRequestIpAddress(request),
     page: normalizedPage,
     attempts: 0,

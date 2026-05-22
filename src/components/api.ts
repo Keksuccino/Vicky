@@ -1166,11 +1166,21 @@ export async function fetchDocPageMetadata(
   return normalizePageMetadata(response, slugToPath(slug));
 }
 
-export async function recordDisplayedDocPageVisit(page: Pick<DocPage, "path" | "slug" | "title">): Promise<void> {
+export function createDisplayedDocPageVisitEventId(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function recordDisplayedDocPageVisit(
+  page: Pick<DocPage, "path" | "slug" | "title">,
+  eventId?: string | null,
+): Promise<void> {
+  const visitEventId = (eventId?.trim() || createDisplayedDocPageVisitEventId()).slice(0, 128);
+
   await requestJson<unknown>("/api/docs/visit", {
     method: "POST",
     keepalive: true,
     body: JSON.stringify({
+      eventId: visitEventId,
       path: page.path,
       slug: page.slug,
       title: page.title,

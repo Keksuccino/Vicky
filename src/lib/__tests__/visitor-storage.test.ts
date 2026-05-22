@@ -69,4 +69,36 @@ describe("visitor SQLite storage", () => {
       { path: "/empty", slug: "empty", title: "Empty", visits: 0, visitors: 0 },
     ]);
   });
+
+  it("deduplicates repeated page-view events for the same visitor", async () => {
+    const firstRecorded = await recordVisitorEvent({
+      eventId: "page-view-1",
+      page: { path: "/home", slug: "home", title: "Home" },
+      visitorId: "visitor-a",
+      visitedAt: new Date("2026-05-05T10:00:00.000Z"),
+    });
+    const duplicateRecorded = await recordVisitorEvent({
+      eventId: "page-view-1",
+      page: { path: "/home", slug: "home", title: "Home" },
+      visitorId: "visitor-a",
+      visitedAt: new Date("2026-05-05T10:01:00.000Z"),
+    });
+    const otherVisitorRecorded = await recordVisitorEvent({
+      eventId: "page-view-1",
+      page: { path: "/home", slug: "home", title: "Home" },
+      visitorId: "visitor-b",
+      visitedAt: new Date("2026-05-05T10:02:00.000Z"),
+    });
+
+    const summary = await loadVisitorStatsSummary(new Date("2026-05-05T10:03:00.000Z"));
+
+    expect(firstRecorded).toBe(true);
+    expect(duplicateRecorded).toBe(false);
+    expect(otherVisitorRecorded).toBe(true);
+    expect(summary.scopes.allTime.totalVisits).toBe(2);
+    expect(summary.scopes.allTime.totalVisitors).toBe(2);
+    expect(summary.scopes.allTime.pages).toEqual([
+      { path: "/home", slug: "home", title: "Home", visits: 2, visitors: 2 },
+    ]);
+  });
 });

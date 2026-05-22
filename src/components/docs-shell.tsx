@@ -5,6 +5,7 @@ import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 
 import {
+  createDisplayedDocPageVisitEventId,
   fetchDocsTreeState,
   firstLeafPath,
   formatApiError,
@@ -646,8 +647,9 @@ export function DocsShell({
       return;
     }
 
+    const visitEventId = createDisplayedDocPageVisitEventId();
     recordedVisitKeyRef.current = visitKey;
-    void recordDisplayedDocPageVisit(page).catch((error: unknown) => {
+    void recordDisplayedDocPageVisit(page, visitEventId).catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[visitors] Failed to queue docs page visit: ${message}`);
     });
