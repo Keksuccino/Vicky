@@ -4,7 +4,6 @@
 <br>
 <br>
 <br>
-<br>
 
 # Vicky
 
@@ -17,6 +16,7 @@ It gives you:
 - an in-browser markdown editor that saves directly back to GitHub
 - visitor and visit analytics, including per-page analytics
 
+<br>
 <img width="900" alt="vicky_preview" src="https://github.com/user-attachments/assets/35909429-404e-4ec0-92de-ce7440145eae" />
 <br>
 <br>
