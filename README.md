@@ -1,5 +1,11 @@
 # ⚠️ VICKY IS STILL VERY WIP AND SHOULD NOT GET USED IN PRODUCTION YET! ⚠️
 
+<br>
+<br>
+<br>
+<br>
+<br>
+
 # Vicky
 
 Vicky is a modern self-hosted docs/wiki frontend for Markdown content stored in a GitHub repository.
@@ -11,7 +17,13 @@ It gives you:
 - an in-browser markdown editor that saves directly back to GitHub
 - visitor and visit analytics, including per-page analytics
 
-## Highlights
+<img width="900" alt="vicky_preview" src="https://github.com/user-attachments/assets/35909429-404e-4ec0-92de-ce7440145eae" />
+<br>
+<br>
+
+✨ **Vicky Example Page:** https://docs.fancymenu.net/docs/en-US/home
+
+# Highlights
 
 - GitHub-backed docs storage: pages are read from a configured repository and path, not from this repo
 - Public docs UI with tree navigation, search, table of contents, heading anchors, mobile layout, and syntax-highlighted code blocks
@@ -23,7 +35,7 @@ It gives you:
 - Admin-only editor with live preview and immediate GitHub commits on save
 - Built-in visitor and visit analytics, including per-page analytics, for All-time, last 24h, last 7 days, last 30 days, and last 365 days
 
-## How Vicky Stores Data
+# How Vicky Stores Data
 
 - Docs content lives in your configured GitHub repository.
 - App settings live in `data/wiki-store.json` by default.
@@ -35,7 +47,7 @@ It gives you:
 
 This repo contains the app itself, not your docs content.
 
-## Requirements
+# Requirements
 
 - Node.js `20.9.0` or newer
 - A GitHub repository that contains your markdown docs
@@ -43,15 +55,15 @@ This repo contains the app itself, not your docs content.
   - `Contents: Read and write`
   - `Metadata: Read-only`
 
-## Quick Start
+# Quick Start
 
-### 1. Install dependencies:
+## 1. Install dependencies:
 
 ```bash
 npm install
 ```
 
-### 2. Create a local env file:
+## 2. Create a local env file:
 
 **Unix**
 ```bash
@@ -68,19 +80,19 @@ copy .env.example .env.local
 Copy-Item .env.example .env.local
 ```
 
-### 3. Set the required values in `.env.local`:
+## 3. Set the required values in `.env.local`:
 
 - `AUTH_JWT_SECRET`
 - `ADMIN_PASSWORD`
 - `ENCRYPTION_SECRET`
 
-### 4. Start the dev server:
+## 4. Start the dev server:
 
 ```bash
 npm run dev
 ```
 
-### 5. Open:
+## 5. Open:
 
 - Admin login: `http://localhost:3000/admin/login`
 - Docs site: `http://localhost:3000/`
@@ -88,7 +100,7 @@ npm run dev
 
 If you run the repo from `/mnt/<drive>/...` inside WSL, `npm run dev` automatically switches Next.js to a polling-based watcher so hot reload stays reliable.
 
-## First-Time Setup
+# First-Time Setup
 
 1. Sign in at `/admin/login` with username `admin` and the password from `ADMIN_PASSWORD`.
 2. Open `/admin/settings`.
@@ -111,7 +123,7 @@ After setup:
 - docs pages are served at `/docs/<path>`
 - the editor is available at `/editor`
 
-## AI Chat Assistant
+# AI Chat Assistant
 
 The AI chat assistant is optional and appears as the floating `Ask Docs` button on docs pages when enabled.
 
@@ -129,18 +141,7 @@ Notes:
 - use `{{assistant_name}}` in the system prompt, header subtitle, or welcome message if you want those values to update automatically with the configured assistant name
 - leave the profile image URL blank to use the default assistant badge icon
 
-## Theme Customization
-
-Theme customization is intentionally simple:
-- built-in `Light` and `Dark` modes
-- one main accent color per mode
-- one surface/background accent color per mode
-- optional site title gradient colors
-- optional custom CSS overrides
-
-Theme changes are managed from `Theme Management` in the admin panel.
-
-## Editor
+# Editor
 
 The editor is admin-only and writes directly to your configured GitHub docs repository.
 
@@ -152,7 +153,7 @@ It supports:
 - Markdown and Preview modes
 - `Ctrl+S` / `Cmd+S` saving
 
-## Markdown Features
+# Markdown Features
 
 Vicky supports:
 - GitHub Flavored Markdown
@@ -164,7 +165,7 @@ Vicky supports:
 - additional alert aliases: `INFO`, `SUCCESS`, `ERROR`
 - automatic normalization of root-relative docs links to `/docs/...`
 
-## Available Scripts
+# Available Scripts
 
 - `npm run dev` starts the Next.js dev server
 - `npm run build` builds the app for production
@@ -177,7 +178,7 @@ Vicky supports:
 
 Use `npm run start` if you want Vicky's built-in custom-domain and automatic HTTPS handling. Use `npm run start:next` only if you explicitly want a plain Next.js server.
 
-## Environment Variables
+# Environment Variables
 
 Required:
 
@@ -208,7 +209,7 @@ Common optional settings:
 
 For the full list of optional runtime settings, check [.env.example](.env.example).
 
-## Production Notes
+# Production Notes
 
 Standard production flow:
 
@@ -244,7 +245,7 @@ Persist these paths across deployments:
 - `data/docs-cache/`
 - `data/translation-cache/`
 
-## API Overview
+# API Overview
 
 Public endpoints:
 - `GET /api/public/settings`
@@ -267,7 +268,7 @@ Admin endpoints:
 - `GET|POST /api/admin/docs`
 - `GET /api/admin/domain-status`
 
-## Third-Party Assets
+# Third-Party Assets
 
 Vicky uses Google's Material Symbols Outlined icon font for UI icons via `@fontsource/material-symbols-outlined`.
 
@@ -279,7 +280,7 @@ Vicky uses Circle Flags for language flag icons via `@iconify-json/circle-flags`
 - Source: <https://github.com/HatScripts/circle-flags>
 - License: MIT
 
-## Copyright & License
+# Copyright & License
 
 Vicky Copyright © 2026 Keksuccino.<br>
 Vicky is licensed under MIT. See [LICENSE.md](LICENSE.md).
