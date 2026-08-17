@@ -1,10 +1,11 @@
-# AGENTS.md
+# Project Guidelines & Context
+- This project is "Vicky", which is a web-based docs system that renders Markdown docs pages.
+- The system uses GitHub as persistent storage for docs pages and syncs pages in both directions to/from it.
 
 ## Project Snapshot
 - Repository: `Vicky` (`origin`: `https://github.com/Keksuccino/Vicky`)
 - Primary branch: `main`
 - App type: Next.js App Router wiki/docs system with admin panel and integrated markdown editor
-- Runtime model:
 - Docs content is stored in a configured GitHub repository (not in this repo)
 - Local app settings/themes are stored in `data/wiki-store.json`
 
@@ -12,84 +13,84 @@
 - `/` redirects to the configured start page (default `/docs/home`).
 - Docs pages render markdown with GitHub-flavored features, custom alert boxes, heading anchors, and syntax highlighting.
 - Admin can configure:
-- GitHub source repository/path/token
-- Site title/description/start page
-- Docs icon URLs (16/32/180)
-- Docs cache TTL
-- Themes
+  - GitHub source repository/path/token
+  - Site title/description/start page
+  - Docs icon URLs (16/32/180)
+  - Docs cache TTL
+  - Themes
 - Editor saves directly to the configured remote GitHub repo via API (commit is created immediately on save).
 
 ## Tech Stack
 - Next.js 16 (App Router), React 19, TypeScript
 - Markdown pipeline:
-- `react-markdown`
-- `remark-gfm`, `remark-breaks`
-- custom `remarkGitHubAlerts` plugin
-- `rehype-highlight`, `rehype-slug`, `rehype-autolink-headings`, `rehype-sanitize`
+  - `react-markdown`
+  - `remark-gfm`, `remark-breaks`
+  - custom `remarkGitHubAlerts` plugin
+  - `rehype-highlight`, `rehype-slug`, `rehype-autolink-headings`, `rehype-sanitize`
 - GitHub API: `@octokit/rest`
 - Validation: `zod`
 
 ## High-Value File Map
 - App shell/layout:
-- `src/app/layout.tsx`
-- `src/components/app-header.tsx`
+  - `src/app/layout.tsx`
+  - `src/components/app-header.tsx`
 - Docs UI and navigation/search/hash scrolling:
-- `src/components/docs-client.tsx`
-- `src/components/docs-tree.tsx`
+  - `src/components/docs-client.tsx`
+  - `src/components/docs-tree.tsx`
 - Markdown rendering:
-- `src/components/markdown-renderer.tsx`
-- `src/lib/markdown.ts`
-- `src/lib/remark-github-alerts.ts`
+  - `src/components/markdown-renderer.tsx`
+  - `src/lib/markdown.ts`
+  - `src/lib/remark-github-alerts.ts`
 - Editor:
-- `src/components/editor-workbench.tsx`
+  - `src/components/editor-workbench.tsx`
 - Settings/store:
-- `src/lib/store.ts`
-- `src/lib/defaults.ts`
+  - `src/lib/store.ts`
+  - `src/lib/defaults.ts`
 - GitHub read/write + cache invalidation:
-- `src/lib/github.ts`
+  - `src/lib/github.ts`
 - Search corpus/ranking:
-- `src/lib/docs-search.ts`
+  - `src/lib/docs-search.ts`
 - Cache implementation:
-- `src/lib/cache.ts`
+  - `src/lib/cache.ts`
 - Auth + rate limiting:
-- `src/lib/auth.ts`
-- `src/lib/login-rate-limit.ts`
+  - `src/lib/auth.ts`
+  - `src/lib/login-rate-limit.ts`
 - API routes:
-- `src/app/api/**/route.ts`
+  - `src/app/api/**/route.ts`
 - Middleware guards:
-- `middleware.ts`
+  - `middleware.ts`
 
 ## API Surface (Current)
 - Public:
-- `GET /api/public/settings`
-- `GET /api/public/icon/16`
-- `GET /api/public/icon/32`
-- `GET /api/public/icon/180`
+  - `GET /api/public/settings`
+  - `GET /api/public/icon/16`
+  - `GET /api/public/icon/32`
+  - `GET /api/public/icon/180`
 - Docs read/search:
-- `GET /api/docs/tree`
-- `GET /api/docs/page`
-- `GET /api/docs/search`
+  - `GET /api/docs/tree`
+  - `GET /api/docs/page`
+  - `GET /api/docs/search`
 - Auth:
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/me`
+  - `POST /api/auth/login`
+  - `POST /api/auth/logout`
+  - `GET /api/auth/me`
 - Admin-protected:
-- `GET|PATCH /api/admin/settings`
-- `POST /api/admin/test-connection`
-- `GET|POST /api/admin/docs`
-- `GET /api/admin/visitors`
+  - `GET|PATCH /api/admin/settings`
+  - `POST /api/admin/test-connection`
+  - `GET|POST /api/admin/docs`
+  - `GET /api/admin/visitors`
 - Themes:
-- `GET|POST /api/themes`
-- `PATCH|DELETE /api/themes/[id]`
-- `POST /api/themes/activate`
+  - `GET|POST /api/themes`
+  - `PATCH|DELETE /api/themes/[id]`
+  - `POST /api/themes/activate`
 
 ## Local Development
 1. `npm install`
 2. `cp .env.example .env.local`
 3. Set env values (required in production, fallback values exist in development):
-- `AUTH_JWT_SECRET`
-- `ADMIN_PASSWORD`
-- `ENCRYPTION_SECRET`
+  - `AUTH_JWT_SECRET`
+  - `ADMIN_PASSWORD`
+  - `ENCRYPTION_SECRET`
 4. `npm run dev`
 
 Useful URLs:
@@ -108,9 +109,9 @@ Useful URLs:
 - Tree/page/search corpus are cached in memory with TTL (`src/lib/cache.ts`).
 - TTL is admin-configurable in site settings and applied dynamically.
 - Cache is cleared when:
-- settings that affect source change
-- docs are saved
-- explicit clear functions are called
+  - settings that affect source change
+  - docs are saved
+  - explicit clear functions are called
 - Search builds corpus by loading all docs through the same API-backed GitHub path and cache stack.
 
 ## Markdown + UI Expectations
@@ -122,25 +123,17 @@ Useful URLs:
 ## Icon/Favicon Notes
 - Icon URLs come from admin settings.
 - Public icon endpoints redirect to configured URLs:
-- `/api/public/icon/16`
-- `/api/public/icon/32`
-- `/api/public/icon/180`
+  - `/api/public/icon/16`
+  - `/api/public/icon/32`
+  - `/api/public/icon/180`
 - Important Next.js rule: route segment config must be static literals in each `route.ts`.
 - Do not re-export `dynamic`/`runtime` from helper modules.
-
-## Commit and Push Workflow (Important)
-- User preference for this repo: commit after each finished task.
-- Keep commits focused and descriptive.
-- Always run `git commit` and `git push` sequentially. Wait for `git commit` to finish successfully before starting `git push`; do not run them in parallel.
-- Push to `origin main` after each task-level commit unless the user says otherwise.
-- Do not amend/rewrite history unless explicitly requested.
-- Do not reset/revert unrelated user changes.
 
 ## Validation Checklist Before Commit
 - Run checks only when they are actually useful for the change.
 - Skip lint/tests for small simple changes that do not materially affect system behavior, such as adjusting a color, spacing, or size value, or updating docs/instructions like `AGENTS.md`.
 - Use `npm run lint` for larger code changes, behavior changes, refactors, or when the touched area has a meaningful risk of regressions.
-- Optional as needed: manual smoke checks for touched flows
+- Optional as needed: manual checks for touched flows
 - `npm run typecheck` is useful but can fail from existing unrelated issues (for example stale `.next` type artifacts or existing test typing issues). If it fails, report clearly instead of silently ignoring.
 
 ## Generated/Ignored Files
