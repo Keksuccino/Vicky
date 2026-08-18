@@ -5,7 +5,7 @@ import { setDocsCacheTtlMs } from "@/lib/cache";
 import { parseDocsRoutePath } from "@/lib/docs-routing";
 import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
-import { badRequest, ApiError, mergeApiErrorHeaders } from "@/lib/http";
+import { badRequest, publicTextErrorResponse } from "@/lib/http";
 import { canonicalizePublicDocLocator } from "@/lib/public-doc-path";
 import { getStore } from "@/lib/store";
 
@@ -54,12 +54,6 @@ export const GET = async (request: NextRequest, context: RawDocBySlugRouteContex
       headers: TEXT_PLAIN_HEADERS,
     });
   } catch (error: unknown) {
-    const status = error instanceof ApiError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "Internal Server Error";
-
-    return new Response(message, {
-      status,
-      headers: mergeApiErrorHeaders(TEXT_PLAIN_HEADERS, error),
-    });
+    return publicTextErrorResponse(error, { context: "GET /api/docs/raw/[...slug]", headers: TEXT_PLAIN_HEADERS });
   }
 };

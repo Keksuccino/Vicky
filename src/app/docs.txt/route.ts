@@ -3,7 +3,7 @@ import { type NextRequest } from "next/server";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { getPlaintextDocsExport } from "@/lib/docs-plaintext";
 import { resolveRuntimeConfig } from "@/lib/github";
-import { ApiError } from "@/lib/http";
+import { publicTextErrorResponse } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -38,12 +38,6 @@ export const GET = async (request: NextRequest): Promise<Response> => {
       headers: TEXT_PLAIN_HEADERS,
     });
   } catch (error: unknown) {
-    const status = error instanceof ApiError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "Internal Server Error";
-
-    return new Response(message, {
-      status,
-      headers: TEXT_PLAIN_HEADERS,
-    });
+    return publicTextErrorResponse(error, { context: "GET /docs.txt", headers: TEXT_PLAIN_HEADERS });
   }
 };

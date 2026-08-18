@@ -12,6 +12,7 @@ import {
   type RenderedDocsPageWithSourceHeadings,
 } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
+import { resolvePublicError } from "@/lib/http";
 import { getStore } from "@/lib/store";
 
 export type InitialDocsClientData = {
@@ -73,8 +74,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
         initialTreeTitlesPending = Boolean(treeResult.titlesPending);
         pagePath = firstLeafPath(initialTree) ?? "/";
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[docs] Failed to load initial docs tree: ${message}`);
+        resolvePublicError(error, { context: "load initial docs tree" });
       }
     }
 
@@ -91,9 +91,8 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
         initialPage = toClientDocPageChrome(pageResult.data);
         initialPageLanguageCode = pageResult.language.code;
       } catch (error: unknown) {
-        const message = error instanceof Error ? error.message : String(error);
-        pageError = message;
-        console.warn(`[docs] Failed to load initial docs page: ${message}`);
+        const publicError = resolvePublicError(error, { context: "load initial docs page", fallbackMessage: "The requested docs page could not be loaded." });
+        pageError = publicError.message;
       }
     }
 
@@ -109,13 +108,12 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
       pageError,
     };
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[docs] Failed to prepare initial docs data: ${message}`);
+    const publicError = resolvePublicError(error, { context: "prepare initial docs data", fallbackMessage: "The requested docs page could not be loaded." });
 
     return {
       initialPath: requestedPath,
       initialLanguageCode,
-      pageError: message,
+      pageError: publicError.message,
     };
   }
 };

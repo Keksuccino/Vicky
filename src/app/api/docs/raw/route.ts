@@ -4,7 +4,7 @@ import { AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
-import { ApiError, mergeApiErrorHeaders } from "@/lib/http";
+import { publicTextErrorResponse } from "@/lib/http";
 import { canonicalizePublicDocLocator } from "@/lib/public-doc-path";
 import { getStore } from "@/lib/store";
 
@@ -41,12 +41,6 @@ export const GET = async (request: NextRequest): Promise<Response> => {
       headers: TEXT_PLAIN_HEADERS,
     });
   } catch (error: unknown) {
-    const status = error instanceof ApiError ? error.status : 500;
-    const message = error instanceof Error ? error.message : "Internal Server Error";
-
-    return new Response(message, {
-      status,
-      headers: mergeApiErrorHeaders(TEXT_PLAIN_HEADERS, error),
-    });
+    return publicTextErrorResponse(error, { context: "GET /api/docs/raw", headers: TEXT_PLAIN_HEADERS });
   }
 };
