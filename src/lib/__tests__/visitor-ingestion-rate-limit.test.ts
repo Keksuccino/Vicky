@@ -1,7 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
+import { INTERNAL_CLIENT_IP_HEADER } from "@/lib/client-ip-policy";
+import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER } from "@/lib/request-origin-policy.mjs";
+
 const createRequest = (ip: string): NextRequest => ({ headers: new Headers(), ip }) as unknown as NextRequest;
+const createHeaderRequest = (headers: Record<string, string>): NextRequest => ({ headers: new Headers(headers) }) as unknown as NextRequest;
+const createTrustedProxyRequest = (clientIp: string): NextRequest => createHeaderRequest({ "x-forwarded-for": clientIp, [INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER]: "analytics-test-token", [INTERNAL_CLIENT_IP_HEADER]: "10.0.0.2" });
 
 describe("visitor analytics admission limits", () => {
   afterEach(() => {
@@ -55,5 +60,45 @@ describe("visitor analytics admission limits", () => {
     if (afterWindow.allowed) {
       afterWindow.release();
     }
+  });
+
+  it("keys analytics admission by trusted ingress client instead of the shared proxy", async () => {
+    vi.stubEnv("VISITOR_ANALYTICS_CLIENT_MAX_REQUESTS", "1");
+    vi.stubEnv("VISITOR_ANALYTICS_GLOBAL_MAX_REQUESTS", "100");
+    vi.stubEnv("AUTH_TRUST_PROXY_HEADERS", "true");
+    vi.stubEnv("AUTH_TRUSTED_PROXY_IPS", "10.0.0.2");
+    vi.stubEnv("VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN", "analytics-test-token");
+    vi.resetModules();
+    const { acquireVisitorIngestionPermit } = await import("@/lib/visitor-ingestion-rate-limit");
+
+    const firstClient = acquireVisitorIngestionPermit(createTrustedProxyRequest("198.51.100.20"), 2_000);
+    expect(firstClient.allowed).toBe(true);
+    if (firstClient.allowed) {
+      firstClient.release();
+    }
+    const secondClient = acquireVisitorIngestionPermit(createTrustedProxyRequest("198.51.100.21"), 2_000);
+    expect(secondClient.allowed).toBe(true);
+    if (secondClient.allowed) {
+      secondClient.release();
+    }
+    expect(acquireVisitorIngestionPermit(createTrustedProxyRequest("198.51.100.20"), 2_000).allowed).toBe(false);
+  });
+
+  it("uses global-only analytics admission when the client address is unknown", async () => {
+    vi.stubEnv("VISITOR_ANALYTICS_CLIENT_MAX_REQUESTS", "1");
+    vi.stubEnv("VISITOR_ANALYTICS_GLOBAL_MAX_REQUESTS", "3");
+    vi.stubEnv("AUTH_TRUST_PROXY_HEADERS", "false");
+    vi.stubEnv("VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN", "");
+    vi.resetModules();
+    const { acquireVisitorIngestionPermit } = await import("@/lib/visitor-ingestion-rate-limit");
+
+    for (const spoofedIp of ["198.51.100.20", "198.51.100.21", "198.51.100.22"]) {
+      const permit = acquireVisitorIngestionPermit(createHeaderRequest({ "x-forwarded-for": spoofedIp, [INTERNAL_CLIENT_IP_HEADER]: spoofedIp }), 3_000);
+      expect(permit.allowed).toBe(true);
+      if (permit.allowed) {
+        permit.release();
+      }
+    }
+    expect(acquireVisitorIngestionPermit(createHeaderRequest({}), 3_000).allowed).toBe(false);
   });
 });

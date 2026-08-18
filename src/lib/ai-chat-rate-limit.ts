@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { getClientIp } from "@/lib/login-rate-limit";
+import { getClientIp } from "@/lib/client-ip-policy";
 
 type AiChatAttemptState = {
   requestedAt: number[];
@@ -75,4 +75,3 @@ export const consumeAiChatRateLimit = (request: NextRequest): AiChatRateLimitSta
     remaining: Math.max(0, MAX_REQUESTS - existing.requestedAt.length),
   };
 };
-

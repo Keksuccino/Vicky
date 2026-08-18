@@ -1,9 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
 
+import { INTERNAL_CLIENT_IP_HEADER } from "@/lib/client-ip-policy";
+import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER } from "@/lib/request-origin-policy.mjs";
+
 type VisitorsModule = typeof import("@/lib/visitors");
 
 const createRequest = (ip = "203.0.113.8"): NextRequest => ({ headers: new Headers(), ip }) as unknown as NextRequest;
+const createHeaderRequest = (headers: Record<string, string> = {}): NextRequest => ({ headers: new Headers(headers) }) as unknown as NextRequest;
+const createTrustedProxyRequest = (clientIp: string): NextRequest => createHeaderRequest({ "x-forwarded-for": clientIp, [INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER]: "visitor-queue-token", [INTERNAL_CLIENT_IP_HEADER]: "10.0.0.2" });
 
 const page = { path: "/guide", slug: "guide", title: "Guide" };
 let visitorsModule: VisitorsModule | null = null;
@@ -98,5 +103,26 @@ describe("visitor analytics write queue", () => {
     expect(visitorsModule.enqueueDocPageVisit(request, page, "expiring-event")).toEqual({ status: "queued" });
     await vi.advanceTimersByTimeAsync(0);
     expect(recordVisitorEvent).toHaveBeenCalledTimes(2);
+  });
+
+  it("deduplicates per trusted client without collapsing distinct or unknown clients", async () => {
+    vi.stubEnv("AUTH_TRUST_PROXY_HEADERS", "true");
+    vi.stubEnv("AUTH_TRUSTED_PROXY_IPS", "10.0.0.2");
+    vi.stubEnv("VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN", "visitor-queue-token");
+    vi.resetModules();
+    visitorsModule = await import("@/lib/visitors");
+
+    const recordVisitorEvent = vi.fn().mockResolvedValue(true);
+    visitorsModule.setVisitorStorageLoaderForTests(async () => ({ getVisitorAnalyticsSalt: async () => "private-salt", loadVisitorStatsSummary: vi.fn(), recordVisitorEvent }));
+
+    expect(visitorsModule.enqueueDocPageVisit(createTrustedProxyRequest("198.51.100.20"), page, "shared-event")).toEqual({ status: "queued" });
+    expect(visitorsModule.enqueueDocPageVisit(createTrustedProxyRequest("198.51.100.20"), page, "shared-event")).toEqual({ status: "duplicate" });
+    expect(visitorsModule.enqueueDocPageVisit(createTrustedProxyRequest("198.51.100.21"), page, "shared-event")).toEqual({ status: "queued" });
+    expect(visitorsModule.enqueueDocPageVisit(createHeaderRequest(), page, "shared-event")).toEqual({ status: "queued" });
+    expect(visitorsModule.enqueueDocPageVisit(createHeaderRequest(), page, "shared-event")).toEqual({ status: "queued" });
+    await vi.waitFor(() => expect(recordVisitorEvent).toHaveBeenCalledTimes(4));
+
+    const visitorIds = recordVisitorEvent.mock.calls.map(([event]) => event.visitorId);
+    expect(new Set(visitorIds).size).toBe(4);
   });
 });

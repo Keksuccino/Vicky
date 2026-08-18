@@ -13,7 +13,7 @@
 - [x] **1.7** — Built-in admin JWT sessions cannot be revoked after password or security changes.
 - [x] **1.9** — Public raw and plaintext endpoints leak unexpected internal error messages.
 - [x] **1.10** — Forwarded host and protocol headers are trusted without a centralized trust policy.
-- [ ] **1.11** — Client-IP detection can prefer a proxy address over the real client address.
+- [x] **1.11** — Client-IP detection can prefer a proxy address over the real client address.
 - [ ] **1.12** — File-based login rate limiting is unsafe across multiple processes.
 - [ ] **Overall #9** — The application relies heavily on one process and its local filesystem.
 - [ ] **Overall #10** — A font file referenced by the project may be missing from the supplied tree.

@@ -1,5 +1,5 @@
 import { ApiError } from "@/lib/http";
-import { getClientIp, type ClientIpRequest } from "@/lib/login-rate-limit";
+import { getClientIp, type ClientIpRequest } from "@/lib/client-ip-policy";
 
 type ClientAdmissionState = {
   activeRequests: number;

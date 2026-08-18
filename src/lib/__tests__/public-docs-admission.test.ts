@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ClientIpRequest } from "@/lib/login-rate-limit";
+import { INTERNAL_CLIENT_IP_HEADER, type ClientIpRequest } from "@/lib/client-ip-policy";
+import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER } from "@/lib/request-origin-policy.mjs";
 
 const requestForIp = (ip: string): ClientIpRequest => ({ headers: new Headers(), ip });
+const requestForTrustedProxyClient = (clientIp: string): ClientIpRequest => ({ headers: new Headers({ "x-forwarded-for": clientIp, [INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER]: "docs-test-token", [INTERNAL_CLIENT_IP_HEADER]: "10.0.0.2" }), ip: "192.0.2.90" });
 
 describe("public docs request admission", () => {
   afterEach(() => {
@@ -52,5 +54,47 @@ describe("public docs request admission", () => {
     }
 
     expect(acquirePublicDocsAdmissionPermit(request, 2_000)).toEqual({ allowed: false, retryAfterSeconds: 10 });
+  });
+
+  it("uses the trusted ingress client for per-client admission behind one proxy", async () => {
+    vi.stubEnv("PUBLIC_DOCS_CLIENT_MAX_REQUESTS", "1");
+    vi.stubEnv("PUBLIC_DOCS_GLOBAL_MAX_REQUESTS", "100");
+    vi.stubEnv("AUTH_TRUST_PROXY_HEADERS", "true");
+    vi.stubEnv("AUTH_TRUSTED_PROXY_IPS", "10.0.0.2");
+    vi.stubEnv("VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN", "docs-test-token");
+    vi.resetModules();
+    const { acquirePublicDocsAdmissionPermit, resetPublicDocsAdmissionForTests } = await import("@/lib/public-docs-admission");
+    resetPublicDocsAdmissionForTests();
+
+    const firstClient = acquirePublicDocsAdmissionPermit(requestForTrustedProxyClient("198.51.100.20"), 3_000);
+    expect(firstClient.allowed).toBe(true);
+    if (firstClient.allowed) {
+      firstClient.release();
+    }
+    const secondClient = acquirePublicDocsAdmissionPermit(requestForTrustedProxyClient("198.51.100.21"), 3_000);
+    expect(secondClient.allowed).toBe(true);
+    if (secondClient.allowed) {
+      secondClient.release();
+    }
+    expect(acquirePublicDocsAdmissionPermit(requestForTrustedProxyClient("198.51.100.20"), 3_000).allowed).toBe(false);
+  });
+
+  it("applies only the global admission bucket when no trustworthy client IP exists", async () => {
+    vi.stubEnv("PUBLIC_DOCS_CLIENT_MAX_REQUESTS", "1");
+    vi.stubEnv("PUBLIC_DOCS_GLOBAL_MAX_REQUESTS", "3");
+    vi.stubEnv("AUTH_TRUST_PROXY_HEADERS", "false");
+    vi.stubEnv("VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN", "");
+    vi.resetModules();
+    const { acquirePublicDocsAdmissionPermit, resetPublicDocsAdmissionForTests } = await import("@/lib/public-docs-admission");
+    resetPublicDocsAdmissionForTests();
+
+    for (const spoofedIp of ["198.51.100.20", "198.51.100.21", "198.51.100.22"]) {
+      const permit = acquirePublicDocsAdmissionPermit({ headers: new Headers({ "x-forwarded-for": spoofedIp, [INTERNAL_CLIENT_IP_HEADER]: spoofedIp }) }, 4_000);
+      expect(permit.allowed).toBe(true);
+      if (permit.allowed) {
+        permit.release();
+      }
+    }
+    expect(acquirePublicDocsAdmissionPermit({ headers: new Headers() }, 4_000).allowed).toBe(false);
   });
 });

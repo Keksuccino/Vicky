@@ -11,6 +11,7 @@ import tls from "node:tls";
 import * as acme from "acme-client";
 import next from "next";
 
+import { INTERNAL_CLIENT_IP_HEADER, isTrustedProxyClientIpPeer, normalizeClientIp, resolveTrustedForwardedClientIp } from "./src/lib/client-ip-policy.mjs";
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
 import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse } from "./src/lib/https-runtime-policy.mjs";
 import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER, INTERNAL_REQUEST_HOST_HEADER, INTERNAL_REQUEST_PROTOCOL_HEADER, isProxyOriginHeaderTrustEnabled, normalizeHttpAuthority, normalizeHttpProtocol } from "./src/lib/request-origin-policy.mjs";
@@ -50,10 +51,8 @@ const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_S
 const SSL_RUNTIME_INSTANCE_ID = randomUUID();
 const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
 const GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY = Symbol.for("vicky.githubLocalization.uploadQueue.shutdown");
 
-process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER = "true";
 // The admin route may run in a Next worker, so an inherited process environment value is
 // the reliable way to distinguish this server's live snapshot from a stale file or start:next.
 process.env.VICKY_INTERNAL_SSL_RUNTIME_INSTANCE_ID = SSL_RUNTIME_INSTANCE_ID;
@@ -365,8 +364,28 @@ function setInternalClientIpHeader(request) {
   delete request.headers[INTERNAL_CLIENT_IP_HEADER];
 
   const remoteAddress = request.socket?.remoteAddress || request.connection?.remoteAddress;
-  if (typeof remoteAddress === "string" && remoteAddress.trim()) {
-    request.headers[INTERNAL_CLIENT_IP_HEADER] = remoteAddress.trim();
+  const normalizedRemoteAddress = normalizeClientIp(remoteAddress);
+  if (normalizedRemoteAddress) {
+    request.headers[INTERNAL_CLIENT_IP_HEADER] = normalizedRemoteAddress;
+  }
+}
+
+function applyProxyClientIpHeaderPolicy(request) {
+  const remoteAddress = request.socket?.remoteAddress || request.connection?.remoteAddress;
+  const headers = {
+    get(name) {
+      const value = request.headers[name];
+      return typeof value === "string" ? value : null;
+    },
+  };
+  const forwardedClientIp = resolveTrustedForwardedClientIp(headers, isTrustedProxyClientIpPeer(remoteAddress));
+
+  // Next preserves a supplied XFF value and otherwise synthesizes one from the socket.
+  // Strip everything except one policy-approved address before handing the request off.
+  delete request.headers["x-forwarded-for"];
+  delete request.headers["x-real-ip"];
+  if (forwardedClientIp) {
+    request.headers["x-forwarded-for"] = forwardedClientIp;
   }
 }
 
@@ -1181,6 +1200,7 @@ async function handleRequest(request, response) {
 
   try {
     applyProxyOriginHeaderPolicy(request);
+    applyProxyClientIpHeaderPolicy(request);
     setInternalRequestContextHeaders(request);
     setInternalClientIpHeader(request);
     await requestHandler(request, response);

@@ -12,7 +12,7 @@ import {
   loadPublicGitHubDoc,
 } from "@/lib/github";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
-import type { ClientIpRequest } from "@/lib/login-rate-limit";
+import type { ClientIpRequest } from "@/lib/client-ip-policy";
 import {
   renderGitHubDocPageMarkdown,
   type RenderedGitHubDocPage,

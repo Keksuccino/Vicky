@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 
-import { getClientIp } from "@/lib/login-rate-limit";
+import { getClientIp } from "@/lib/client-ip-policy";
 
 type ClientAdmissionState = {
   activeRequests: number;

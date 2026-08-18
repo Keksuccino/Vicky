@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { NextRequest } from "next/server";
 
-import { getClientIp } from "@/lib/login-rate-limit";
+import { getClientIp } from "@/lib/client-ip-policy";
 import type {
   GitHubDocPage,
   VisitorPageIdentity,
@@ -54,9 +54,9 @@ let visitorStorageLoader: VisitorStorageLoader = defaultVisitorStorageLoader;
 type QueuedDocPageVisit = {
   attempts: number;
   availableAt: number;
+  clientIdentity: string;
   dedupKey: string | null;
   eventId: string | null;
-  ipAddress: string;
   page: VisitorPageIdentity;
   queueId: string;
 };
@@ -342,11 +342,15 @@ const normalizeVisitEventId = (eventId: string | null | undefined): string | nul
 };
 
 const createVisitDedupKey = (ipAddress: string, eventId: string | null): string | null => {
-  if (!eventId) {
+  if (!eventId || ipAddress === "unknown") {
     return null;
   }
   return createHash("sha256").update(`${ipAddress}\0${eventId}`).digest("base64url");
 };
+
+// An unavailable address must not collapse unrelated visitors or event IDs into one
+// shared identity. The generated value stays stable across retries for a queued visit.
+const createVisitorClientIdentity = (ipAddress: string): string => ipAddress === "unknown" ? `anonymous:${randomUUID()}` : ipAddress;
 
 const pruneRecentEventIds = (now: number): void => {
   if (now >= lastRecentEventPruneAt && now - lastRecentEventPruneAt < RECENT_EVENT_ID_PRUNE_INTERVAL_MS) {
@@ -373,13 +377,9 @@ const rememberRecentEventId = (dedupKey: string, now: number): void => {
   }
 };
 
-const recordPageIdentityVisitForIp = async (
-  ipAddress: string,
-  page: VisitorPageIdentity,
-  eventId?: string | null,
-): Promise<void> => {
+const recordPageIdentityVisitForClient = async (clientIdentity: string, page: VisitorPageIdentity, eventId?: string | null): Promise<void> => {
   const storage = await loadVisitorStorage();
-  const visitorId = hashVisitorIp(ipAddress, await storage.getVisitorAnalyticsSalt());
+  const visitorId = hashVisitorIp(clientIdentity, await storage.getVisitorAnalyticsSalt());
   await storage.recordVisitorEvent({ eventId: normalizeVisitEventId(eventId), page, visitorId });
 };
 
@@ -473,7 +473,7 @@ const flushQueuedVisits = async (): Promise<void> => {
       activeQueuedVisitCount += 1;
 
       try {
-        await recordPageIdentityVisitForIp(visit.ipAddress, visit.page, visit.eventId);
+        await recordPageIdentityVisitForClient(visit.clientIdentity, visit.page, visit.eventId);
         completeQueuedVisit(visit, true);
       } catch (error: unknown) {
         const nextAttempts = visit.attempts + 1;
@@ -499,7 +499,7 @@ const flushQueuedVisits = async (): Promise<void> => {
 };
 
 export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPage): Promise<void> => {
-  await recordPageIdentityVisitForIp(getRequestIpAddress(request), normalizeVisitorPageIdentity(page));
+  await recordPageIdentityVisitForClient(createVisitorClientIdentity(getRequestIpAddress(request)), normalizeVisitorPageIdentity(page));
 };
 
 export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdentity, eventId?: string | null): EnqueueDocPageVisitResult => {
@@ -534,9 +534,9 @@ export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdent
   readyVisitQueue.set(queueId, {
     attempts: 0,
     availableAt: now,
+    clientIdentity: createVisitorClientIdentity(ipAddress),
     dedupKey,
     eventId: normalizedEventId,
-    ipAddress,
     page: normalizedPage,
     queueId,
   });

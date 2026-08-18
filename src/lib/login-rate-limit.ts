@@ -1,14 +1,9 @@
 import { readFile } from "node:fs/promises";
-import { isIP } from "node:net";
 import path from "node:path";
 
+import { getClientIp, normalizeClientIp } from "@/lib/client-ip-policy";
 import { ensurePrivateFile, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import type { NextRequest } from "next/server";
-
-export type ClientIpRequest = {
-  headers: { get: (name: string) => string | null };
-  ip?: string;
-};
 
 type LoginAttemptState = {
   failedAt: number[];
@@ -29,17 +24,9 @@ const DEFAULT_MAX_FAILED_ATTEMPTS = 8;
 const DEFAULT_WINDOW_SECONDS = 10 * 60;
 const DEFAULT_BLOCK_SECONDS = 3 * 60 * 60;
 const MIN_POSITIVE_SECONDS = 1;
-const MAX_IP_LENGTH = 128;
 const STORE_VERSION = 1 as const;
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "login-rate-limit.json");
 const STORE_PATH = process.env.AUTH_LOGIN_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
-const TRUST_PROXY_HEADERS = String(process.env.AUTH_TRUST_PROXY_HEADERS ?? "")
-  .trim()
-  .toLowerCase() === "true";
-const TRUST_INTERNAL_CLIENT_IP_HEADER = String(process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER ?? "")
-  .trim()
-  .toLowerCase() === "true";
-export const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
 
 type PersistedLoginRateLimitStore = {
   version: typeof STORE_VERSION;
@@ -120,7 +107,7 @@ const toStoreKey = (value: string): string | null => {
     return "unknown";
   }
 
-  return normalizeIp(value);
+  return normalizeClientIp(value);
 };
 
 const normalizeAttemptState = (value: unknown): LoginAttemptState | null => {
@@ -168,7 +155,17 @@ const parsePersistedStore = (value: unknown): Map<string, LoginAttemptState> => 
       continue;
     }
 
-    parsed.set(key, entry);
+    const existing = parsed.get(key);
+    if (!existing) {
+      parsed.set(key, entry);
+      continue;
+    }
+
+    // Canonical IPv6 and IPv4-mapped forms can merge legacy keys that previously had
+    // separate spellings. Preserve every failure and the strongest block during upgrade.
+    existing.failedAt = [...existing.failedAt, ...entry.failedAt].sort((left, right) => left - right);
+    existing.blockedUntil = Math.max(existing.blockedUntil, entry.blockedUntil);
+    existing.lastSeenAt = Math.max(existing.lastSeenAt, entry.lastSeenAt);
   }
 
   return parsed;
@@ -214,85 +211,6 @@ const writeAttemptStore = async (source: Map<string, LoginAttemptState>): Promis
     warnPersistenceFailure("write", error);
     // Keep in-memory fallback when filesystem persistence is unavailable.
   }
-};
-
-const normalizeIp = (value: string): string | null => {
-  const cleaned = value.trim().slice(0, MAX_IP_LENGTH);
-  if (!cleaned) {
-    return null;
-  }
-
-  if (isIP(cleaned)) {
-    return cleaned;
-  }
-
-  const ipv4WithPort = cleaned.match(/^(\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?$/);
-  if (ipv4WithPort && isIP(ipv4WithPort[1])) {
-    return ipv4WithPort[1];
-  }
-
-  const ipv6WithPort = cleaned.match(/^\[([0-9a-f:]+)\](?::\d+)?$/i);
-  if (ipv6WithPort && isIP(ipv6WithPort[1])) {
-    return ipv6WithPort[1];
-  }
-
-  return null;
-};
-
-const getForwardedIp = (request: ClientIpRequest): string | null => {
-  if (!TRUST_PROXY_HEADERS) {
-    return null;
-  }
-
-  const forwardedFor = request.headers.get("x-forwarded-for");
-  if (forwardedFor) {
-    const first = forwardedFor.split(",")[0];
-    const parsed = normalizeIp(first);
-    if (parsed) {
-      return parsed;
-    }
-  }
-
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) {
-    const parsed = normalizeIp(realIp);
-    if (parsed) {
-      return parsed;
-    }
-  }
-
-  return null;
-};
-
-const getInternalClientIp = (request: ClientIpRequest): string | null => {
-  if (!TRUST_INTERNAL_CLIENT_IP_HEADER) {
-    return null;
-  }
-
-  const internalIp = request.headers.get(INTERNAL_CLIENT_IP_HEADER);
-  return internalIp ? normalizeIp(internalIp) : null;
-};
-
-export const getClientIp = (request: ClientIpRequest): string => {
-  const directIp = request.ip;
-  if (typeof directIp === "string") {
-    const parsed = normalizeIp(directIp);
-    if (parsed) {
-      return parsed;
-    }
-  }
-
-  const forwardedIp = getForwardedIp(request);
-  if (forwardedIp) {
-    return forwardedIp;
-  }
-
-  const internalIp = getInternalClientIp(request);
-  if (internalIp) {
-    return internalIp;
-  }
-
-  return "unknown";
 };
 
 const pruneOldEntries = (source: Map<string, LoginAttemptState>, now: number): boolean => {
