@@ -10,17 +10,6 @@ import { getStore } from "@/lib/store";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const resolveRequestOrigin = (request: NextRequest): string => {
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-
-  return request.nextUrl.origin;
-};
-
 export const GET = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const slug = request.nextUrl.searchParams.get("slug") ?? undefined;
@@ -40,7 +29,6 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     const { data: page } = await loadRenderedDocsPageForLanguage({
       config,
       locator: { slug, path },
-      origin: resolveRequestOrigin(request),
       requestedLanguageCode,
       store,
     });

@@ -34,7 +34,6 @@ export const GET = async (request: NextRequest): Promise<Response> => {
     const { data: page } = await loadDocsPageForLanguage({
       config,
       locator: { slug, path },
-      origin: request.nextUrl.origin,
       requestedLanguageCode,
       store,
     });

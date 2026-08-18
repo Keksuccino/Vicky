@@ -1,6 +1,6 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot, toRuntimeConfigCacheKey } from "@/lib/github";
-import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization";
+import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
 const DEFAULT_SEARCH_LIMIT = 50;

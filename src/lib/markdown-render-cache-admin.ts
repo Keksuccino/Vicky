@@ -27,7 +27,7 @@ import {
   markdownRenderCachePrefix,
   renderMarkdownToHtml,
 } from "@/lib/markdown-server-renderer";
-import { isLocalizedPageOutdated } from "@/lib/page-localization";
+import { isLocalizedPageOutdated } from "@/lib/page-localization-read";
 import type { AutoTranslateLanguage, DocsStore, GitHubDocPage, GitHubRuntimeConfig } from "@/lib/types";
 
 const MARKDOWN_CACHE_RENDER_CONCURRENCY = 4;

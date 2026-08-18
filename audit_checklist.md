@@ -1,0 +1,19 @@
+- [x] **CRIT-01 / 1.1** — Public page requests can trigger AI translations and GitHub commits.
+- [ ] **CRIT-02 / 1.3** — Sensitive runtime files are written without reliably restrictive permissions.
+- [ ] **HIGH-01 / 1.2** — Failed localization uploads retry forever and leave translation jobs permanently running.
+- [ ] **HIGH-02 / 1.8** — The public SSL-status endpoint exposes filesystem paths and internal error details.
+- [ ] **HIGH-03 / 1.13** — Public analytics ingestion is unbounded and accepts client-controlled data.
+- [ ] **HIGH-05** — Incomplete cache invalidation can preserve deleted or previously authorized content.
+- [ ] **HIGH-06** — Frequent translation-status polling can exhaust the GitHub API quota.
+- [ ] **HIGH-07** — Certificate issuance failures can leave a custom domain serving insecure HTTP.
+- [ ] **HIGH-08 / 1.14** — Arbitrary public document slugs can amplify GitHub API requests.
+- [ ] **HIGH-10** — The missing lockfile breaks `npm ci` and prevents reproducible installations.
+- [ ] **1.4** — Known placeholder secrets are accepted instead of being rejected at startup.
+- [ ] **1.6** — The built-in admin password uses fast SHA-256 hashing instead of a password KDF.
+- [ ] **1.7** — Built-in admin JWT sessions cannot be revoked after password or security changes.
+- [ ] **1.9** — Public raw and plaintext endpoints leak unexpected internal error messages.
+- [ ] **1.10** — Forwarded host and protocol headers are trusted without a centralized trust policy.
+- [ ] **1.11** — Client-IP detection can prefer a proxy address over the real client address.
+- [ ] **1.12** — File-based login rate limiting is unsafe across multiple processes.
+- [ ] **Overall #9** — The application relies heavily on one process and its local filesystem.
+- [ ] **Overall #10** — A font file referenced by the project may be missing from the supplied tree.

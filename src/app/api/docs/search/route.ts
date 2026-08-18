@@ -8,7 +8,7 @@ import { setDocsCacheTtlMs } from "@/lib/cache";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { searchDocsCorpus } from "@/lib/docs-search";
 import { errorResponse } from "@/lib/http";
-import { isSourceLanguage } from "@/lib/page-localization";
+import { isSourceLanguage } from "@/lib/page-localization-read";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";

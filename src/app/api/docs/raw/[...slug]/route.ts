@@ -41,7 +41,6 @@ export const GET = async (request: NextRequest, context: RawDocBySlugRouteContex
     const { data: page } = await loadDocsPageForLanguage({
       config,
       locator: { slug: route.pagePath.replace(/^\/+/, "") },
-      origin: request.nextUrl.origin,
       requestedLanguageCode,
       store,
     });

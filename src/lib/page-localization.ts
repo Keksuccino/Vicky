@@ -9,24 +9,18 @@ import {
 } from "@/lib/github-localization-upload-queue";
 import {
   DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
-  isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
 import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-logging";
 import {
-  loadGitHubLocalizationSnapshot,
   loadGitHubLocalizationStatusIndex,
-  loadGitHubLocalizedDoc,
   saveGitHubLocalizedDoc,
-  type GitHubLocalizedDocResult,
-  type GitHubLocalizationPageStatus,
 } from "@/lib/github";
+import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
-  AutoTranslateSettings,
   GitHubDocPage,
   GitHubRuntimeConfig,
-  GitHubDocTreeItem,
 } from "@/lib/types";
 
 const TRANSLATION_CONCURRENCY = 50;
@@ -355,153 +349,6 @@ const toTranslatedMarkdown = (sourcePage: GitHubDocPage, translation: Translatio
   });
   parseMarkdownDocument(markdown);
   return markdown;
-};
-
-const sourceFallbackPage = (sourcePage: GitHubDocPage, languageCode: string, status: "missing" | "outdated"): GitHubDocPage => ({
-  ...sourcePage,
-  languageCode,
-  sourceLanguage: true,
-  sourcePath: sourcePage.path,
-  sourceSlug: sourcePage.slug,
-  sourceUpdatedAt: sourcePage.updatedAt,
-  translationStale: status === "outdated",
-  localizationStatus: status,
-});
-
-export const isSourceLanguage = (language: Pick<AutoTranslateLanguage, "code">): boolean =>
-  isDefaultAutoTranslateLanguageCode(language.code);
-
-export const getCurrentLocalizedTreeItems = async ({
-  config,
-  language,
-  localizationPath,
-  sourcePages,
-}: {
-  config: GitHubRuntimeConfig;
-  language: AutoTranslateLanguage;
-  localizationPath: string;
-  sourcePages: GitHubDocPage[];
-}): Promise<Map<string, GitHubDocTreeItem>> => {
-  if (isSourceLanguage(language)) {
-    return new Map();
-  }
-
-  const snapshot = await loadGitHubLocalizationSnapshot({
-    config,
-    language,
-    localizationPath,
-    sourcePages,
-  });
-  const sourcePageByPath = new Map(sourcePages.map((page) => [page.path, page]));
-  const output = new Map<string, GitHubDocTreeItem>();
-
-  for (const page of snapshot.pages) {
-    const sourcePage = sourcePageByPath.get(page.path);
-    if (!sourcePage || isLocalizedPageOutdated(sourcePage, page)) {
-      continue;
-    }
-
-    output.set(page.slug, {
-      path: page.path,
-      slug: page.slug,
-      name: page.title.trim() || page.slug,
-    });
-  }
-
-  return output;
-};
-
-export const isLocalizedPageOutdated = (
-  sourcePage: Pick<GitHubDocPage, "updatedAt">,
-  localizedPage: Pick<GitHubLocalizationPageStatus, "updatedAt">,
-): boolean => {
-  const sourceTime = sourcePage.updatedAt ? Date.parse(sourcePage.updatedAt) : Number.NaN;
-  const translationTime = localizedPage.updatedAt ? Date.parse(localizedPage.updatedAt) : Number.NaN;
-
-  return Number.isFinite(sourceTime) && Number.isFinite(translationTime) && sourceTime > translationTime;
-};
-
-export const getLocalizedPageForSource = async ({
-  apiKey,
-  config,
-  language,
-  localizationPath,
-  model,
-  origin,
-  requestTimeoutMs,
-  settings,
-  siteTitle,
-  sourcePage,
-}: {
-  apiKey?: string;
-  config: GitHubRuntimeConfig;
-  language: AutoTranslateLanguage;
-  localizationPath: string;
-  model?: string;
-  origin: string;
-  requestTimeoutMs?: number;
-  settings: AutoTranslateSettings;
-  siteTitle: string;
-  sourcePage: GitHubDocPage;
-}): Promise<GitHubLocalizedDocResult> => {
-  if (isSourceLanguage(language)) {
-    return {
-      sourcePage,
-      page: {
-        ...sourcePage,
-        languageCode: language.code,
-        sourceLanguage: true,
-        localizationStatus: "source",
-      },
-      status: "current",
-      localizedRepoPath: sourcePage.path,
-    };
-  }
-
-  const localized = await loadGitHubLocalizedDoc({
-    config,
-    language,
-    localizationPath,
-    sourcePage,
-  });
-
-  if (localized.status !== "outdated" || !settings.enabled || !apiKey?.trim() || !model?.trim()) {
-    return localized;
-  }
-
-  const updatedPage = await translatePageToGitHubLocalization({
-    apiKey,
-    config,
-    language,
-    localizationPath,
-    model,
-    origin,
-    requestTimeoutMs: requestTimeoutMs ?? settings.requestTimeoutMs,
-    siteTitle,
-    sourcePage: localized.sourcePage,
-  });
-
-  return {
-    ...localized,
-    page: updatedPage,
-    status: "current",
-  };
-};
-
-export const resolveServedLocalizedPage = (
-  localized: GitHubLocalizedDocResult,
-  language: AutoTranslateLanguage,
-): GitHubDocPage => {
-  if (localized.page && localized.status === "current") {
-    return {
-      ...localized.page,
-      languageCode: language.code,
-      sourceLanguage: false,
-      localizationStatus: "current",
-    };
-  }
-
-  return sourceFallbackPage(localized.sourcePage, language.code, localized.status === "outdated" ? "outdated" : "missing");
 };
 
 export const translatePageToGitHubLocalization = async ({

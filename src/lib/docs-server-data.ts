@@ -7,7 +7,6 @@ import {
   getAutoTranslateErrorMessage,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
-import { decryptSecret } from "@/lib/encryption";
 import {
   listMarkdownDocsTreePagesWithTitles,
   loadGitHubDoc,
@@ -17,11 +16,11 @@ import {
   type RenderedGitHubDocPage,
 } from "@/lib/markdown-server-renderer";
 import {
-  getCurrentLocalizedTreeItems,
-  getLocalizedPageForSource,
   isSourceLanguage,
+  loadCurrentLocalizedTreeItems,
+  loadLocalizedPageForSource,
   resolveServedLocalizedPage,
-} from "@/lib/page-localization";
+} from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
   DocsStore,
@@ -60,20 +59,16 @@ const warnPageFallback = (language: AutoTranslateLanguage, error: unknown): void
 export const loadDocsPageForLanguage = async ({
   config,
   locator,
-  origin,
   requestedLanguageCode,
   store,
 }: {
   config: GitHubRuntimeConfig;
   locator: { slug?: string; path?: string };
-  origin: string;
   requestedLanguageCode?: string;
   store: DocsStore;
 }): Promise<DocsLanguageData<DocsPageWithSourceHeadings>> => {
   const sourcePage = await loadGitHubDoc(config, locator);
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
-  const apiKeyEncrypted = store.settings.openRouter.apiKeyEncrypted;
-  const model = store.settings.autoTranslate.openRouterModel.trim();
 
   if (isSourceLanguage(language)) {
     return {
@@ -84,15 +79,10 @@ export const loadDocsPageForLanguage = async ({
   }
 
   try {
-    const localized = await getLocalizedPageForSource({
-      apiKey: apiKeyEncrypted ? decryptSecret(apiKeyEncrypted).trim() : undefined,
+    const localized = await loadLocalizedPageForSource({
       config,
       language,
       localizationPath: store.settings.autoTranslate.localizationPath,
-      model,
-      origin,
-      settings: store.settings.autoTranslate,
-      siteTitle: store.settings.siteTitle || "Vicky Docs",
       sourcePage,
     });
     const servedPage = resolveServedLocalizedPage(localized, language);
@@ -116,20 +106,17 @@ export const loadDocsPageForLanguage = async ({
 export const loadRenderedDocsPageForLanguage = async ({
   config,
   locator,
-  origin,
   requestedLanguageCode,
   store,
 }: {
   config: GitHubRuntimeConfig;
   locator: { slug?: string; path?: string };
-  origin: string;
   requestedLanguageCode?: string;
   store: DocsStore;
 }): Promise<DocsLanguageData<RenderedDocsPageWithSourceHeadings>> => {
   const pageResult = await loadDocsPageForLanguage({
     config,
     locator,
-    origin,
     requestedLanguageCode,
     store,
   });
@@ -147,7 +134,6 @@ export const loadRenderedDocsPageForLanguage = async ({
 
 export const loadDocsTreeForLanguage = async (params: {
   config: GitHubRuntimeConfig;
-  origin: string;
   requestedLanguageCode?: string;
   store: DocsStore;
   waitForTitleIndex?: boolean;
@@ -165,7 +151,7 @@ export const loadDocsTreeForLanguage = async (params: {
   }
 
   try {
-    const localizedItems = await getCurrentLocalizedTreeItems({
+    const localizedItems = await loadCurrentLocalizedTreeItems({
       config,
       language,
       localizationPath: store.settings.autoTranslate.localizationPath,

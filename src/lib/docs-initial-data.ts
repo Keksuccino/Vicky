@@ -1,5 +1,3 @@
-import { headers } from "next/headers";
-
 import { buildDocTree, firstLeafPath, toAbsoluteDocPath } from "@/components/api";
 import type { DocPageChrome, DocTreeNode } from "@/components/types";
 import {
@@ -27,28 +25,6 @@ export type InitialDocsClientData = {
   pageError?: string;
 };
 
-const firstHeaderValue = (value: string | null): string => value?.split(",")[0]?.trim() ?? "";
-
-const defaultProtocolForHost = (host: string): "http" | "https" =>
-  host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]") ? "http" : "https";
-
-const resolveRequestOrigin = async (): Promise<string> => {
-  try {
-    const headerStore = await headers();
-    const forwardedProto = firstHeaderValue(headerStore.get("x-forwarded-proto"));
-    const forwardedHost = firstHeaderValue(headerStore.get("x-forwarded-host"));
-    const host = forwardedHost || firstHeaderValue(headerStore.get("host"));
-
-    if (!host) {
-      return "http://localhost:3000";
-    }
-
-    return `${forwardedProto || defaultProtocolForHost(host)}://${host}`;
-  } catch {
-    return "http://localhost:3000";
-  }
-};
-
 const toClientDocPageChrome = (page: RenderedDocsPageWithSourceHeadings): DocPageChrome => ({
   title: page.title,
   description: page.description,
@@ -68,7 +44,6 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
-    const origin = await resolveRequestOrigin();
     const route = parseDocsRoutePath(requestedPath, store.settings.autoTranslate.languages);
     const requestedLanguageCode = route.languageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
     initialLanguageCode = requestedLanguageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
@@ -87,7 +62,6 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
       try {
         const treeResult = await loadDocsTreeForLanguage({
           config,
-          origin,
           requestedLanguageCode,
           store,
         });
@@ -106,7 +80,6 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
         const pageResult = await loadRenderedDocsPageForLanguage({
           config,
           locator: { slug: pagePath.replace(/^\/+/, "") },
-          origin,
           requestedLanguageCode,
           store,
         });

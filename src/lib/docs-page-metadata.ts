@@ -68,7 +68,6 @@ export async function generateDocsPageMetadata(slugSegments?: string[]): Promise
     const { data: page, language } = await loadDocsPageForLanguage({
       config,
       locator: { slug: requestedSlug },
-      origin: origin ?? "http://localhost:3000",
       requestedLanguageCode: route.languageCode,
       store,
     });
