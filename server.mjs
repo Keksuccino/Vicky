@@ -18,6 +18,7 @@ import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER, INTERNAL_REQUEST_HOST_HEADER, IN
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
 import { validateRuntimeSecretsOrExit } from "./src/lib/runtime-secret-startup.mjs";
 import { serveRuntimeSslStatusRequest } from "./src/lib/runtime-ssl-status.mjs";
+import { acquireRuntimeOwnerLease } from "./src/lib/runtime-topology.mjs";
 
 const require = createRequire(import.meta.url);
 const { loadEnvConfig } = require("@next/env");
@@ -100,6 +101,7 @@ let statusPersistTimer = null;
 let statusPersistQueue = Promise.resolve();
 let shutdownPromise = null;
 let shuttingDown = false;
+let runtimeOwnerLease = null;
 
 const app = next({
   dev: IS_DEV,
@@ -1217,6 +1219,7 @@ async function handleRequest(request, response) {
 }
 
 async function start() {
+  runtimeOwnerLease = await acquireRuntimeOwnerLease();
   await ensurePrivateDirectory(SSL_STORAGE_DIR);
   await app.prepare();
   activeDomainState = await loadDomainStateFromStore();
@@ -1299,6 +1302,8 @@ async function performShutdown(signal) {
 
   await Promise.all(operations);
   await flushRuntimeStatus();
+  await runtimeOwnerLease?.release();
+  runtimeOwnerLease = null;
   process.exit(0);
 }
 
@@ -1321,10 +1326,18 @@ start().catch(async (error) => {
   sslRuntimeState.phase = "error";
   sslRuntimeState.lastRefreshFailedAtMs = Date.now();
   sslRuntimeState.lastRefreshErrorMessage = getErrorMessage(error);
-  try {
-    await flushRuntimeStatus();
-  } catch (statusError) {
-    warn("Failed to persist status during startup failure.", statusError);
+  if (runtimeOwnerLease) {
+    try {
+      await flushRuntimeStatus();
+    } catch (statusError) {
+      warn("Failed to persist status during startup failure.", statusError);
+    }
+    try {
+      await runtimeOwnerLease.release();
+      runtimeOwnerLease = null;
+    } catch (ownerError) {
+      warn("Failed to release runtime ownership after startup failure.", ownerError);
+    }
   }
   process.exit(1);
 });

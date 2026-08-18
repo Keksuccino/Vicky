@@ -1,10 +1,11 @@
-import { chmod, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  assertDedicatedPrivateDirectory,
   ensurePrivateDirectory,
   ensurePrivateFile,
   ensurePrivateFileSync,
@@ -28,6 +29,19 @@ describe.skipIf(process.platform === "win32")("runtime file security", () => {
   it("refuses to chmod shared or root directories", async () => {
     await expect(ensurePrivateDirectory(os.tmpdir())).rejects.toThrow("dedicated runtime directory");
     await expect(ensurePrivateDirectory(path.parse(process.cwd()).root)).rejects.toThrow("dedicated runtime directory");
+  });
+
+  it("rejects a symlink alias to a broad operating-system directory", async () => {
+    const tempDir = await createTempDir();
+    const broadDirectory = process.platform === "darwin" ? "/Users" : "/var/lib";
+    const aliasPath = path.join(tempDir, "shared-alias");
+    const before = await stat(broadDirectory);
+    await symlink(broadDirectory, aliasPath, "dir");
+
+    await expect(ensurePrivateDirectory(aliasPath)).rejects.toThrow("shared, system, or root directory");
+    const after = await stat(broadDirectory);
+    expect(after.mode).toBe(before.mode);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
   });
 
   it("repairs and verifies existing directory and file permissions", async () => {
@@ -63,5 +77,18 @@ describe.skipIf(process.platform === "win32")("runtime file security", () => {
     expect(await readdir(privateDir)).toEqual(["state.json"]);
     await expect(modeOf(privateDir)).resolves.toBe(0o700);
     await expect(modeOf(privateFile)).resolves.toBe(0o600);
+  });
+});
+
+describe("runtime directory classification", () => {
+  it("rejects broad operating-system directories without changing them and permits dedicated children", async () => {
+    const broadDirectory = process.platform === "win32" ? path.dirname(os.homedir()) : process.platform === "darwin" ? "/Users" : "/var/lib";
+    const before = await stat(broadDirectory);
+
+    await expect(ensurePrivateDirectory(broadDirectory)).rejects.toThrow("shared, system, or root directory");
+    const after = await stat(broadDirectory);
+    expect(after.mode).toBe(before.mode);
+    expect(after.mtimeMs).toBe(before.mtimeMs);
+    expect(() => assertDedicatedPrivateDirectory(path.join(broadDirectory, "vicky"))).not.toThrow();
   });
 });

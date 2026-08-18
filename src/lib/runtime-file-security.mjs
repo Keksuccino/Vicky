@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { chmodSync, mkdirSync, statSync } from "node:fs";
+import { chmodSync, mkdirSync, realpathSync, statSync } from "node:fs";
 import { chmod, mkdir, open, rename, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -9,12 +9,99 @@ export const PRIVATE_FILE_MODE = 0o600;
 
 const PERMISSION_BITS = 0o777;
 const SUPPORTS_POSIX_PERMISSIONS = process.platform !== "win32";
-const PROTECTED_PRIVATE_DIRECTORIES = new Set([path.resolve(os.tmpdir()), path.resolve(os.homedir()), path.resolve(/*turbopackIgnore: true*/ process.cwd())]);
+const POSIX_SHARED_DIRECTORIES = [
+  "/bin",
+  "/boot",
+  "/dev",
+  "/etc",
+  "/home",
+  "/lib",
+  "/lib64",
+  "/media",
+  "/mnt",
+  "/opt",
+  "/proc",
+  "/root",
+  "/run",
+  "/sbin",
+  "/srv",
+  "/sys",
+  "/tmp",
+  "/usr",
+  "/usr/local",
+  "/var",
+  "/var/cache",
+  "/var/lib",
+  "/var/log",
+  "/var/run",
+  "/var/spool",
+  "/var/tmp",
+];
+const MACOS_SHARED_DIRECTORIES = [
+  "/Applications",
+  "/Library",
+  "/Network",
+  "/System",
+  "/Users",
+  "/Volumes",
+  "/private",
+  "/private/etc",
+  "/private/tmp",
+  "/private/var",
+  "/private/var/cache",
+  "/private/var/db",
+  "/private/var/folders",
+  "/private/var/lib",
+  "/private/var/log",
+  "/private/var/run",
+  "/private/var/spool",
+  "/private/var/tmp",
+];
+const WINDOWS_SHARED_DIRECTORIES = ["Windows", "Program Files", "Program Files (x86)", "ProgramData", "Users"];
 
-const assertDedicatedPrivateDirectory = (directoryPath) => {
+const normalizeProtectedPath = (directoryPath) => {
+  const resolved = path.resolve(directoryPath);
+  return process.platform === "win32" || process.platform === "darwin" ? resolved.toLowerCase() : resolved;
+};
+
+const realPathIfAvailable = (directoryPath) => {
+  try {
+    return realpathSync(directoryPath);
+  } catch {
+    return null;
+  }
+};
+
+const protectedPrivateDirectories = () => {
+  const protectedPaths = [os.tmpdir(), os.homedir(), process.cwd()];
+  if (process.platform === "win32") {
+    for (const root of new Set([path.parse(os.homedir()).root, path.parse(process.cwd()).root])) {
+      for (const directoryName of WINDOWS_SHARED_DIRECTORIES) {
+        protectedPaths.push(path.join(root, directoryName));
+      }
+    }
+  } else {
+    protectedPaths.push(...POSIX_SHARED_DIRECTORIES);
+    if (process.platform === "darwin") {
+      protectedPaths.push(...MACOS_SHARED_DIRECTORIES);
+    }
+  }
+  const canonicalPaths = protectedPaths.flatMap((directoryPath) => {
+    const realPath = realPathIfAvailable(directoryPath);
+    return realPath ? [directoryPath, realPath] : [directoryPath];
+  });
+  return new Set(canonicalPaths.map(normalizeProtectedPath));
+};
+
+const PROTECTED_PRIVATE_DIRECTORIES = protectedPrivateDirectories();
+
+export const assertDedicatedPrivateDirectory = (directoryPath) => {
   const resolvedPath = path.resolve(directoryPath);
-  if (resolvedPath === path.parse(resolvedPath).root || PROTECTED_PRIVATE_DIRECTORIES.has(resolvedPath)) {
-    throw new Error(`Refusing to change permissions on shared or root directory ${resolvedPath}; configure a dedicated runtime directory.`);
+  const realPath = realPathIfAvailable(resolvedPath);
+  const normalizedResolvedPath = normalizeProtectedPath(resolvedPath);
+  const normalizedRealPath = realPath ? normalizeProtectedPath(realPath) : null;
+  if (resolvedPath === path.parse(resolvedPath).root || PROTECTED_PRIVATE_DIRECTORIES.has(normalizedResolvedPath) || Boolean(normalizedRealPath && PROTECTED_PRIVATE_DIRECTORIES.has(normalizedRealPath))) {
+    throw new Error(`Refusing to change permissions on shared, system, or root directory ${resolvedPath}; configure a dedicated runtime directory below it.`);
   }
 };
 

@@ -45,6 +45,7 @@ It gives you:
 - OpenRouter docs translation cache files live in `data/translation-cache/` by default.
 - Login rate-limit state lives in `data/login-rate-limit.sqlite` by default. A legacy `data/login-rate-limit.json` is migrated once and retained untouched.
 - Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default.
+- A live process owns `data/wiki-store.json.runtime-owner.json` by default. This is an exclusive runtime lease, not application data or a backup artifact.
 
 This repo contains the app itself, not your docs content.
 
@@ -86,6 +87,7 @@ Copy-Item .env.example .env.local
 - `AUTH_JWT_SECRET`: a unique random value of at least 32 characters
 - `ADMIN_PASSWORD`: a unique password or strong passphrase of at least 14 characters
 - `ENCRYPTION_SECRET`: a second unique random value of at least 32 characters
+- `VICKY_RUNTIME_TOPOLOGY`: keep the explicit supported value `single-process-local`
 
 Do not reuse a value between these fields, and do not leave example values or common placeholders in place. For each machine-generated secret, `openssl rand -base64 48` produces a suitable value. Vicky validates all three values and exits before opening a listener if any value is missing, predictable, reused, or still a placeholder.
 
@@ -190,6 +192,7 @@ Required:
 | `AUTH_JWT_SECRET` | Unique 32+ character value that signs admin session tokens |
 | `ADMIN_PASSWORD` | Unique 14+ character password or strong passphrase for `/admin/login` |
 | `ENCRYPTION_SECRET` | Unique 32+ character value that encrypts stored provider credentials |
+| `VICKY_RUNTIME_TOPOLOGY` | Required topology declaration; currently only `single-process-local` is supported |
 
 Common optional settings:
 
@@ -201,7 +204,7 @@ Common optional settings:
 | `WIKI_DOCS_SNAPSHOT_DIR` | Persistent GitHub docs snapshot cache directory | `./data/docs-cache/snapshots` |
 | `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
-| `AUTH_LOGIN_DB_PATH` | Durable multi-process login rate-limit SQLite database | `./data/login-rate-limit.sqlite` |
+| `AUTH_LOGIN_DB_PATH` | Durable login rate-limit SQLite database | `./data/login-rate-limit.sqlite` |
 | `AUTH_LOGIN_MAX_FAILURES` | Failed logins allowed within the rolling window before blocking | `8` |
 | `AUTH_LOGIN_WINDOW_SECONDS` | Rolling failed-login window | `600` |
 | `AUTH_LOGIN_BLOCK_SECONDS` | Block duration after the failed-login threshold | `10800` |
@@ -230,7 +233,19 @@ Common optional settings:
 | `VICKY_TRUST_PROXY_ORIGIN_HEADERS` | Trust one proxy-overwritten public host/protocol pair | `false` |
 | `VICKY_DIRECT_REQUEST_PROTOCOL` | Explicit `http` or `https` origin protocol for plain Next direct deployments | unset |
 
-Runtime file and directory overrides must point into a dedicated storage directory. On POSIX hosts Vicky enforces and verifies `0700` directories and `0600` sensitive files; it refuses to change permissions on the filesystem root, OS temp root, user home, or project root. Windows deployments must apply equivalent access restrictions through the storage volume's ACLs because Windows does not implement POSIX mode bits.
+Runtime file and directory overrides must point into a dedicated storage directory. On POSIX hosts Vicky enforces and verifies `0700` directories and `0600` sensitive files; it refuses to change permissions on filesystem roots, OS temp/home/project roots, and broad system directories such as `/var/lib`, `/usr/local`, `/Users`, or `C:\ProgramData`. Configure a dedicated child such as `/var/lib/vicky`, `/usr/local/vicky`, or `C:\ProgramData\Vicky` instead. The complete layout is classified before any directory is created, chmodded, or written. Windows deployments must apply equivalent access restrictions through the storage volume's ACLs because Windows does not implement POSIX mode bits.
+
+## Supported Runtime Topology
+
+Vicky supports exactly one application process, on one host, using one local persistent runtime volume. Configure the deployment for one replica and use `VICKY_RUNTIME_TOPOLOGY=single-process-local`. Multi-process clusters, overlapping rolling deployments, multi-host replicas, serverless instances, and active/active failover are not supported.
+
+Every supported launcher performs a storage preflight and atomically claims an owner file beside `WIKI_STORE_FILE_PATH` before Next.js can accept requests. With the default store this is `data/wiki-store.json.runtime-owner.json`. A spawned Next.js child remains behind a startup gate until the owner record atomically names that child PID; this prevents a killed launcher parent from leaving an unrecorded live server. A second process using the same runtime volume exits instead of independently running translation jobs, cache generations, rate and concurrency limits, analytics ingestion, or TLS/ACME coordination. The Next.js child also verifies the inherited random lease ID, so invoking the Next CLI directly is rejected.
+
+The owner file is a local process lock, not a distributed lease, and Vicky does not claim multi-host guarantees. Replicas with separate filesystems cannot see one another, so the deployment platform must enforce a replica count of one. Do not place the SQLite databases on a network filesystem with incomplete locking semantics, and do not distribute different copies of the runtime directory behind one ingress.
+
+Graceful shutdown removes the owner file. After an ungraceful stop, a replacement on the same host reclaims it only when the recorded PID is no longer alive. A different host or an unreadable owner record fails closed because local PID checks cannot prove that the former owner stopped. In that case, first verify that every former Vicky process is terminated, then remove only the exact owner file and restart. Do not restore or copy an owner file as application data.
+
+The enforced topology is also the boundary for process-local work: active translation jobs and their upload queue, accepted analytics writes awaiting SQLite, in-flight provider/cache work, admission counters, and ACME challenges do not move to another process. A restart can interrupt that transient work; the durable settings, sessions, login limiter, analytics already committed to SQLite, certificates, and persistent caches remain on the local runtime volume.
 
 `HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
 Client identity follows one strict policy for login and AI rate limiting, public-docs admission, analytics admission, and visitor identity/event deduplication. `npm run start` normalizes the socket peer and passes it to the app in a private header authenticated by the same random per-process request-context token used for direct origin data. Client-supplied private headers are ignored by plain Next and overwritten by the included server. Current Next.js `NextRequest` objects do not expose a direct `ip` property, so plain `npm run start:next` cannot safely distinguish Next's synthesized XFF value from a client-supplied one and falls back to unknown/global controls.
@@ -245,9 +260,9 @@ Public origins used for canonical/OpenGraph metadata, plaintext docs links and c
 
 `VICKY_TRUST_PROXY_ORIGIN_HEADERS` is deliberately separate from the client-IP pair `AUTH_TRUST_PROXY_HEADERS`/`AUTH_TRUSTED_PROXY_IPS`. Enabling origin trust does not enable client-IP trust, and enabling client-IP trust does not change canonical origin selection. Vicky never consumes the RFC `Forwarded` header and never guesses the first or last value in a forwarding chain. When origin-header trust is enabled, `x-forwarded-host` and `x-forwarded-proto` must both contain exactly one valid value; comma-separated, partial, or malformed pairs are ignored in favor of the validated direct request context. The included server also removes an untrusted or invalid pair before Next.js can consume it internally.
 
-Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the trusted client-IP settings above; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. Unknown-address visits receive independent anonymous identities and do not share event-ID dedup keys, so visitor counts are necessarily approximate until a trustworthy address is available. The analytics rate, concurrency, queue, and retry limits above are per app process; use ingress rate limiting as well when deploying multiple instances.
+Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the trusted client-IP settings above; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. Unknown-address visits receive independent anonymous identities and do not share event-ID dedup keys, so visitor counts are necessarily approximate until a trustworthy address is available. The analytics rate, concurrency, queue, and retry limits apply to the one supported app process; ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
 
-Public document reads accept only bounded canonical paths that already exist in the cached GitHub docs tree. Unknown slugs are negatively cached and never become speculative `.md` or `.mdx` GitHub file requests. The public docs rate and concurrency limits above are per app process; when no trustworthy client address is available, only the global limits apply. Use ingress rate limiting as well for multi-instance deployments.
+Public document reads accept only bounded canonical paths that already exist in the cached GitHub docs tree. Unknown slugs are negatively cached and never become speculative `.md` or `.mdx` GitHub file requests. The public docs rate and concurrency limits apply to the one supported app process; when no trustworthy client address is available, only the global limits apply. Ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
 
 For the full list of optional runtime settings, check [.env.example](.env.example).
 
@@ -260,7 +275,9 @@ npm run build
 npm run start
 ```
 
-Both `npm run start` and `npm run start:next` validate the required secrets before accepting requests. Use the npm command instead of invoking `next start` directly so the plain Next.js server is validated before its process is created. Automated tests receive deterministic fallback credentials only through the test runner; setting `NODE_ENV=test` in a normal process does not bypass startup validation.
+Set the deployment replica count to one, prevent overlapping process starts during rollout, and mount one durable local-style runtime volume for every persisted path listed below. Startup fails before a listener opens if the topology declaration, runtime path permissions, or exclusive owner lease is invalid.
+
+Both `npm run start` and `npm run start:next` validate the required secrets, supported topology, storage paths, and exclusive ownership before accepting requests. Use the npm command instead of invoking `next start` directly so the plain Next.js server is validated before its process is created. Automated tests receive deterministic fallback credentials only through the test runner; setting `NODE_ENV=test` in a normal process does not bypass startup validation.
 
 `npm run start` uses the included `server.mjs` server, which:
 - starts the Next.js app
