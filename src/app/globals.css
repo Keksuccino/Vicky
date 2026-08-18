@@ -3109,7 +3109,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
 
 .markdown-cache-cache-path {
   min-width: 0;
-  font-family: var(--font-geist-mono), "SFMono-Regular", Consolas, monospace;
+  font-family: var(--font-mono), "Google Sans Code", "SFMono-Regular", Consolas, monospace;
   overflow-wrap: anywhere;
 }
 

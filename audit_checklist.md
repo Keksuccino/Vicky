@@ -16,4 +16,4 @@
 - [x] **1.11** — Client-IP detection can prefer a proxy address over the real client address.
 - [x] **1.12** — File-based login rate limiting is unsafe across multiple processes.
 - [x] **Overall #9** — The application relies heavily on one process and its local filesystem.
-- [ ] **Overall #10** — A font file referenced by the project may be missing from the supplied tree.
+- [x] **Overall #10** — A font file referenced by the project may be missing from the supplied tree.
