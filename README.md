@@ -44,6 +44,7 @@ It gives you:
 - GitHub docs snapshot cache files live in `data/docs-cache/` by default.
 - OpenRouter docs translation cache files live in `data/translation-cache/` by default.
 - Optional login rate-limit persistence uses `data/login-rate-limit.json`.
+- Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default.
 
 This repo contains the app itself, not your docs content.
 
@@ -60,7 +61,7 @@ This repo contains the app itself, not your docs content.
 ## 1. Install dependencies:
 
 ```bash
-npm install
+npm ci
 ```
 
 ## 2. Create a local env file:
@@ -197,6 +198,7 @@ Common optional settings:
 | `WIKI_MARKDOWN_CACHE_DIR` | Persistent rendered Markdown HTML cache directory | `./data/markdown-cache` |
 | `WIKI_DOCS_SNAPSHOT_DIR` | Persistent GitHub docs snapshot cache directory | `./data/docs-cache/snapshots` |
 | `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
+| `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
 | `HOST` | Listen host | `0.0.0.0` |
 | `HTTP_PORT` | HTTP listen port | `3000` |
 | `HTTPS_PORT` | HTTPS listen port | `443` |
@@ -244,6 +246,8 @@ Persist these paths across deployments:
 - `data/markdown-cache/`
 - `data/docs-cache/`
 - `data/translation-cache/`
+- `data/wiki-analytics.sqlite`, including its `-wal` and `-shm` companions when present
+- `data/login-rate-limit.json`
 
 # API Overview
 
@@ -255,7 +259,12 @@ Public endpoints:
 - `POST /api/ai/chat`
 - `GET /api/docs/tree`
 - `GET /api/docs/page`
+- `GET /api/docs/page-metadata`
+- `GET /api/docs/raw`
+- `GET /api/docs/raw/<path>`
 - `GET /api/docs/search`
+- `POST /api/docs/visit`
+- `GET /docs.txt`
 
 Auth endpoints:
 - `POST /api/auth/login`
@@ -266,7 +275,15 @@ Admin endpoints:
 - `GET|PATCH /api/admin/settings`
 - `POST /api/admin/test-connection`
 - `GET|POST /api/admin/docs`
+- `POST /api/admin/docs/refresh`
 - `GET /api/admin/domain-status`
+- `GET|POST|DELETE /api/admin/markdown-cache`
+- `GET|POST /api/admin/moderators`
+- `PATCH|DELETE /api/admin/moderators/<id>`
+- `GET /api/admin/performance`
+- `POST /api/admin/translations/request`
+- `POST /api/admin/translations/status`
+- `GET /api/admin/visitors`
 
 # Third-Party Assets
 

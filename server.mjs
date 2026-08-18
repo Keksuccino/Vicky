@@ -71,6 +71,7 @@ let storeWatcher = null;
 let storeWatchDebounceTimer = null;
 let statusPersistTimer = null;
 let statusPersistQueue = Promise.resolve();
+let shutdownPromise = null;
 
 const app = next({
   dev: IS_DEV,
@@ -1028,7 +1029,7 @@ async function start() {
   sslCheckTimer.unref?.();
 }
 
-async function shutdown(signal) {
+async function performShutdown(signal) {
   log(`Received ${signal}, shutting down.`);
 
   if (sslCheckTimer) {
@@ -1064,6 +1065,12 @@ async function shutdown(signal) {
   await Promise.all(operations);
   await flushRuntimeStatus();
   process.exit(0);
+}
+
+function shutdown(signal) {
+  // npm can forward a terminal signal that the child already received directly. Reuse one shutdown operation to avoid closing servers twice.
+  shutdownPromise ??= performShutdown(signal);
+  return shutdownPromise;
 }
 
 process.on("SIGINT", () => {

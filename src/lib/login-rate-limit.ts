@@ -171,7 +171,8 @@ const toPersistedStore = (source: Map<string, LoginAttemptState>): PersistedLogi
 
 const readAttemptStore = async (): Promise<Map<string, LoginAttemptState>> => {
   try {
-    const raw = await readFile(STORE_PATH, "utf8");
+    // The rate-limit store is mutable runtime state and may be configured outside the project; it must not be traced into builds.
+    const raw = await readFile(/*turbopackIgnore: true*/ STORE_PATH, "utf8");
     const parsed = parsePersistedStore(JSON.parse(raw) as unknown);
     replaceInMemoryAttempts(parsed);
     return parsed;

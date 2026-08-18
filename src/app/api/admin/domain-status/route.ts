@@ -254,7 +254,8 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     let certificateInspection = MISSING_CERTIFICATE;
 
     if (configured) {
-      const certificateDirectory = path.join(SSL_STORAGE_DIR, customDomain);
+      // Certificate storage is mutable runtime state and may live outside the project. Never trace private keys into the build output.
+      const certificateDirectory = path.join(/*turbopackIgnore: true*/ SSL_STORAGE_DIR, customDomain);
       const [privateKeyPem, certificatePem] = await Promise.all([
         readTextFileIfExists(path.join(certificateDirectory, "privkey.pem")),
         readTextFileIfExists(path.join(certificateDirectory, "fullchain.pem")),

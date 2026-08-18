@@ -45,6 +45,7 @@ yarn-error.log*
 # runtime data
 /data/wiki-store.json
 /data/login-rate-limit.json
+/data/ssl/
 /data/translation-cache/
 /data/markdown-cache/
 /data/docs-cache/

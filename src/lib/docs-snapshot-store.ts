@@ -240,14 +240,15 @@ export const deleteAllPersistentGitHubDocsSnapshots = async (): Promise<number> 
   let deleted = 0;
 
   try {
-    const fileNames = await readdir(getDocsSnapshotDir());
+    // Snapshot files are mutable runtime cache entries, not build inputs. The directory can also be configured outside the project.
+    const fileNames = await readdir(/*turbopackIgnore: true*/ getDocsSnapshotDir());
     for (const fileName of fileNames) {
       if (!fileName.endsWith(".json")) {
         continue;
       }
 
       try {
-        await unlink(path.join(getDocsSnapshotDir(), fileName));
+        await unlink(path.join(/*turbopackIgnore: true*/ getDocsSnapshotDir(), fileName));
         deleted += 1;
       } catch {
         // Best-effort cleanup only.

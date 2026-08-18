@@ -7,17 +7,20 @@
 - Primary branch: `main`
 - App type: Next.js App Router wiki/docs system with admin panel and integrated markdown editor
 - Docs content is stored in a configured GitHub repository (not in this repo)
-- Local app settings/themes are stored in `data/wiki-store.json`
+- Local runtime state is stored under `data/` by default: app settings in `wiki-store.json`, analytics in `wiki-analytics.sqlite`, SSL material in `ssl/`, and persistent cache/state files in their respective subdirectories.
 
 ## Core Product Behavior
 - `/` redirects to the configured start page (default `/docs/home`).
 - Docs pages render markdown with GitHub-flavored features, custom alert boxes, heading anchors, and syntax highlighting.
 - Admin can configure:
   - GitHub source repository/path/token
-  - Site title/description/start page
+  - Site title/description/footer/start page
   - Docs icon URLs (16/32/180)
   - Docs cache TTL
-  - Themes
+  - Light/Dark accents and custom CSS
+  - Custom domain and automatic Let's Encrypt HTTPS
+  - AI chat, OpenRouter, and automatic translation
+- Admin can also manage moderators, caches, translations, performance data, and visitor analytics.
 - Editor saves directly to the configured remote GitHub repo via API (commit is created immediately on save).
 
 ## Tech Stack
@@ -29,6 +32,8 @@
   - `rehype-highlight`, `rehype-slug`, `rehype-autolink-headings`, `rehype-sanitize`
 - GitHub API: `@octokit/rest`
 - Validation: `zod`
+- Persistent analytics: `better-sqlite3`
+- Production HTTP/HTTPS and certificate handling: custom `server.mjs` + `acme-client`
 
 ## High-Value File Map
 - App shell/layout:
@@ -46,15 +51,29 @@
 - Settings/store:
   - `src/lib/store.ts`
   - `src/lib/defaults.ts`
+  - `src/lib/encryption.ts`
 - GitHub read/write + cache invalidation:
   - `src/lib/github.ts`
+  - `src/lib/docs-snapshot-store.ts`
 - Search corpus/ranking:
   - `src/lib/docs-search.ts`
-- Cache implementation:
+- Cache implementations:
   - `src/lib/cache.ts`
+  - `src/lib/markdown-render-cache-store.ts`
+  - `src/lib/translation-cache-store.ts`
 - Auth + rate limiting:
   - `src/lib/auth.ts`
   - `src/lib/login-rate-limit.ts`
+- AI and translation:
+  - `src/lib/ai-chat.ts`
+  - `src/lib/auto-translate-server.ts`
+  - `src/lib/openrouter.ts`
+- Analytics:
+  - `src/lib/visitor-storage.ts`
+  - `src/lib/visitors.ts`
+- Domain/HTTPS runtime:
+  - `server.mjs`
+  - `src/lib/domain-settings.ts`
 - API routes:
   - `src/app/api/**/route.ts`
 - Middleware guards:
@@ -69,7 +88,14 @@
 - Docs read/search:
   - `GET /api/docs/tree`
   - `GET /api/docs/page`
+  - `GET /api/docs/page-metadata`
+  - `GET /api/docs/raw`
+  - `GET /api/docs/raw/[...slug]`
   - `GET /api/docs/search`
+  - `POST /api/docs/visit`
+  - `GET /docs.txt`
+- AI:
+  - `POST /api/ai/chat`
 - Auth:
   - `POST /api/auth/login`
   - `POST /api/auth/logout`
@@ -78,20 +104,28 @@
   - `GET|PATCH /api/admin/settings`
   - `POST /api/admin/test-connection`
   - `GET|POST /api/admin/docs`
+  - `POST /api/admin/docs/refresh`
+  - `GET /api/admin/domain-status`
+  - `GET|POST|DELETE /api/admin/markdown-cache`
+  - `GET|POST /api/admin/moderators`
+  - `PATCH|DELETE /api/admin/moderators/[id]`
+  - `GET /api/admin/performance`
+  - `POST /api/admin/translations/request`
+  - `POST /api/admin/translations/status`
   - `GET /api/admin/visitors`
-- Themes:
-  - `GET|POST /api/themes`
-  - `PATCH|DELETE /api/themes/[id]`
-  - `POST /api/themes/activate`
 
 ## Local Development
-1. `npm install`
+1. `npm ci`
 2. `cp .env.example .env.local`
-3. Set env values (required in production, fallback values exist in development):
+3. Set these values (required everywhere except automated tests):
   - `AUTH_JWT_SECRET`
   - `ADMIN_PASSWORD`
   - `ENCRYPTION_SECRET`
 4. `npm run dev`
+
+Never reuse `node_modules` after moving the workspace between operating systems or CPU architectures. Reinstall from the lockfile so packages such as `better-sqlite3` and Next's SWC compiler use native macOS/Apple Silicon binaries.
+
+`package.json` pins reviewed dependency install scripts in `allowScripts`. Review new install scripts individually and add exact package-version approvals; do not blanket-approve pending scripts.
 
 Useful URLs:
 - Docs: `http://localhost:3000/docs/<slug>`
@@ -102,11 +136,13 @@ Useful URLs:
 - Admin session cookie: `vicky_admin_session`.
 - Protected server paths are guarded both by middleware and route checks.
 - Admin/editor pages perform server-side auth checks to avoid unauthorized content flash.
-- Login endpoint includes in-memory IP-based rate limiting and temporary block windows.
+- Login endpoint includes IP-based rate limiting, temporary block windows, durable JSON persistence, and an in-memory fallback when persistence is unavailable.
+- `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` have test-only fallbacks; local development and production must configure real values.
 - Any new write/admin endpoint must require admin auth (`requireAdminRequest` or equivalent).
 
 ## Caching + GitHub Data Flow
 - Tree/page/search corpus are cached in memory with TTL (`src/lib/cache.ts`).
+- GitHub docs snapshots, rendered Markdown HTML, and translated docs are also cached persistently on disk.
 - TTL is admin-configurable in site settings and applied dynamically.
 - Cache is cleared when:
   - settings that affect source change
@@ -138,9 +174,11 @@ Useful URLs:
 
 ## Generated/Ignored Files
 - `next-env.d.ts` is ignored and generated by Next.js.
-- `data/wiki-store.json` is runtime data and ignored.
+- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*`, `login-rate-limit.json`, SSL files, rendered Markdown, docs snapshots, and translations.
 - `.next/` artifacts are generated and can cause stale type references after route refactors; clean/restart build if needed.
 
 ## Deployment Notes
-- Use normal Next.js production commands: `npm run build` then `npm run start`.
-- Persist `/data/wiki-store.json` (runtime app store) across deployments.
+- Use `npm run build` then `npm run start` for the included production server with custom-domain and automatic HTTPS support.
+- Use `npm run start:next` only when intentionally running plain Next.js without the included HTTPS/ACME server.
+- Persist `data/wiki-store.json`, `data/wiki-analytics.sqlite*`, `data/login-rate-limit.json`, and `data/ssl/` across deployments. Persist the Markdown, docs snapshot, and translation caches when preserving warm caches or generated translations matters.
+- Direct Let's Encrypt HTTP-01 usually requires ports 80/443 or a correctly configured reverse proxy; local development uses port 3000 and does not require privileged ports.

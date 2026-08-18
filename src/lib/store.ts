@@ -402,7 +402,8 @@ const withStoreLock = async <T>(work: () => Promise<T>): Promise<T> => {
 
 const readStoreFile = async (): Promise<unknown> => {
   try {
-    const raw = await readFile(STORE_PATH, "utf8");
+    // The settings store contains mutable encrypted runtime data and may live outside the project; it must not be traced into builds.
+    const raw = await readFile(/*turbopackIgnore: true*/ STORE_PATH, "utf8");
     return JSON.parse(raw) as unknown;
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;

@@ -2,6 +2,9 @@
   "name": "vicky-docs",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "scripts": {
     "dev": "node scripts/dev.mjs",
     "build": "next build",
@@ -27,9 +30,9 @@
     "gray-matter": "^4.0.3",
     "jose": "^6.1.3",
     "lru-cache": "^11.2.6",
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
+    "next": "16.3.1",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "react-markdown": "^10.1.0",
     "rehype-autolink-headings": "^7.1.0",
     "rehype-highlight": "^7.0.2",
@@ -48,7 +51,7 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4",
+    "@tailwindcss/postcss": "^4.3.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -56,12 +59,17 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "@vitest/coverage-v8": "^4.0.18",
+    "@vitest/coverage-v8": "^4.1.10",
     "eslint": "^9",
-    "eslint-config-next": "16.1.6",
+    "eslint-config-next": "16.3.1",
     "jsdom": "^28.1.0",
-    "tailwindcss": "^4",
+    "tailwindcss": "^4.3.3",
     "typescript": "^5",
-    "vitest": "^4.0.18"
+    "vitest": "^4.1.10"
+  },
+  "allowScripts": {
+    "better-sqlite3@12.10.0": true,
+    "fsevents@2.3.3": true,
+    "unrs-resolver@1.11.1": true
   }
 }
