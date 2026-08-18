@@ -3004,7 +3004,7 @@ export function AdminSettingsPanel() {
                         <span className="field-hint">
                           Source:{" "}
                           {sslStatus.source === "runtime"
-                            ? "runtime status endpoint."
+                            ? "private runtime status snapshot."
                             : "best-effort check (settings + local cert files)."}
                         </span>
                         {sslStatus.certificateExpiresAt ? (

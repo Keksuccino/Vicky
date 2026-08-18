@@ -226,9 +226,11 @@ npm run start
 - starts the Next.js app
 - serves HTTP
 - enables HTTPS automatically when a custom domain and Let's Encrypt email are configured
-- exposes a runtime SSL status endpoint
+- supplies authenticated admins with SSL runtime status from a private on-disk snapshot
 - watches the settings store so domain/SSL changes apply quickly
 - persists runtime SSL status to disk
+
+The optional external SSL health endpoint defaults to `/.well-known/vicky/ssl-status`, but it is disabled and returns `404` unless `SSL_STATUS_BEARER_TOKEN` is set. When enabled, it requires `Authorization: Bearer <token>` using constant-time credential comparison and returns only sanitized health fields. It never returns filesystem paths, the configured domain, host/port settings, refresh reasons, or raw certificate/ACME errors. Use a long randomly generated token, access the endpoint only through HTTPS or a trusted private network, and change `SSL_STATUS_ENDPOINT_PATH` if your ingress requires a custom route. The authenticated `/api/admin/domain-status` route does not depend on this external endpoint.
 
 `HTTP_PORT` and `HTTPS_PORT` must be different values.
 

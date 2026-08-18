@@ -7,6 +7,7 @@ import { requireAdminRequest } from "@/lib/auth";
 import { isSslDomainConfigured, normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { errorResponse } from "@/lib/http";
 import { ensurePrivateFile } from "@/lib/runtime-file-security.mjs";
+import { isCurrentRuntimeSslStatusSnapshot, readPrivateRuntimeSslStatusSnapshot } from "@/lib/runtime-ssl-status.mjs";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -14,25 +15,8 @@ export const dynamic = "force-dynamic";
 
 const DEFAULT_SSL_STORAGE_DIR = path.join(process.cwd(), "data", "ssl");
 const SSL_STORAGE_DIR = process.env.WIKI_SSL_STORAGE_DIR ?? DEFAULT_SSL_STORAGE_DIR;
+const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_STORAGE_DIR, "runtime-ssl-status.json");
 const EXPIRING_SOON_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
-const DEFAULT_RUNTIME_STATUS_ENDPOINT_PATH = "/.well-known/vicky/ssl-status";
-const STATUS_REQUEST_TIMEOUT_MS = 2_000;
-const HTTP_PORT = (() => {
-  const parsed = Number.parseInt(process.env.HTTP_PORT ?? process.env.PORT ?? "3000", 10);
-  return Number.isInteger(parsed) && parsed > 0 && parsed <= 65_535 ? parsed : 3000;
-})();
-const STATUS_ENDPOINT_PATH = (() => {
-  const rawPath = (process.env.SSL_STATUS_ENDPOINT_PATH ?? DEFAULT_RUNTIME_STATUS_ENDPOINT_PATH).trim();
-  if (!rawPath) {
-    return DEFAULT_RUNTIME_STATUS_ENDPOINT_PATH;
-  }
-
-  const stripped = rawPath.split("?")[0].split("#")[0];
-  const prefixed = stripped.startsWith("/") ? stripped : `/${stripped}`;
-  const normalized = path.posix.normalize(prefixed);
-  return normalized.startsWith("/") ? normalized : `/${normalized}`;
-})();
-const STATUS_ENDPOINT_BEARER_TOKEN = (process.env.SSL_STATUS_BEARER_TOKEN ?? "").trim();
 
 type CertificateState = "missing" | "valid" | "expiring_soon" | "expired" | "domain_mismatch" | "invalid";
 
@@ -89,23 +73,13 @@ const asOptionalString = (value: unknown): string | null => {
   return valueAsString || null;
 };
 
-const fetchRuntimeStatusSnapshot = async (): Promise<RuntimeStatusSnapshot | null> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), STATUS_REQUEST_TIMEOUT_MS);
-
+const readRuntimeStatusSnapshot = async (): Promise<RuntimeStatusSnapshot | null> => {
   try {
-    const response = await fetch(`http://127.0.0.1:${HTTP_PORT}${STATUS_ENDPOINT_PATH}`, {
-      method: "GET",
-      cache: "no-store",
-      signal: controller.signal,
-      headers: STATUS_ENDPOINT_BEARER_TOKEN ? { Authorization: `Bearer ${STATUS_ENDPOINT_BEARER_TOKEN}` } : undefined,
-    });
-
-    if (!response.ok) {
+    const parsed = await readPrivateRuntimeSslStatusSnapshot(SSL_STATUS_FILE_PATH);
+    if (!parsed || !isCurrentRuntimeSslStatusSnapshot(parsed, process.env.VICKY_INTERNAL_SSL_RUNTIME_INSTANCE_ID)) {
       return null;
     }
 
-    const parsed = (await response.json()) as unknown;
     const payload = asRecord(parsed);
 
     return {
@@ -123,9 +97,9 @@ const fetchRuntimeStatusSnapshot = async (): Promise<RuntimeStatusSnapshot | nul
       },
     };
   } catch {
+    // Runtime status is supplementary. Certificate inspection below remains available if
+    // the private snapshot is missing, invalid, or temporarily inaccessible during startup.
     return null;
-  } finally {
-    clearTimeout(timeoutId);
   }
 };
 
@@ -251,7 +225,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     const customDomain = normalizeCustomDomain(store.settings.domain.customDomain);
     const letsEncryptEmail = normalizeLetsEncryptEmail(store.settings.domain.letsEncryptEmail);
     const configured = isSslDomainConfigured({ customDomain, letsEncryptEmail });
-    const runtimeStatus = await fetchRuntimeStatusSnapshot();
+    const runtimeStatus = await readRuntimeStatusSnapshot();
 
     let certificateInspection = MISSING_CERTIFICATE;
 

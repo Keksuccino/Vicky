@@ -1,6 +1,6 @@
 import http from "node:http";
 import https from "node:https";
-import { X509Certificate } from "node:crypto";
+import { randomUUID, X509Certificate } from "node:crypto";
 import { watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -11,6 +11,7 @@ import next from "next";
 
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
+import { serveRuntimeSslStatusRequest } from "./src/lib/runtime-ssl-status.mjs";
 
 const ACME_CHALLENGE_PREFIX = "/.well-known/acme-challenge/";
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
@@ -31,12 +32,16 @@ const SSL_STATUS_ENDPOINT_PATH = normalizeStatusEndpointPath(
 );
 const SSL_STATUS_BEARER_TOKEN = String(process.env.SSL_STATUS_BEARER_TOKEN ?? "").trim();
 const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_STORAGE_DIR, "runtime-ssl-status.json");
+const SSL_RUNTIME_INSTANCE_ID = randomUUID();
 const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
 const GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY = Symbol.for("vicky.githubLocalization.uploadQueue.shutdown");
 
 process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER = "true";
+// The admin route may run in a Next worker, so an inherited process environment value is
+// the reliable way to distinguish this server's live snapshot from a stale file or start:next.
+process.env.VICKY_INTERNAL_SSL_RUNTIME_INSTANCE_ID = SSL_RUNTIME_INSTANCE_ID;
 
 const challengeResponses = new Map();
 
@@ -176,6 +181,7 @@ function toIsoTimestamp(value) {
 function buildRuntimeStatusSnapshot() {
   return {
     schemaVersion: 1,
+    runtimeInstanceId: SSL_RUNTIME_INSTANCE_ID,
     updatedAt: new Date().toISOString(),
     phase: sslRuntimeState.phase,
     settings: {
@@ -321,19 +327,6 @@ function getRequestPath(request) {
   }
 }
 
-function isStatusRequestAuthorized(request) {
-  if (!SSL_STATUS_BEARER_TOKEN) {
-    return true;
-  }
-
-  const authHeader = request.headers.authorization;
-  if (!authHeader) {
-    return false;
-  }
-
-  return authHeader === `Bearer ${SSL_STATUS_BEARER_TOKEN}`;
-}
-
 function setInternalClientIpHeader(request) {
   delete request.headers[INTERNAL_CLIENT_IP_HEADER];
 
@@ -344,29 +337,13 @@ function setInternalClientIpHeader(request) {
 }
 
 function tryServeRuntimeStatus(request, response) {
-  if (request.method !== "GET") {
-    return false;
-  }
-
   if (getRequestPath(request) !== SSL_STATUS_ENDPOINT_PATH) {
     return false;
   }
 
-  if (!isStatusRequestAuthorized(request)) {
-    response.writeHead(401, {
-      "Cache-Control": "no-store",
-      "Content-Type": "application/json; charset=utf-8",
-      "WWW-Authenticate": 'Bearer realm="vicky-ssl-status"',
-    });
-    response.end(JSON.stringify({ error: "Unauthorized" }));
-    return true;
-  }
-
-  response.writeHead(200, {
-    "Cache-Control": "no-store",
-    "Content-Type": "application/json; charset=utf-8",
-  });
-  response.end(JSON.stringify(buildRuntimeStatusSnapshot(), null, 2));
+  // The detailed snapshot contains local paths and provider diagnostics. With no explicit
+  // token the endpoint is absent, while a configured endpoint exposes only a narrow health view.
+  serveRuntimeSslStatusRequest(request, response, { bearerToken: SSL_STATUS_BEARER_TOKEN, snapshot: buildRuntimeStatusSnapshot() });
   return true;
 }
 
