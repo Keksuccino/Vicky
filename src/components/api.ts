@@ -1182,11 +1182,8 @@ export function createDisplayedDocPageVisitEventId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export async function recordDisplayedDocPageVisit(
-  page: Pick<DocPage, "path" | "slug" | "title">,
-  eventId?: string | null,
-): Promise<void> {
-  const visitEventId = (eventId?.trim() || createDisplayedDocPageVisitEventId()).slice(0, 128);
+export async function recordDisplayedDocPageVisit(page: Pick<DocPage, "path" | "slug">, eventId?: string | null): Promise<void> {
+  const visitEventId = (eventId?.trim() || createDisplayedDocPageVisitEventId()).slice(0, 64);
 
   await requestJson<unknown>("/api/docs/visit", {
     method: "POST",
@@ -1195,7 +1192,6 @@ export async function recordDisplayedDocPageVisit(
       eventId: visitEventId,
       path: page.path,
       slug: page.slug,
-      title: page.title,
     }),
   });
 }

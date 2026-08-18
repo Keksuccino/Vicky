@@ -1,34 +1,47 @@
-import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { errorResponse, parseJsonBody } from "@/lib/http";
+import { setDocsCacheTtlMs } from "@/lib/cache";
+import { listMarkdownDocsTree, resolveRuntimeConfig } from "@/lib/github";
+import { errorResponse } from "@/lib/http";
+import { getStore } from "@/lib/store";
+import { assertVisitorIngestionSameSite, parseVisitorIngestionRequest, resolveKnownVisitorPageIdentity } from "@/lib/visitor-ingestion";
+import { acquireVisitorIngestionPermit } from "@/lib/visitor-ingestion-rate-limit";
 import { enqueueDocPageVisit } from "@/lib/visitors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const visitSchema = z
-  .object({
-    eventId: z.string().trim().min(1).max(128),
-    path: z.string().min(1),
-    slug: z.string().min(1),
-    title: z.string().optional().default(""),
-  })
-  .strict();
+const rateLimitResponse = (retryAfterSeconds: number, message: string): NextResponse => NextResponse.json({ error: message, retryAfterSeconds }, { status: 429, headers: { "Retry-After": String(retryAfterSeconds) } });
 
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   try {
-    const payload = visitSchema.parse(await parseJsonBody<unknown>(request));
-    const queued = enqueueDocPageVisit(request, payload, payload.eventId);
-
-    return NextResponse.json({ queued }, { status: 202 });
+    assertVisitorIngestionSameSite(request);
   } catch (error: unknown) {
-    if (error instanceof z.ZodError || error instanceof SyntaxError) {
-      return errorResponse(error);
+    return errorResponse(error);
+  }
+
+  const permit = acquireVisitorIngestionPermit(request);
+  if (!permit.allowed) {
+    return rateLimitResponse(permit.retryAfterSeconds, "Too many analytics requests. Please try again later.");
+  }
+
+  try {
+    const payload = await parseVisitorIngestionRequest(request);
+    const store = await getStore();
+    setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
+    const config = resolveRuntimeConfig(store.settings.github);
+    const tree = await listMarkdownDocsTree(config);
+    const page = resolveKnownVisitorPageIdentity(payload, tree, config);
+    const enqueueResult = enqueueDocPageVisit(request, page, payload.eventId);
+
+    if (enqueueResult.status === "full") {
+      return rateLimitResponse(enqueueResult.retryAfterSeconds, "Analytics queue is full. Please try again later.");
     }
 
-    const message = error instanceof Error ? error.message : String(error);
-    console.warn(`[visitors] Failed to queue docs page visit: ${message}`);
-    return NextResponse.json({ queued: false }, { status: 202 });
+    return NextResponse.json({ duplicate: enqueueResult.status === "duplicate", queued: enqueueResult.status === "queued" }, { status: 202 });
+  } catch (error: unknown) {
+    return errorResponse(error);
+  } finally {
+    permit.release();
   }
 };

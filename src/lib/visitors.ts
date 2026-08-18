@@ -17,6 +17,22 @@ import type {
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const ALL_TIME_CHART_PERIOD_LIMIT = 150;
 const MAX_VISIT_RECORD_ATTEMPTS = 3;
+const VISIT_EVENT_ID_MAX_LENGTH = 64;
+const DEFAULT_VISIT_QUEUE_CAPACITY = 1_000;
+const DEFAULT_VISIT_RETRY_BASE_MS = 1_000;
+const DEFAULT_VISIT_RETRY_MAX_MS = 30_000;
+const RECENT_EVENT_ID_TTL_MS = 10 * 60 * 1_000;
+const RECENT_EVENT_ID_PRUNE_INTERVAL_MS = 30_000;
+const MAX_RECENT_EVENT_IDS = 10_000;
+
+const parseBoundedPositiveInteger = (value: string | undefined, fallback: number, maximum: number): number => {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
+};
+
+const VISIT_QUEUE_CAPACITY = parseBoundedPositiveInteger(process.env.VISITOR_ANALYTICS_QUEUE_CAPACITY, DEFAULT_VISIT_QUEUE_CAPACITY, 10_000);
+const VISIT_RETRY_BASE_MS = parseBoundedPositiveInteger(process.env.VISITOR_ANALYTICS_RETRY_BASE_MS, DEFAULT_VISIT_RETRY_BASE_MS, 60_000);
+const VISIT_RETRY_MAX_MS = Math.max(VISIT_RETRY_BASE_MS, parseBoundedPositiveInteger(process.env.VISITOR_ANALYTICS_RETRY_MAX_MS, DEFAULT_VISIT_RETRY_MAX_MS, 5 * 60_000));
 
 type VisitorStorageBackend = {
   getVisitorAnalyticsSalt: () => Promise<string>;
@@ -36,14 +52,31 @@ const defaultVisitorStorageLoader: VisitorStorageLoader = () => import("@/lib/vi
 let visitorStorageLoader: VisitorStorageLoader = defaultVisitorStorageLoader;
 
 type QueuedDocPageVisit = {
+  attempts: number;
+  availableAt: number;
+  dedupKey: string | null;
   eventId: string | null;
   ipAddress: string;
   page: VisitorPageIdentity;
-  attempts: number;
+  queueId: string;
 };
 
-const visitQueue: QueuedDocPageVisit[] = [];
+export type EnqueueDocPageVisitResult =
+  | { status: "queued" }
+  | { status: "duplicate" }
+  | { retryAfterSeconds: number; status: "full" };
+
+// Ready and delayed work stay separate so a backed-off write cannot block newer visits and
+// draining the normal FIFO does not repeatedly splice a large array.
+const readyVisitQueue = new Map<string, QueuedDocPageVisit>();
+const delayedVisitQueue = new Map<string, QueuedDocPageVisit>();
+const queuedEventIds = new Set<string>();
+const recentEventIds = new Map<string, number>();
+let activeQueuedVisitCount = 0;
+let lastRecentEventPruneAt = Number.NEGATIVE_INFINITY;
 let visitQueueFlushing = false;
+let visitQueueWakeAt = 0;
+let visitQueueWakeTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const setVisitorStorageLoaderForTests = (loader: VisitorStorageLoader | null): void => {
   visitorStorageLoader = loader ?? defaultVisitorStorageLoader;
@@ -304,8 +337,40 @@ export const recordVisitorInStats = (
 };
 
 const normalizeVisitEventId = (eventId: string | null | undefined): string | null => {
-  const normalized = eventId?.trim().slice(0, 128) ?? "";
+  const normalized = eventId?.trim().slice(0, VISIT_EVENT_ID_MAX_LENGTH) ?? "";
   return normalized || null;
+};
+
+const createVisitDedupKey = (ipAddress: string, eventId: string | null): string | null => {
+  if (!eventId) {
+    return null;
+  }
+  return createHash("sha256").update(`${ipAddress}\0${eventId}`).digest("base64url");
+};
+
+const pruneRecentEventIds = (now: number): void => {
+  if (now >= lastRecentEventPruneAt && now - lastRecentEventPruneAt < RECENT_EVENT_ID_PRUNE_INTERVAL_MS) {
+    return;
+  }
+  lastRecentEventPruneAt = now;
+  for (const [dedupKey, acceptedAt] of recentEventIds.entries()) {
+    if (now - acceptedAt >= RECENT_EVENT_ID_TTL_MS) {
+      recentEventIds.delete(dedupKey);
+    }
+  }
+};
+
+const rememberRecentEventId = (dedupKey: string, now: number): void => {
+  recentEventIds.delete(dedupKey);
+  recentEventIds.set(dedupKey, now);
+
+  while (recentEventIds.size > MAX_RECENT_EVENT_IDS) {
+    const oldestKey = recentEventIds.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    recentEventIds.delete(oldestKey);
+  }
 };
 
 const recordPageIdentityVisitForIp = async (
@@ -318,43 +383,118 @@ const recordPageIdentityVisitForIp = async (
   await storage.recordVisitorEvent({ eventId: normalizeVisitEventId(eventId), page, visitorId });
 };
 
+const clearVisitQueueWakeTimer = (): void => {
+  if (visitQueueWakeTimer) {
+    clearTimeout(visitQueueWakeTimer);
+  }
+  visitQueueWakeTimer = null;
+  visitQueueWakeAt = 0;
+};
+
+const nextVisitRetryDelayMs = (attempts: number): number => Math.min(VISIT_RETRY_MAX_MS, VISIT_RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
+
+const promoteReadyRetries = (now: number): void => {
+  for (const [queueId, visit] of delayedVisitQueue.entries()) {
+    if (visit.availableAt > now) {
+      continue;
+    }
+    delayedVisitQueue.delete(queueId);
+    readyVisitQueue.set(queueId, visit);
+  }
+};
+
+const takeNextReadyVisit = (): QueuedDocPageVisit | null => {
+  const entry = readyVisitQueue.entries().next().value as [string, QueuedDocPageVisit] | undefined;
+  if (!entry) {
+    return null;
+  }
+  readyVisitQueue.delete(entry[0]);
+  return entry[1];
+};
+
+const scheduleVisitQueueWake = (wakeAt: number): void => {
+  if (visitQueueWakeTimer && visitQueueWakeAt <= wakeAt) {
+    return;
+  }
+
+  clearVisitQueueWakeTimer();
+  visitQueueWakeAt = wakeAt;
+  visitQueueWakeTimer = setTimeout(() => {
+    visitQueueWakeTimer = null;
+    visitQueueWakeAt = 0;
+    void flushQueuedVisits();
+  }, Math.max(1, wakeAt - Date.now()));
+  visitQueueWakeTimer.unref?.();
+};
+
+const scheduleNextQueuedVisit = (): void => {
+  promoteReadyRetries(Date.now());
+  if (readyVisitQueue.size === 0 && delayedVisitQueue.size === 0) {
+    clearVisitQueueWakeTimer();
+    return;
+  }
+
+  if (readyVisitQueue.size > 0) {
+    clearVisitQueueWakeTimer();
+    void flushQueuedVisits();
+    return;
+  }
+
+  let earliestWakeAt = Number.POSITIVE_INFINITY;
+  for (const visit of delayedVisitQueue.values()) {
+    earliestWakeAt = Math.min(earliestWakeAt, visit.availableAt);
+  }
+  scheduleVisitQueueWake(earliestWakeAt);
+};
+
+const completeQueuedVisit = (visit: QueuedDocPageVisit, remember: boolean): void => {
+  if (!visit.dedupKey) {
+    return;
+  }
+
+  queuedEventIds.delete(visit.dedupKey);
+  if (remember) {
+    rememberRecentEventId(visit.dedupKey, Date.now());
+  }
+};
+
 const flushQueuedVisits = async (): Promise<void> => {
   if (visitQueueFlushing) {
     return;
   }
 
+  clearVisitQueueWakeTimer();
   visitQueueFlushing = true;
 
   try {
-    while (visitQueue.length > 0) {
-      const visit = visitQueue.shift();
-      if (!visit) {
-        continue;
-      }
+    promoteReadyRetries(Date.now());
+    let visit = takeNextReadyVisit();
+    while (visit) {
+      activeQueuedVisitCount += 1;
 
       try {
         await recordPageIdentityVisitForIp(visit.ipAddress, visit.page, visit.eventId);
+        completeQueuedVisit(visit, true);
       } catch (error: unknown) {
         const nextAttempts = visit.attempts + 1;
         const message = error instanceof Error ? error.message : String(error);
-        console.warn(
-          `[visitors] Failed to record docs page visit for ${visit.page.slug} (attempt ${nextAttempts}/${MAX_VISIT_RECORD_ATTEMPTS}): ${message}`,
-        );
+        console.warn(`[visitors] Failed to record docs page visit for ${visit.page.slug} (attempt ${nextAttempts}/${MAX_VISIT_RECORD_ATTEMPTS}): ${message}`);
 
         if (nextAttempts < MAX_VISIT_RECORD_ATTEMPTS) {
-          visitQueue.push({
-            ...visit,
-            attempts: nextAttempts,
-          });
+          delayedVisitQueue.set(visit.queueId, { ...visit, attempts: nextAttempts, availableAt: Date.now() + nextVisitRetryDelayMs(nextAttempts) });
+        } else {
+          completeQueuedVisit(visit, false);
         }
+      } finally {
+        activeQueuedVisitCount = Math.max(0, activeQueuedVisitCount - 1);
       }
+
+      promoteReadyRetries(Date.now());
+      visit = takeNextReadyVisit();
     }
   } finally {
     visitQueueFlushing = false;
-
-    if (visitQueue.length > 0) {
-      void flushQueuedVisits();
-    }
+    scheduleNextQueuedVisit();
   }
 };
 
@@ -362,25 +502,58 @@ export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPa
   await recordPageIdentityVisitForIp(getRequestIpAddress(request), normalizeVisitorPageIdentity(page));
 };
 
-export const enqueueDocPageVisit = (
-  request: NextRequest,
-  page: VisitorPageIdentity,
-  eventId?: string | null,
-): boolean => {
+export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdentity, eventId?: string | null): EnqueueDocPageVisitResult => {
   const normalizedPage = normalizeVisitPage(page);
   if (!normalizedPage.slug) {
-    return false;
+    return { status: "duplicate" };
   }
 
-  visitQueue.push({
-    eventId: normalizeVisitEventId(eventId),
-    ipAddress: getRequestIpAddress(request),
-    page: normalizedPage,
+  const now = Date.now();
+  const normalizedEventId = normalizeVisitEventId(eventId);
+  const ipAddress = getRequestIpAddress(request);
+  const dedupKey = createVisitDedupKey(ipAddress, normalizedEventId);
+  pruneRecentEventIds(now);
+
+  if (dedupKey && (queuedEventIds.has(dedupKey) || recentEventIds.has(dedupKey))) {
+    return { status: "duplicate" };
+  }
+
+  if (readyVisitQueue.size + delayedVisitQueue.size + activeQueuedVisitCount >= VISIT_QUEUE_CAPACITY) {
+    let earliestAvailableAt = Number.POSITIVE_INFINITY;
+    for (const visit of delayedVisitQueue.values()) {
+      earliestAvailableAt = Math.min(earliestAvailableAt, visit.availableAt);
+    }
+    const retryAfterSeconds = Number.isFinite(earliestAvailableAt) ? Math.max(1, Math.ceil((earliestAvailableAt - now) / 1_000)) : 1;
+    return { status: "full", retryAfterSeconds };
+  }
+
+  if (dedupKey) {
+    queuedEventIds.add(dedupKey);
+  }
+  const queueId = randomUUID();
+  readyVisitQueue.set(queueId, {
     attempts: 0,
+    availableAt: now,
+    dedupKey,
+    eventId: normalizedEventId,
+    ipAddress,
+    page: normalizedPage,
+    queueId,
   });
   void flushQueuedVisits();
 
-  return true;
+  return { status: "queued" };
+};
+
+export const resetVisitorVisitQueueForTests = (): void => {
+  clearVisitQueueWakeTimer();
+  readyVisitQueue.clear();
+  delayedVisitQueue.clear();
+  queuedEventIds.clear();
+  recentEventIds.clear();
+  activeQueuedVisitCount = 0;
+  lastRecentEventPruneAt = Number.NEGATIVE_INFINITY;
+  visitQueueFlushing = false;
 };
 
 const summarizePages = (

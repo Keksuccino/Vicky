@@ -1039,6 +1039,14 @@ const readPageFromCache = (
   return page ? mergeCachedCommitMetadata(config, page) : null;
 };
 
+export const getCachedGitHubDocPage = (config: GitHubRuntimeConfig, relativePath: string): GitHubDocPage | null => {
+  try {
+    return readPageFromCache(config, { relativePath: ensureMarkdownPath(relativePath) });
+  } catch {
+    return null;
+  }
+};
+
 const pruneTranslatedPageCacheForSlug = (config: GitHubRuntimeConfig, slug: string): void => {
   const pageCachePrefix = translatedDocsPageCachePrefix(config);
   const sourceSlugPrefix = `${slug}|`;

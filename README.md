@@ -199,6 +199,14 @@ Common optional settings:
 | `WIKI_DOCS_SNAPSHOT_DIR` | Persistent GitHub docs snapshot cache directory | `./data/docs-cache/snapshots` |
 | `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
+| `VISITOR_ANALYTICS_CLIENT_MAX_REQUESTS` | Page-view requests accepted per client during the analytics rate window | `60` |
+| `VISITOR_ANALYTICS_GLOBAL_MAX_REQUESTS` | Page-view requests accepted globally during the analytics rate window | `1200` |
+| `VISITOR_ANALYTICS_RATE_WINDOW_SECONDS` | Analytics page-view rate-limit window | `60` |
+| `VISITOR_ANALYTICS_CLIENT_MAX_CONCURRENCY` | Concurrent page-view requests allowed per client | `4` |
+| `VISITOR_ANALYTICS_GLOBAL_MAX_CONCURRENCY` | Concurrent page-view requests allowed per app process | `32` |
+| `VISITOR_ANALYTICS_QUEUE_CAPACITY` | Maximum queued or actively written page-view events | `1000` |
+| `VISITOR_ANALYTICS_RETRY_BASE_MS` | Initial delay before retrying a failed analytics write | `1000` |
+| `VISITOR_ANALYTICS_RETRY_MAX_MS` | Maximum delay between failed analytics write attempts | `30000` |
 | `HOST` | Listen host | `0.0.0.0` |
 | `HTTP_PORT` | HTTP listen port | `3000` |
 | `HTTPS_PORT` | HTTPS listen port | `443` |
@@ -210,6 +218,8 @@ Runtime file and directory overrides must point into a dedicated storage directo
 
 `HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
 `npm run start` sets `x-vicky-client-ip` from the socket address internally; only set `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER=true` yourself when another trusted ingress overwrites that header.
+
+Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the same trusted client-IP settings described below; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. The analytics rate, concurrency, queue, and retry limits above are per app process; use ingress rate limiting as well when deploying multiple instances.
 
 For the full list of optional runtime settings, check [.env.example](.env.example).
 
