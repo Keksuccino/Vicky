@@ -16,13 +16,16 @@ vi.mock("@/lib/store", () => ({ getStore: mocks.getStore }));
 import { GET } from "@/app/docs.txt/route";
 import { ApiError, PUBLIC_ERROR_LOG_MAX_LENGTH } from "@/lib/http";
 
-const createRequest = (): NextRequest => new NextRequest("https://docs.example.com/docs.txt");
+const originalTrustProxyOriginHeaders = process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS;
+
+const createRequest = (headers: Record<string, string> = {}): NextRequest => new NextRequest("https://docs.example.com/docs.txt", { headers: { host: "docs.example.com", ...headers } });
 
 describe("GET /docs.txt error responses", () => {
   let consoleError: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS = "false";
     consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
     mocks.getStore.mockResolvedValue({ settings: { docsCacheTtlMs: 60_000, github: {} } });
     mocks.resolveRuntimeConfig.mockReturnValue({ branch: "main", docsPath: "docs", owner: "owner", repo: "repo", token: "token" });
@@ -31,6 +34,26 @@ describe("GET /docs.txt error responses", () => {
 
   afterEach(() => {
     consoleError.mockRestore();
+    if (originalTrustProxyOriginHeaders === undefined) {
+      delete process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS;
+    } else {
+      process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS = originalTrustProxyOriginHeaders;
+    }
+  });
+
+  it("uses the configured canonical domain for plaintext links and cache identity", async () => {
+    mocks.getStore.mockResolvedValueOnce({ settings: { docsCacheTtlMs: 60_000, domain: { customDomain: "Canonical.Example.com" }, github: {} } });
+    const response = await GET(createRequest({ host: "direct.example.com", "x-forwarded-host": "attacker.example", "x-forwarded-proto": "http" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.getPlaintextDocsExport).toHaveBeenCalledWith(expect.any(Object), "https://canonical.example.com");
+  });
+
+  it("does not let untrusted forwarding change the direct public origin", async () => {
+    const response = await GET(createRequest({ host: "direct.example.com:8443", "x-forwarded-host": "attacker.example", "x-forwarded-proto": "http" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.getPlaintextDocsExport).toHaveBeenCalledWith(expect.any(Object), "https://direct.example.com:8443");
   });
 
   it("sanitizes unexpected cause chains and redacts their server diagnostic", async () => {

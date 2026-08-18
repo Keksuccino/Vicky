@@ -62,11 +62,8 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
     return unauthorizedApiResponse();
   }
 
-  const loginUrl = request.nextUrl.clone();
-  loginUrl.pathname = LOGIN_PAGE_PATH;
-  loginUrl.searchParams.set("next", `${pathname}${search}`);
-
-  return NextResponse.redirect(loginUrl);
+  const loginSearch = new URLSearchParams({ next: `${pathname}${search}` });
+  return new NextResponse(null, { status: 307, headers: { Location: `${LOGIN_PAGE_PATH}?${loginSearch}` } });
 };
 
 export const config = {

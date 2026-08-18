@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { getCachedGitHubDocPage } from "@/lib/github";
 import { ApiError, badRequest, notFound, parseBoundedJsonBody } from "@/lib/http";
+import { normalizeHttpOrigin, resolveRequestOrigin } from "@/lib/request-origin-policy.mjs";
 import { normalizeVisitorPageIdentity } from "@/lib/visitors";
 import type { GitHubDocTreeItem, GitHubRuntimeConfig, VisitorPageIdentity } from "@/lib/types";
 
@@ -51,19 +52,13 @@ export const assertVisitorIngestionSameSite = (request: NextRequest): void => {
     return;
   }
 
-  let originHost = "";
-  try {
-    const parsedOrigin = new URL(origin);
-    if (parsedOrigin.protocol !== "http:" && parsedOrigin.protocol !== "https:") {
-      throw new Error("Unsupported origin protocol.");
-    }
-    originHost = parsedOrigin.host.toLowerCase();
-  } catch {
+  const normalizedOrigin = normalizeHttpOrigin(origin);
+  if (!normalizedOrigin) {
     throw new ApiError(403, "Invalid analytics request origin.");
   }
 
-  const allowedHosts = new Set([request.nextUrl.host.toLowerCase(), request.headers.get("host")?.trim().toLowerCase()].filter((value): value is string => Boolean(value)));
-  if (!allowedHosts.has(originHost)) {
+  const requestOrigin = resolveRequestOrigin({ headers: request.headers });
+  if (!requestOrigin || normalizedOrigin !== requestOrigin) {
     throw new ApiError(403, "Cross-origin analytics requests are not allowed.");
   }
 };

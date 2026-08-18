@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import { errorResponse } from "@/lib/http";
+import { resolveRequestOrigin } from "@/lib/request-origin-policy.mjs";
 import { getStore } from "@/lib/store";
 
 type IconSize = "16" | "32" | "180";
@@ -15,14 +16,14 @@ const resolveIconUrl = (size: IconSize, settings: Awaited<ReturnType<typeof getS
   return settings.docsIcon.png180Url;
 };
 
-const toSafeTargetUrl = (rawUrl: string, request: NextRequest): string | null => {
+const toSafeTargetUrl = (rawUrl: string, origin: string | null): string | null => {
   const trimmed = rawUrl.trim();
   if (!trimmed) {
     return null;
   }
 
   try {
-    const resolved = new URL(trimmed, request.nextUrl.origin);
+    const resolved = origin ? new URL(trimmed, origin) : new URL(trimmed);
     if (resolved.protocol !== "http:" && resolved.protocol !== "https:") {
       return null;
     }
@@ -37,7 +38,8 @@ export const handleIconRequest = async (request: NextRequest, size: IconSize): P
   try {
     const store = await getStore();
     const rawUrl = resolveIconUrl(size, store.settings);
-    const target = toSafeTargetUrl(rawUrl, request);
+    const origin = resolveRequestOrigin({ customDomain: store.settings.domain?.customDomain, headers: request.headers });
+    const target = toSafeTargetUrl(rawUrl, origin);
 
     if (!target) {
       return new NextResponse(null, {

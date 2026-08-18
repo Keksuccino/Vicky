@@ -1,3 +1,5 @@
+import { normalizeHttpAuthority } from "./request-origin-policy.mjs";
+
 export const ACME_HTTP_CHALLENGE_PREFIX = "/.well-known/acme-challenge/";
 
 /**
@@ -8,23 +10,20 @@ export const ACME_HTTP_CHALLENGE_PREFIX = "/.well-known/acme-challenge/";
  * @returns {string}
  */
 export function getRequestHostname(headerValue) {
-  if (!headerValue) {
+  if (typeof headerValue !== "string") {
     return "";
   }
 
-  const first = String(Array.isArray(headerValue) ? headerValue[0] : headerValue).split(",")[0].trim();
-  if (!first) {
+  const authority = normalizeHttpAuthority(headerValue);
+  if (!authority) {
     return "";
   }
 
-  if (first.startsWith("[")) {
-    const closingBracket = first.indexOf("]");
-    if (closingBracket > 1) {
-      return first.slice(1, closingBracket).toLowerCase();
-    }
+  if (authority.startsWith("[")) {
+    return authority.slice(1, authority.indexOf("]"));
   }
 
-  return first.split(":")[0].replace(/\.$/, "").toLowerCase();
+  return authority.split(":")[0];
 }
 
 /**

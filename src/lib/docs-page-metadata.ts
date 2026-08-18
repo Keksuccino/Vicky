@@ -2,10 +2,10 @@ import type { Metadata } from "next";
 import { unstable_noStore as noStore } from "next/cache";
 import { headers } from "next/headers";
 
-import { normalizeCustomDomain } from "@/lib/domain-settings";
 import { docsHrefForPagePath, parseDocsRoutePath } from "@/lib/docs-routing";
 import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
+import { resolveRequestOrigin } from "@/lib/request-origin-policy.mjs";
 import { normalizeStartPage } from "@/lib/start-page";
 import { getStore } from "@/lib/store";
 
@@ -24,28 +24,6 @@ const prettyFromSlug = (slug: string): string => {
   return segment.replace(/[-_]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const firstHeaderValue = (value: string | null): string => value?.split(",")[0]?.trim() ?? "";
-
-const defaultProtocolForHost = (host: string): "http" | "https" =>
-  host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]") ? "http" : "https";
-
-const resolveRequestOrigin = (customDomain: string, headerStore: { get: (name: string) => string | null }): string | null => {
-  const normalizedCustomDomain = normalizeCustomDomain(customDomain);
-  if (normalizedCustomDomain) {
-    return `https://${normalizedCustomDomain}`;
-  }
-
-  const forwardedProto = firstHeaderValue(headerStore.get("x-forwarded-proto"));
-  const forwardedHost = firstHeaderValue(headerStore.get("x-forwarded-host"));
-  const host = forwardedHost || firstHeaderValue(headerStore.get("host"));
-
-  if (!host) {
-    return null;
-  }
-
-  return `${forwardedProto || defaultProtocolForHost(host)}://${host}`;
-};
-
 const absoluteUrl = (origin: string | null, path: string): string => (origin ? `${origin}${path}` : path);
 
 export async function generateDocsPageMetadata(slugSegments?: string[]): Promise<Metadata> {
@@ -60,7 +38,7 @@ export async function generateDocsPageMetadata(slugSegments?: string[]): Promise
     const requestedSlug = route.pagePath.slice(1);
     const config = resolveRuntimeConfig(store.settings.github);
     const headerStore = await headers();
-    const origin = resolveRequestOrigin(store.settings.domain.customDomain, headerStore);
+    const origin = resolveRequestOrigin({ customDomain: store.settings.domain.customDomain, headers: headerStore });
     const { data: page, language } = await loadDocsPageForLanguage({
       config,
       locator: { slug: requestedSlug },

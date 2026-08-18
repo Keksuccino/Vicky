@@ -1,0 +1,255 @@
+import { normalizeCustomDomainInput } from "./domain-normalization.mjs";
+
+export const INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER = "x-vicky-request-context";
+export const INTERNAL_REQUEST_HOST_HEADER = "x-vicky-request-host";
+export const INTERNAL_REQUEST_PROTOCOL_HEADER = "x-vicky-request-proto";
+
+const INTERNAL_REQUEST_CONTEXT_TOKEN_ENV = "VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN";
+const TRUST_PROXY_ORIGIN_HEADERS_ENV = "VICKY_TRUST_PROXY_ORIGIN_HEADERS";
+const DIRECT_REQUEST_PROTOCOL_ENV = "VICKY_DIRECT_REQUEST_PROTOCOL";
+const MAX_AUTHORITY_LENGTH = 261;
+const MAX_HOSTNAME_LENGTH = 253;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/u;
+const WHITESPACE_PATTERN = /\s/u;
+const UNSAFE_AUTHORITY_CHARACTER_PATTERN = /[,\/@\\?#%]/u;
+
+/**
+ * @param {unknown} value
+ * @returns {"http" | "https" | null}
+ */
+export function normalizeHttpProtocol(value) {
+  if (typeof value !== "string" || !value || value !== value.trim() || CONTROL_CHARACTER_PATTERN.test(value) || WHITESPACE_PATTERN.test(value) || value.includes(",")) {
+    return null;
+  }
+
+  const normalized = value.toLowerCase().replace(/:$/, "");
+  return normalized === "http" || normalized === "https" ? normalized : null;
+}
+
+/**
+ * @param {string | undefined} value
+ * @returns {boolean}
+ */
+function parseEnabled(value) {
+  return String(value ?? "").trim().toLowerCase() === "true";
+}
+
+/**
+ * @returns {boolean}
+ */
+export function isProxyOriginHeaderTrustEnabled() {
+  return parseEnabled(process.env[TRUST_PROXY_ORIGIN_HEADERS_ENV]);
+}
+
+/**
+ * @param {string | undefined} value
+ * @returns {string}
+ */
+function normalizePort(value) {
+  if (value === undefined) {
+    return "";
+  }
+
+  if (!/^[0-9]{1,5}$/.test(value)) {
+    return "";
+  }
+
+  const port = Number.parseInt(value, 10);
+  return port >= 1 && port <= 65_535 && String(port) === value ? value : "";
+}
+
+/**
+ * Validates an HTTP authority without allowing URL components to be smuggled through it.
+ * DNS names, IPv4, bracketed IPv6, localhost, and explicit non-zero ports are supported.
+ *
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function normalizeHttpAuthority(value) {
+  if (typeof value !== "string" || !value || value.length > MAX_AUTHORITY_LENGTH || value !== value.trim() || CONTROL_CHARACTER_PATTERN.test(value) || WHITESPACE_PATTERN.test(value) || UNSAFE_AUTHORITY_CHARACTER_PATTERN.test(value)) {
+    return null;
+  }
+
+  if (value.startsWith("[")) {
+    const match = value.match(/^\[([0-9a-f:.]+)\](?::([0-9]{1,5}))?$/i);
+    if (!match) {
+      return null;
+    }
+
+    const port = normalizePort(match[2]);
+    if (match[2] !== undefined && !port) {
+      return null;
+    }
+
+    try {
+      const parsed = new URL(`http://[${match[1]}]`);
+      const hostname = parsed.hostname.toLowerCase();
+      return `${hostname}${port ? `:${port}` : ""}`;
+    } catch {
+      return null;
+    }
+  }
+
+  const match = value.match(/^([^:]+)(?::([0-9]{1,5}))?$/);
+  if (!match) {
+    return null;
+  }
+
+  const port = normalizePort(match[2]);
+  if (match[2] !== undefined && !port) {
+    return null;
+  }
+
+  const hostname = match[1].replace(/\.$/, "").toLowerCase();
+  if (!hostname || hostname.length > MAX_HOSTNAME_LENGTH || hostname.includes("..") || !/^[a-z0-9.-]+$/.test(hostname)) {
+    return null;
+  }
+
+  const labels = hostname.split(".");
+  if (labels.some((label) => !label || label.length > 63 || label.startsWith("-") || label.endsWith("-"))) {
+    return null;
+  }
+
+  const ipv4Candidate = labels.length === 4 && labels.every((label) => /^\d+$/.test(label));
+  if (ipv4Candidate && labels.some((label) => Number.parseInt(label, 10) > 255 || (label.length > 1 && label.startsWith("0")))) {
+    return null;
+  }
+
+  try {
+    // WHATWG URLs accept legacy numeric IPv4 spellings such as 127.1 and 0x7f.1.
+    // Requiring the parsed hostname to remain identical prevents those ambiguous forms.
+    if (new URL(`http://${hostname}`).hostname.toLowerCase() !== hostname) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+
+  return `${hostname}${port ? `:${port}` : ""}`;
+}
+
+/**
+ * @param {{ get: (name: string) => string | null }} headers
+ * @param {string} name
+ * @returns {string | null}
+ */
+function getHeader(headers, name) {
+  const value = headers.get(name);
+  return typeof value === "string" ? value : null;
+}
+
+/**
+ * @param {string} authority
+ * @returns {"http" | "https"}
+ */
+function defaultProtocolForAuthority(authority) {
+  const hostname = authority.startsWith("[") ? authority.slice(1, authority.indexOf("]")) : authority.split(":")[0];
+  return hostname === "localhost" || hostname.endsWith(".localhost") || hostname === "127.0.0.1" || hostname === "::1" ? "http" : "https";
+}
+
+/**
+ * The included server replaces these private headers and authenticates them with a
+ * per-process token. This avoids treating Next's synthesized x-forwarded-proto value as
+ * direct socket state. A complete, valid context is required; partial data is ignored.
+ *
+ * @param {{ get: (name: string) => string | null }} headers
+ * @returns {{ authority: string, protocol: "http" | "https" } | null}
+ */
+function resolveInternalRequestContext(headers) {
+  const expectedToken = process.env[INTERNAL_REQUEST_CONTEXT_TOKEN_ENV];
+  const suppliedToken = getHeader(headers, INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER);
+  if (!expectedToken || !suppliedToken || suppliedToken !== expectedToken) {
+    return null;
+  }
+
+  const authority = normalizeHttpAuthority(getHeader(headers, INTERNAL_REQUEST_HOST_HEADER));
+  const protocol = normalizeHttpProtocol(getHeader(headers, INTERNAL_REQUEST_PROTOCOL_HEADER));
+  return authority && protocol ? { authority, protocol } : null;
+}
+
+/**
+ * Trusted proxies must overwrite both headers with exactly one client-facing value.
+ * Comma-separated first-hop/last-hop guessing is intentionally unsupported.
+ *
+ * @param {{ get: (name: string) => string | null }} headers
+ * @param {boolean} trustProxyOriginHeaders
+ * @returns {{ authority: string, protocol: "http" | "https" } | null}
+ */
+function resolveTrustedProxyContext(headers, trustProxyOriginHeaders) {
+  if (!trustProxyOriginHeaders) {
+    return null;
+  }
+
+  const authority = normalizeHttpAuthority(getHeader(headers, "x-forwarded-host"));
+  const protocol = normalizeHttpProtocol(getHeader(headers, "x-forwarded-proto"));
+  return authority && protocol ? { authority, protocol } : null;
+}
+
+/**
+ * @param {{ authority: string, protocol: "http" | "https" }} context
+ * @returns {string}
+ */
+function originFromContext(context) {
+  return new URL(`${context.protocol}://${context.authority}`).origin;
+}
+
+/**
+ * Resolves the effective request origin under one centralized trust policy.
+ *
+ * Resolution order is: normalized configured custom domain, explicitly trusted proxy
+ * pair, authenticated included-server context, then validated direct Host with an
+ * explicitly configured or conservative protocol. RFC Forwarded is never consumed.
+ *
+ * @param {{ customDomain?: unknown, headers: { get: (name: string) => string | null }, trustProxyOriginHeaders?: boolean }} input
+ * @returns {string | null}
+ */
+export function resolveRequestOrigin(input) {
+  const customDomain = normalizeCustomDomainInput(input.customDomain);
+  if (customDomain) {
+    return `https://${customDomain}`;
+  }
+
+  const trustProxyOriginHeaders = input.trustProxyOriginHeaders ?? isProxyOriginHeaderTrustEnabled();
+  const proxyContext = resolveTrustedProxyContext(input.headers, trustProxyOriginHeaders);
+  if (proxyContext) {
+    return originFromContext(proxyContext);
+  }
+
+  const internalContext = resolveInternalRequestContext(input.headers);
+  if (internalContext) {
+    return originFromContext(internalContext);
+  }
+
+  const authority = normalizeHttpAuthority(getHeader(input.headers, "host"));
+  if (!authority) {
+    return null;
+  }
+
+  const configuredProtocol = normalizeHttpProtocol(process.env[DIRECT_REQUEST_PROTOCOL_ENV]);
+  return originFromContext({ authority, protocol: configuredProtocol ?? defaultProtocolForAuthority(authority) });
+}
+
+/**
+ * Accepts only a serialized HTTP(S) origin: no credentials, path, query, or fragment.
+ *
+ * @param {unknown} value
+ * @returns {string | null}
+ */
+export function normalizeHttpOrigin(value) {
+  if (typeof value !== "string" || !value || value !== value.trim() || CONTROL_CHARACTER_PATTERN.test(value) || WHITESPACE_PATTERN.test(value) || value.includes(",")) {
+    return null;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const protocol = normalizeHttpProtocol(parsed.protocol);
+    const authority = normalizeHttpAuthority(parsed.host);
+    if (!protocol || !authority || parsed.username || parsed.password || parsed.pathname !== "/" || parsed.search || parsed.hash) {
+      return null;
+    }
+
+    return originFromContext({ authority, protocol });
+  } catch {
+    return null;
+  }
+}

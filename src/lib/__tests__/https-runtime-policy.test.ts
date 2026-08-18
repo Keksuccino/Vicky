@@ -70,6 +70,13 @@ describe("fail-closed custom-domain HTTPS policy", () => {
     expect(decideRuntimeRequestAction({ protocol: "https", configuredDomain: DOMAIN, httpsAvailable: true, requestHost: "legacy.example.com", requestUrl: "/" })).toBe("redirect");
   });
 
+  it("does not guess a hostname from multi-value or malformed direct Host input", () => {
+    expect(getRequestHostname("docs.example.com,attacker.example")).toBe("");
+    expect(getRequestHostname("user@docs.example.com")).toBe("");
+    expect(getRequestHostname("docs.example.com/path")).toBe("");
+    expect(getRequestHostname(["docs.example.com"])).toBe("");
+  });
+
   it("returns a static cache-disabled maintenance response without application content", () => {
     let body = "";
     let statusCode = 0;

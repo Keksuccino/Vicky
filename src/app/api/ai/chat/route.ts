@@ -16,6 +16,7 @@ import { decryptSecret } from "@/lib/encryption";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { ApiError, badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
+import { resolveRequestOrigin } from "@/lib/request-origin-policy.mjs";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -75,17 +76,6 @@ const requestSchema = z
   });
 
 const DATA_URL_PREFIX = /^data:(image\/(?:png|jpe?g|webp|gif));base64,[a-z0-9+/=\s]+$/i;
-
-const resolveRequestOrigin = (request: NextRequest): string => {
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-
-  return request.nextUrl.origin;
-};
 
 const assertValidImageDataUrl = (dataUrl: string): void => {
   if (!DATA_URL_PREFIX.test(dataUrl)) {
@@ -168,7 +158,10 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
 
-    const origin = resolveRequestOrigin(request);
+    const origin = resolveRequestOrigin({ customDomain: store.settings.domain?.customDomain, headers: request.headers });
+    if (!origin) {
+      throw badRequest("Invalid request authority.");
+    }
     const docsConfig = resolveRuntimeConfig(store.settings.github);
     const docsText = await getPlaintextDocsExport(docsConfig, origin);
     const assistantName = normalizeAiAssistantName(store.settings.aiChat.assistantName);

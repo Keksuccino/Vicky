@@ -13,6 +13,7 @@ import next from "next";
 
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
 import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse } from "./src/lib/https-runtime-policy.mjs";
+import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER, INTERNAL_REQUEST_HOST_HEADER, INTERNAL_REQUEST_PROTOCOL_HEADER, isProxyOriginHeaderTrustEnabled, normalizeHttpAuthority, normalizeHttpProtocol } from "./src/lib/request-origin-policy.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
 import { validateRuntimeSecretsOrExit } from "./src/lib/runtime-secret-startup.mjs";
 import { serveRuntimeSslStatusRequest } from "./src/lib/runtime-ssl-status.mjs";
@@ -22,6 +23,11 @@ const { loadEnvConfig } = require("@next/env");
 
 loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
 validateRuntimeSecretsOrExit();
+
+// App code accepts the private direct-request headers only when this per-process token
+// matches. The server overwrites all three headers below before handing a request to Next.
+const INTERNAL_REQUEST_CONTEXT_TOKEN = randomUUID();
+process.env.VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN = INTERNAL_REQUEST_CONTEXT_TOKEN;
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
@@ -347,10 +353,9 @@ function getRuntimeRequestAction(request, protocol) {
 
 function getRequestPath(request) {
   const rawUrl = request.url || "/";
-  const host = request.headers.host || "localhost";
 
   try {
-    return new URL(rawUrl, `http://${host}`).pathname;
+    return new URL(rawUrl, "http://localhost").pathname;
   } catch {
     return rawUrl.split("?")[0] || "/";
   }
@@ -363,6 +368,35 @@ function setInternalClientIpHeader(request) {
   if (typeof remoteAddress === "string" && remoteAddress.trim()) {
     request.headers[INTERNAL_CLIENT_IP_HEADER] = remoteAddress.trim();
   }
+}
+
+function setInternalRequestContextHeaders(request) {
+  const directHost = request.headers.host;
+  delete request.headers[INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER];
+  delete request.headers[INTERNAL_REQUEST_HOST_HEADER];
+  delete request.headers[INTERNAL_REQUEST_PROTOCOL_HEADER];
+
+  request.headers[INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER] = INTERNAL_REQUEST_CONTEXT_TOKEN;
+  if (typeof directHost === "string" && directHost) {
+    request.headers[INTERNAL_REQUEST_HOST_HEADER] = directHost;
+  }
+  request.headers[INTERNAL_REQUEST_PROTOCOL_HEADER] = request.socket?.encrypted ? "https" : "http";
+}
+
+function applyProxyOriginHeaderPolicy(request) {
+  const forwardedHost = typeof request.headers["x-forwarded-host"] === "string" ? normalizeHttpAuthority(request.headers["x-forwarded-host"]) : null;
+  const forwardedProtocol = typeof request.headers["x-forwarded-proto"] === "string" ? normalizeHttpProtocol(request.headers["x-forwarded-proto"]) : null;
+
+  // Next itself consumes these headers before application code. Remove an untrusted,
+  // partial, multi-value, or malformed pair so Next can synthesize direct socket values.
+  if (!isProxyOriginHeaderTrustEnabled() || !forwardedHost || !forwardedProtocol) {
+    delete request.headers["x-forwarded-host"];
+    delete request.headers["x-forwarded-proto"];
+    return;
+  }
+
+  request.headers["x-forwarded-host"] = forwardedHost;
+  request.headers["x-forwarded-proto"] = forwardedProtocol;
 }
 
 function tryServeRuntimeStatus(request, response) {
@@ -1146,6 +1180,8 @@ async function handleRequest(request, response) {
   const requestHandler = app.getRequestHandler();
 
   try {
+    applyProxyOriginHeaderPolicy(request);
+    setInternalRequestContextHeaders(request);
     setInternalClientIpHeader(request);
     await requestHandler(request, response);
   } catch (error) {

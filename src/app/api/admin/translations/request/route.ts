@@ -18,6 +18,7 @@ import { resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { startPageLocalizationJob } from "@/lib/page-localization-jobs";
 import { normalizeRequestedLocalizationLanguageCodes, type PageLocalizationRequestMode } from "@/lib/page-localization";
+import { resolveRequestOrigin } from "@/lib/request-origin-policy.mjs";
 import { getStore } from "@/lib/store";
 import type { AutoTranslateLanguage } from "@/lib/types";
 
@@ -54,17 +55,6 @@ const requestTranslationsSchema = z
     ).optional(),
   })
   .strict();
-
-const resolveRequestOrigin = (request: NextRequest): string => {
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-
-  if (forwardedProto && forwardedHost) {
-    return `${forwardedProto}://${forwardedHost}`;
-  }
-
-  return request.nextUrl.origin;
-};
 
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   let requestLanguage: AutoTranslateLanguage | null = null;
@@ -104,6 +94,10 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
+    const origin = resolveRequestOrigin({ customDomain: store.settings.domain?.customDomain, headers: request.headers });
+    if (!origin) {
+      throw badRequest("Invalid request authority.");
+    }
     logAutoTranslateInfo("Admin requested page localization translations", {
       language: languages.map((language) => formatAutoTranslateLanguageForLog(language)).join(", "),
       model,
@@ -116,7 +110,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       localizationPath: payload.localizationPath ?? store.settings.autoTranslate.localizationPath,
       mode,
       model,
-      origin: resolveRequestOrigin(request),
+      origin,
       requestTimeoutMs: store.settings.autoTranslate.requestTimeoutMs,
       siteTitle: store.settings.siteTitle || "Vicky Docs",
     });

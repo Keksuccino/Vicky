@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => ({
@@ -33,6 +33,8 @@ const validPayload = {
   slug: "guide/getting-started",
 };
 
+const originalTrustProxyOriginHeaders = process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS;
+
 const createRequest = (body: unknown, headers: Record<string, string> = {}): NextRequest => new NextRequest("https://docs.example.com/api/docs/visit", {
   method: "POST",
   headers: {
@@ -48,12 +50,21 @@ const createRequest = (body: unknown, headers: Record<string, string> = {}): Nex
 describe("POST /api/docs/visit", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS = "false";
     mocks.acquirePermit.mockReturnValue({ allowed: true, release: mocks.releasePermit });
     mocks.enqueueVisit.mockReturnValue({ status: "queued" });
     mocks.getStore.mockResolvedValue({ settings: { docsCacheTtlMs: 60_000, github: {} } });
     mocks.resolveRuntimeConfig.mockReturnValue({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: "token" });
     mocks.listTree.mockResolvedValue([{ path: "guide/getting-started.md", slug: "guide/getting-started", name: "Tree Title" }]);
     mocks.getCachedPage.mockReturnValue({ title: "Authoritative Cached Title" });
+  });
+
+  afterEach(() => {
+    if (originalTrustProxyOriginHeaders === undefined) {
+      delete process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS;
+    } else {
+      process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS = originalTrustProxyOriginHeaders;
+    }
   });
 
   it("queues only a server-resolved known page and ignores a legacy client title", async () => {
@@ -107,6 +118,24 @@ describe("POST /api/docs/visit", () => {
     expect(limitedResponse.status).toBe(429);
     expect(limitedResponse.headers.get("retry-after")).toBe("17");
     expect(mocks.listTree).not.toHaveBeenCalled();
+  });
+
+  it("uses the centralized origin policy for trusted proxy and schemeful same-origin checks", async () => {
+    process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS = "true";
+    const trustedProxyResponse = await POST(createRequest(validPayload, {
+      host: "app.internal:3000",
+      origin: "https://public.example.com",
+      "x-forwarded-host": "public.example.com",
+      "x-forwarded-proto": "https",
+    }));
+
+    process.env.VICKY_TRUST_PROXY_ORIGIN_HEADERS = "false";
+    const schemeMismatchResponse = await POST(createRequest(validPayload, { origin: "http://docs.example.com" }));
+    const pathOriginResponse = await POST(createRequest(validPayload, { origin: "https://docs.example.com/path" }));
+
+    expect(trustedProxyResponse.status).toBe(202);
+    expect(schemeMismatchResponse.status).toBe(403);
+    expect(pathOriginResponse.status).toBe(403);
   });
 
   it("returns 429 with Retry-After when the bounded write queue is full", async () => {

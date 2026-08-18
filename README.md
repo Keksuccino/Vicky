@@ -219,12 +219,18 @@ Common optional settings:
 | `HTTPS_PORT` | HTTPS listen port | `443` |
 | `LETS_ENCRYPT_STAGING` | Use Let's Encrypt staging CA for test runs | `false` |
 | `AUTH_TRUST_PROXY_HEADERS` | Trust forwarded client IP headers | `false` |
+| `VICKY_TRUST_PROXY_ORIGIN_HEADERS` | Trust one proxy-overwritten public host/protocol pair | `false` |
+| `VICKY_DIRECT_REQUEST_PROTOCOL` | Explicit `http` or `https` origin protocol for plain Next direct deployments | unset |
 | `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER` | Trust an ingress-overwritten `x-vicky-client-ip` header for public docs, visitor stats, and login rate limiting | `false` |
 
 Runtime file and directory overrides must point into a dedicated storage directory. On POSIX hosts Vicky enforces and verifies `0700` directories and `0600` sensitive files; it refuses to change permissions on the filesystem root, OS temp root, user home, or project root. Windows deployments must apply equivalent access restrictions through the storage volume's ACLs because Windows does not implement POSIX mode bits.
 
 `HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
 `npm run start` sets `x-vicky-client-ip` from the socket address internally; only set `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER=true` yourself when another trusted ingress overwrites that header.
+
+Public origins used for canonical/OpenGraph metadata, plaintext docs links and cache keys, OpenRouter attribution, localization jobs, same-origin analytics checks, and icon redirects follow one policy. A configured custom domain is canonical and resolves to HTTPS. Without one, `npm run start` supplies an authenticated internal Host and socket protocol to the app. Plain `next start` deployments can set `VICKY_DIRECT_REQUEST_PROTOCOL` to exactly `http` or `https`; when it is unset, localhost/loopback authorities default to HTTP and other validated authorities default to HTTPS. Host input is accepted only as a single valid DNS name, IPv4 address, or bracketed IPv6 address with an optional valid port. Credentials, paths, queries, fragments, whitespace, control characters, invalid ports, and ambiguous numeric host forms are rejected. Authentication middleware uses relative login redirects, so request authority is not involved there.
+
+`VICKY_TRUST_PROXY_ORIGIN_HEADERS` is deliberately separate from `AUTH_TRUST_PROXY_HEADERS`. Enabling one does not enable the other. Vicky never consumes the RFC `Forwarded` header and never guesses the first or last value in a forwarding chain. When origin-header trust is enabled, `x-forwarded-host` and `x-forwarded-proto` must both contain exactly one valid value; comma-separated, partial, or malformed pairs are ignored in favor of the validated direct request context. The included server also removes an untrusted or invalid pair before Next.js can consume it internally.
 
 Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the same trusted client-IP settings described below; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. The analytics rate, concurrency, queue, and retry limits above are per app process; use ingress rate limiting as well when deploying multiple instances.
 
@@ -266,6 +272,10 @@ If you run Vicky behind a reverse proxy:
 - preserve the original `Host` header
 - keep DNS pointed at the proxy/public ingress
 - set `AUTH_TRUST_PROXY_HEADERS=true` only when the proxy overwrites `x-forwarded-for` or `x-real-ip`
+- set `VICKY_TRUST_PROXY_ORIGIN_HEADERS=true` only when the proxy removes client-supplied forwarding headers, overwrites both `x-forwarded-host` and `x-forwarded-proto` with one client-facing value each, and the Vicky port cannot be reached except through that proxy
+- do not append forwarding chains for origin headers; Vicky intentionally ignores comma-separated first-hop/last-hop values
+
+For a plain `npm run start:next` deployment without a reverse proxy, leave `VICKY_TRUST_PROXY_ORIGIN_HEADERS=false`. If no custom domain is configured, set `VICKY_DIRECT_REQUEST_PROTOCOL` to the direct public protocol when its value differs from the localhost/HTTPS defaults. The included `npm run start` server derives the direct protocol from its HTTP or HTTPS socket and does not need this setting.
 
 For direct HTTP-01 validation without a reverse proxy, you usually want:
 - `HTTP_PORT=80`
