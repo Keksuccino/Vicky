@@ -1,6 +1,8 @@
 import { jwtVerify, SignJWT } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getRuntimeSecret } from "@/lib/runtime-secrets.mjs";
+
 const encoder = new TextEncoder();
 
 export const ADMIN_COOKIE_NAME = "vicky_admin_session";
@@ -17,36 +19,9 @@ const defaultSessionSeconds = Number(process.env.ADMIN_SESSION_MAX_AGE_SECONDS ?
 export const ADMIN_SESSION_MAX_AGE_SECONDS =
   Number.isFinite(defaultSessionSeconds) && defaultSessionSeconds > 0 ? defaultSessionSeconds : 43200;
 
-const TEST_FALLBACK_AUTH_SECRET = "test-auth-jwt-secret";
-const TEST_FALLBACK_ADMIN_PASSWORD = "test-admin-password";
+const getJwtSecret = (): Uint8Array => encoder.encode(getRuntimeSecret("AUTH_JWT_SECRET"));
 
-const getJwtSecret = (): Uint8Array => {
-  const secret = process.env.AUTH_JWT_SECRET;
-
-  if (!secret?.trim()) {
-    if (process.env.NODE_ENV === "test") {
-      return encoder.encode(TEST_FALLBACK_AUTH_SECRET);
-    }
-
-    throw new Error("Missing AUTH_JWT_SECRET environment variable.");
-  }
-
-  return encoder.encode(secret.trim());
-};
-
-const getAdminPassword = (): string => {
-  const password = process.env.ADMIN_PASSWORD;
-
-  if (!password?.trim()) {
-    if (process.env.NODE_ENV === "test") {
-      return TEST_FALLBACK_ADMIN_PASSWORD;
-    }
-
-    throw new Error("Missing ADMIN_PASSWORD environment variable.");
-  }
-
-  return password.trim();
-};
+const getAdminPassword = (): string => getRuntimeSecret("ADMIN_PASSWORD");
 
 const constantTimeEqual = (left: Uint8Array, right: Uint8Array): boolean => {
   const maxLength = Math.max(left.length, right.length);

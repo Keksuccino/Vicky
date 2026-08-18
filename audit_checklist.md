@@ -8,7 +8,7 @@
 - [x] **HIGH-07** — Certificate issuance failures can leave a custom domain serving insecure HTTP.
 - [x] **HIGH-08 / 1.14** — Arbitrary public document slugs can amplify GitHub API requests.
 - [x] **HIGH-10** — The missing lockfile breaks `npm ci` and prevents reproducible installations.
-- [ ] **1.4** — Known placeholder secrets are accepted instead of being rejected at startup.
+- [x] **1.4** — Known placeholder secrets are accepted instead of being rejected at startup.
 - [ ] **1.6** — The built-in admin password uses fast SHA-256 hashing instead of a password KDF.
 - [ ] **1.7** — Built-in admin JWT sessions cannot be revoked after password or security changes.
 - [ ] **1.9** — Public raw and plaintext endpoints leak unexpected internal error messages.

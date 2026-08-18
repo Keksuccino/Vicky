@@ -83,9 +83,11 @@ Copy-Item .env.example .env.local
 
 ## 3. Set the required values in `.env.local`:
 
-- `AUTH_JWT_SECRET`
-- `ADMIN_PASSWORD`
-- `ENCRYPTION_SECRET`
+- `AUTH_JWT_SECRET`: a unique random value of at least 32 characters
+- `ADMIN_PASSWORD`: a unique password or strong passphrase of at least 14 characters
+- `ENCRYPTION_SECRET`: a second unique random value of at least 32 characters
+
+Do not reuse a value between these fields, and do not leave example values or common placeholders in place. For each machine-generated secret, `openssl rand -base64 48` produces a suitable value. Vicky validates all three values and exits before opening a listener if any value is missing, predictable, reused, or still a placeholder.
 
 ## 4. Start the dev server:
 
@@ -185,9 +187,9 @@ Required:
 
 | Variable | Purpose |
 | --- | --- |
-| `AUTH_JWT_SECRET` | Signs admin session tokens |
-| `ADMIN_PASSWORD` | Password for `/admin/login` |
-| `ENCRYPTION_SECRET` | Encrypts the stored GitHub token |
+| `AUTH_JWT_SECRET` | Unique 32+ character value that signs admin session tokens |
+| `ADMIN_PASSWORD` | Unique 14+ character password or strong passphrase for `/admin/login` |
+| `ENCRYPTION_SECRET` | Unique 32+ character value that encrypts stored provider credentials |
 
 Common optional settings:
 
@@ -238,6 +240,8 @@ Standard production flow:
 npm run build
 npm run start
 ```
+
+Both `npm run start` and `npm run start:next` validate the required secrets before accepting requests. Use the npm command instead of invoking `next start` directly so the plain Next.js server is validated before its process is created. Automated tests receive deterministic fallback credentials only through the test runner; setting `NODE_ENV=test` in a normal process does not bypass startup validation.
 
 `npm run start` uses the included `server.mjs` server, which:
 - starts the Next.js app

@@ -2,9 +2,15 @@ import { spawn } from "node:child_process";
 import { createRequire } from "node:module";
 import os from "node:os";
 
+import { validateRuntimeSecretsOrExit } from "../src/lib/runtime-secret-startup.mjs";
+
 const require = createRequire(import.meta.url);
+const { loadEnvConfig } = require("@next/env");
 const nextBin = require.resolve("next/dist/bin/next");
 const forwardedArgs = process.argv.slice(2);
+
+loadEnvConfig(process.cwd(), true);
+validateRuntimeSecretsOrExit();
 
 const isWsl =
   process.platform === "linux" &&
@@ -42,4 +48,3 @@ child.on("exit", (code, signal) => {
 
   process.exit(code ?? 0);
 });
-

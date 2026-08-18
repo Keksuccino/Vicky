@@ -3,6 +3,7 @@ import https from "node:https";
 import { randomUUID, X509Certificate } from "node:crypto";
 import { watch } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 import process from "node:process";
 import tls from "node:tls";
@@ -13,7 +14,14 @@ import next from "next";
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
 import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse } from "./src/lib/https-runtime-policy.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
+import { validateRuntimeSecretsOrExit } from "./src/lib/runtime-secret-startup.mjs";
 import { serveRuntimeSslStatusRequest } from "./src/lib/runtime-ssl-status.mjs";
+
+const require = createRequire(import.meta.url);
+const { loadEnvConfig } = require("@next/env");
+
+loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
+validateRuntimeSecretsOrExit();
 
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;

@@ -1,23 +1,10 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
+import { getRuntimeSecret } from "@/lib/runtime-secrets.mjs";
+
 const ENCRYPTION_PREFIX = "enc:v1";
-const TEST_FALLBACK_ENCRYPTION_SECRET = "test-encryption-secret";
 
-const getEncryptionSecret = (): string => {
-  const secret = process.env.ENCRYPTION_SECRET;
-
-  if (!secret?.trim()) {
-    if (process.env.NODE_ENV === "test") {
-      return TEST_FALLBACK_ENCRYPTION_SECRET;
-    }
-
-    throw new Error("Missing ENCRYPTION_SECRET environment variable.");
-  }
-
-  return secret.trim();
-};
-
-const getKey = (): Buffer => createHash("sha256").update(getEncryptionSecret(), "utf8").digest();
+const getKey = (): Buffer => createHash("sha256").update(getRuntimeSecret("ENCRYPTION_SECRET"), "utf8").digest();
 
 export const encryptSecret = (plainText: string): string => {
   if (!plainText) {
