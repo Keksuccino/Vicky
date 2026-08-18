@@ -1,5 +1,6 @@
 import { buildDocTree, firstLeafPath, toAbsoluteDocPath } from "@/components/api";
 import type { DocPageChrome, DocTreeNode } from "@/components/types";
+import { headers } from "next/headers";
 import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
 } from "@/lib/auto-translate";
@@ -44,6 +45,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
     const config = resolveRuntimeConfig(store.settings.github);
+    const request = { headers: await headers() };
     const route = parseDocsRoutePath(requestedPath, store.settings.autoTranslate.languages);
     const requestedLanguageCode = route.languageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
     initialLanguageCode = requestedLanguageCode || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
@@ -63,6 +65,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
         const treeResult = await loadDocsTreeForLanguage({
           config,
           requestedLanguageCode,
+          request,
           store,
         });
         initialTree = buildDocTree(treeResult.data);
@@ -81,6 +84,7 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
           config,
           locator: { slug: pagePath.replace(/^\/+/, "") },
           requestedLanguageCode,
+          request,
           store,
         });
         page = pageResult.data;

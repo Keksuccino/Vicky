@@ -4,7 +4,8 @@ import { AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME } from "@/lib/auto-translate";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
-import { badRequest, ApiError } from "@/lib/http";
+import { ApiError, mergeApiErrorHeaders } from "@/lib/http";
+import { canonicalizePublicDocLocator } from "@/lib/public-doc-path";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -17,12 +18,7 @@ const TEXT_PLAIN_HEADERS = {
 
 export const GET = async (request: NextRequest): Promise<Response> => {
   try {
-    const slug = request.nextUrl.searchParams.get("slug") ?? undefined;
-    const path = request.nextUrl.searchParams.get("path") ?? undefined;
-
-    if (!slug && !path) {
-      throw badRequest("A slug or path query parameter is required.");
-    }
+    const locator = canonicalizePublicDocLocator({ slug: request.nextUrl.searchParams.get("slug") ?? undefined, path: request.nextUrl.searchParams.get("path") ?? undefined });
 
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
@@ -33,8 +29,10 @@ export const GET = async (request: NextRequest): Promise<Response> => {
       undefined;
     const { data: page } = await loadDocsPageForLanguage({
       config,
-      locator: { slug, path },
+      locator,
       requestedLanguageCode,
+      request,
+      signal: request.signal,
       store,
     });
 
@@ -48,7 +46,7 @@ export const GET = async (request: NextRequest): Promise<Response> => {
 
     return new Response(message, {
       status,
-      headers: TEXT_PLAIN_HEADERS,
+      headers: mergeApiErrorHeaders(TEXT_PLAIN_HEADERS, error),
     });
   }
 };

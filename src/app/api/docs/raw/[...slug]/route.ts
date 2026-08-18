@@ -5,7 +5,8 @@ import { setDocsCacheTtlMs } from "@/lib/cache";
 import { parseDocsRoutePath } from "@/lib/docs-routing";
 import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
-import { badRequest, ApiError } from "@/lib/http";
+import { badRequest, ApiError, mergeApiErrorHeaders } from "@/lib/http";
+import { canonicalizePublicDocLocator } from "@/lib/public-doc-path";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -28,6 +29,7 @@ export const GET = async (request: NextRequest, context: RawDocBySlugRouteContex
     if (!slug) {
       throw badRequest("A slug query parameter is required.");
     }
+    canonicalizePublicDocLocator({ slug });
 
     const store = await getStore();
     setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
@@ -40,8 +42,10 @@ export const GET = async (request: NextRequest, context: RawDocBySlugRouteContex
       undefined;
     const { data: page } = await loadDocsPageForLanguage({
       config,
-      locator: { slug: route.pagePath.replace(/^\/+/, "") },
+      locator: canonicalizePublicDocLocator({ slug: route.pagePath.replace(/^\/+/, "") }),
       requestedLanguageCode,
+      request,
+      signal: request.signal,
       store,
     });
 
@@ -55,7 +59,7 @@ export const GET = async (request: NextRequest, context: RawDocBySlugRouteContex
 
     return new Response(message, {
       status,
-      headers: TEXT_PLAIN_HEADERS,
+      headers: mergeApiErrorHeaders(TEXT_PLAIN_HEADERS, error),
     });
   }
 };

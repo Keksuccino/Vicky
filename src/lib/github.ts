@@ -32,6 +32,7 @@ import {
 import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
+import { canonicalizePublicDocLocator, type CanonicalPublicDocLocator } from "@/lib/public-doc-path";
 import {
   deletePersistentRenderedMarkdownWhere,
   recordRenderedMarkdownCacheMutation,
@@ -369,6 +370,12 @@ const localizationSnapshotLoads = new Map<string, Promise<GitHubLocalizationSnap
 const docsTreeLoads = new Map<string, Promise<GitHubDocTreeItem[]>>();
 const docsTitleIndexLoads = new Map<string, Promise<GitHubDocTreeItem[]>>();
 const docsPageLoads = new Map<string, Promise<GitHubDocPage>>();
+const commitMetadataLoads = new Map<string, Promise<{ updatedAt?: string; updatedBy?: string }>>();
+const publicDocsTreeIndexes = new WeakMap<GitHubDocTreeItem[], { byPath: Map<string, GitHubDocTreeItem>; bySlug: Map<string, GitHubDocTreeItem> }>();
+const publicDocsNegativeCache = new Map<string, number>();
+const MAX_PUBLIC_DOC_NEGATIVE_CACHE_ENTRIES = 10_000;
+const MAX_PUBLIC_DOC_NEGATIVE_CACHE_TTL_MS = 30_000;
+let lastPublicDocsNegativeCachePruneAt = Number.NEGATIVE_INFINITY;
 
 const createOctokit = (config: GitHubRuntimeConfig): Octokit =>
   new Octokit({
@@ -710,15 +717,6 @@ export const listMarkdownDocsTree = async (
     return cached as GitHubDocTreeItem[];
   }
 
-  if (!options?.bypassCache) {
-    const snapshot = await readPersistentGitHubDocsSnapshot(config);
-    assertGitHubCacheAccess(access);
-    if (snapshot?.tree.length) {
-      cacheSnapshotForRead(config, snapshot);
-      return snapshot.tree;
-    }
-  }
-
   const pending = docsTreeLoads.get(loadKey);
   if (pending) {
     const items = await pending;
@@ -726,12 +724,23 @@ export const listMarkdownDocsTree = async (
     return items;
   }
 
-  const loadPromise = listDocsTreeFromGitHub(config)
-    .then((result) => {
+  // Coalesce the persistent-snapshot check as well as the GitHub tree request. A burst
+  // of public misses must never fan out into repeated disk reads or upstream tree calls.
+  const loadPromise = (async (): Promise<GitHubDocTreeItem[]> => {
+    if (!options?.bypassCache) {
+      const snapshot = await readPersistentGitHubDocsSnapshot(config);
       assertGitHubCacheAccess(access);
-      docsTreeCache.set(cacheKey, result.items);
-      return result.items;
-    })
+      if (snapshot) {
+        cacheSnapshotForRead(config, snapshot);
+        return snapshot.tree;
+      }
+    }
+
+    const result = await listDocsTreeFromGitHub(config);
+    assertGitHubCacheAccess(access);
+    docsTreeCache.set(cacheKey, result.items);
+    return result.items;
+  })()
     .finally(() => {
       if (docsTreeLoads.get(loadKey) === loadPromise) {
         docsTreeLoads.delete(loadKey);
@@ -971,6 +980,36 @@ const getCachedCommitMetadata = (
   return (docsPageCache.get(commitMetadataCacheKey(config, fullRepoPath, sha)) as { updatedAt?: string; updatedBy?: string } | undefined) ?? null;
 };
 
+const loadCommitMetadata = async (config: GitHubRuntimeConfig, fullRepoPath: string, sha: string, octokitOverride?: Octokit): Promise<{ updatedAt?: string; updatedBy?: string }> => {
+  const access = beginGitHubCacheAccess(config);
+  const cached = getCachedCommitMetadata(config, fullRepoPath, sha);
+  if (cached) {
+    return cached;
+  }
+
+  const loadKey = `${commitMetadataCacheKey(config, fullRepoPath, sha)}|generation-${access.generation}`;
+  const pending = commitMetadataLoads.get(loadKey);
+  if (pending) {
+    const result = await pending;
+    assertGitHubCacheAccess(access);
+    return result;
+  }
+
+  const loadPromise = fetchLatestCommitMetadata(config, fullRepoPath, octokitOverride)
+    .then((commitMeta) => {
+      assertGitHubCacheAccess(access);
+      cacheCommitMetadata(config, fullRepoPath, sha, commitMeta);
+      return commitMeta;
+    })
+    .finally(() => {
+      if (commitMetadataLoads.get(loadKey) === loadPromise) {
+        commitMetadataLoads.delete(loadKey);
+      }
+    });
+  commitMetadataLoads.set(loadKey, loadPromise);
+  return loadPromise;
+};
+
 const warmCommitMetadata = (
   config: GitHubRuntimeConfig,
   fullRepoPath: string,
@@ -982,11 +1021,8 @@ const warmCommitMetadata = (
     return;
   }
 
-  void fetchLatestCommitMetadata(config, fullRepoPath, octokitOverride)
-    .then((commitMeta) => {
-      assertGitHubCacheAccess(access);
-      cacheCommitMetadata(config, fullRepoPath, sha, commitMeta);
-    })
+  void loadCommitMetadata(config, fullRepoPath, sha, octokitOverride)
+    .then(() => assertGitHubCacheAccess(access))
     .catch((error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);
       console.warn(`[docs] Failed to warm commit metadata for ${fullRepoPath}: ${message}`);
@@ -1274,7 +1310,7 @@ export const hydrateGitHubDocPageMetadata = async <T extends Pick<GitHubDocPage,
 
   const fullPath = joinDocsPath(normalizeDocsPath(config.docsPath), page.path);
   const cachedCommitMeta = getCachedCommitMetadata(config, fullPath, page.sha);
-  const commitMeta = cachedCommitMeta ?? (await fetchLatestCommitMetadata(config, fullPath));
+  const commitMeta = cachedCommitMeta ?? (await loadCommitMetadata(config, fullPath, page.sha));
   assertGitHubCacheAccess(access);
   if (!cachedCommitMeta) {
     cacheCommitMetadata(config, fullPath, page.sha, commitMeta);
@@ -1623,6 +1659,136 @@ const createDirectSlugReadTargets = (config: GitHubRuntimeConfig, slugInput: str
   return targets;
 };
 
+const getPublicDocsTreeIndex = (tree: GitHubDocTreeItem[]): { byPath: Map<string, GitHubDocTreeItem>; bySlug: Map<string, GitHubDocTreeItem> } => {
+  const cached = publicDocsTreeIndexes.get(tree);
+  if (cached) {
+    return cached;
+  }
+
+  const index = { byPath: new Map<string, GitHubDocTreeItem>(), bySlug: new Map<string, GitHubDocTreeItem>() };
+  for (const item of tree) {
+    const normalizedPath = item.path.normalize("NFC");
+    const normalizedSlug = item.slug.normalize("NFC");
+    if (!index.byPath.has(normalizedPath)) {
+      index.byPath.set(normalizedPath, item);
+    }
+    if (!index.bySlug.has(normalizedSlug)) {
+      index.bySlug.set(normalizedSlug, item);
+    }
+  }
+  publicDocsTreeIndexes.set(tree, index);
+  return index;
+};
+
+const publicDocNegativeCacheKey = (access: GitHubCacheLease, locatorKey: string): string => `${access.runtimeKey}|generation-${access.generation}|${locatorKey}`;
+
+const hasPublicDocNegativeCacheEntry = (key: string, now = Date.now()): boolean => {
+  const expiresAt = publicDocsNegativeCache.get(key);
+  if (expiresAt === undefined) {
+    return false;
+  }
+  if (now >= expiresAt) {
+    publicDocsNegativeCache.delete(key);
+    return false;
+  }
+
+  // Refresh insertion order on a hit so bounded eviction behaves as an LRU cache.
+  publicDocsNegativeCache.delete(key);
+  publicDocsNegativeCache.set(key, expiresAt);
+  return true;
+};
+
+const cachePublicDocNegativeEntry = (key: string, now = Date.now()): void => {
+  const ttlMs = Math.min(MAX_PUBLIC_DOC_NEGATIVE_CACHE_TTL_MS, docsTreeCache.getTtlMs());
+  if (now - lastPublicDocsNegativeCachePruneAt >= ttlMs) {
+    lastPublicDocsNegativeCachePruneAt = now;
+    for (const [entryKey, expiresAt] of publicDocsNegativeCache.entries()) {
+      if (now >= expiresAt) {
+        publicDocsNegativeCache.delete(entryKey);
+      }
+    }
+  }
+  while (publicDocsNegativeCache.size >= MAX_PUBLIC_DOC_NEGATIVE_CACHE_ENTRIES) {
+    const oldestKey = publicDocsNegativeCache.keys().next().value as string | undefined;
+    if (!oldestKey) {
+      break;
+    }
+    publicDocsNegativeCache.delete(oldestKey);
+  }
+
+  publicDocsNegativeCache.set(key, now + ttlMs);
+};
+
+const resolvePublicGitHubDocReadTarget = async (config: GitHubRuntimeConfig, locator: CanonicalPublicDocLocator, access: GitHubCacheLease, signal?: AbortSignal): Promise<GitHubDocReadTarget> => {
+  const docsRoot = normalizeDocsPath(config.docsPath);
+  let treeLookupKey: string;
+  let lookupMode: "path" | "slug";
+
+  if (locator.kind === "path") {
+    const stripped = stripDocsRoot(docsRoot, locator.path);
+    const relativePath = stripped === null ? locator.path : stripped;
+    if (!relativePath) {
+      throw badRequest("Document path is required.");
+    }
+    lookupMode = markdownExtensionRegex.test(relativePath) ? "path" : "slug";
+    treeLookupKey = lookupMode === "path" ? relativePath : relativePathToSlug(relativePath);
+  } else {
+    lookupMode = "slug";
+    treeLookupKey = locator.slug;
+  }
+
+  const missKey = publicDocNegativeCacheKey(access, `${lookupMode}:${treeLookupKey}`);
+  if (hasPublicDocNegativeCacheEntry(missKey)) {
+    throw notFound("Document not found.");
+  }
+
+  const tree = await awaitWithAbort(listMarkdownDocsTree(config), signal);
+  assertGitHubCacheAccess(access);
+  const index = getPublicDocsTreeIndex(tree);
+  const treeItem = lookupMode === "path" ? index.byPath.get(treeLookupKey) : index.bySlug.get(treeLookupKey);
+  if (!treeItem) {
+    cachePublicDocNegativeEntry(missKey);
+    throw notFound("Document not found.");
+  }
+
+  return {
+    relativePath: treeItem.path,
+    fullPath: joinDocsPath(docsRoot, treeItem.path),
+    slug: treeItem.slug,
+    treeItem,
+  };
+};
+
+const awaitWithAbort = async <T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> => {
+  if (!signal) {
+    return promise;
+  }
+  if (signal.aborted) {
+    const error = new Error("The document request was aborted.");
+    error.name = "AbortError";
+    throw error;
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => {
+      const error = new Error("The document request was aborted.");
+      error.name = "AbortError";
+      reject(error);
+    };
+    signal.addEventListener("abort", abort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", abort);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", abort);
+        reject(error);
+      },
+    );
+  });
+};
+
 const loadFreshGitHubDocPage = async (
   config: GitHubRuntimeConfig,
   target: GitHubDocReadTarget,
@@ -1848,6 +2014,39 @@ export const loadGitHubDoc = async (
   const page = await loadGitHubDocTarget(config, target, options);
   assertGitHubCacheAccess(access);
   return page;
+};
+
+/**
+ * Public reads are deliberately tree-authorized. Unlike the editor-capable loader above,
+ * an unknown user-controlled locator is never converted into speculative `.md`/`.mdx`
+ * GitHub requests. Shared upstream work keeps valid cold reads efficient, while callers
+ * may stop awaiting it without cancelling the coalesced operation for other visitors.
+ */
+export const loadPublicGitHubDoc = async (config: GitHubRuntimeConfig, locator: { slug?: string; path?: string }, options?: { signal?: AbortSignal }): Promise<GitHubDocPage> => {
+  const canonicalLocator = canonicalizePublicDocLocator(locator);
+  const access = beginGitHubCacheAccess(config);
+  const validation = validateGitHubRuntimeConfig(config);
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  const target = await resolvePublicGitHubDocReadTarget(config, canonicalLocator, access, options?.signal);
+  const page = await awaitWithAbort(loadGitHubDocTarget(config, target), options?.signal);
+  assertGitHubCacheAccess(access);
+  return page;
+};
+
+export const loadPublicGitHubDocMetadata = async (config: GitHubRuntimeConfig, locator: { slug?: string; path?: string }, options?: { signal?: AbortSignal }): Promise<Pick<GitHubDocPage, "path" | "slug" | "updatedAt" | "updatedBy">> => {
+  const access = beginGitHubCacheAccess(config);
+  const page = await loadPublicGitHubDoc(config, locator, options);
+  const enrichedPage = await awaitWithAbort(hydrateGitHubDocPageMetadata(config, page), options?.signal);
+  assertGitHubCacheAccess(access);
+  return {
+    path: enrichedPage.path,
+    slug: enrichedPage.slug,
+    updatedAt: enrichedPage.updatedAt,
+    updatedBy: enrichedPage.updatedBy,
+  };
 };
 
 export const loadGitHubDocMetadata = async (

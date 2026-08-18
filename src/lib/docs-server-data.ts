@@ -9,9 +9,10 @@ import {
 } from "@/lib/auto-translate-logging";
 import {
   listMarkdownDocsTreePagesWithTitles,
-  loadGitHubDoc,
+  loadPublicGitHubDoc,
 } from "@/lib/github";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
+import type { ClientIpRequest } from "@/lib/login-rate-limit";
 import {
   renderGitHubDocPageMarkdown,
   type RenderedGitHubDocPage,
@@ -22,6 +23,7 @@ import {
   loadLocalizedPageForSource,
   resolveServedLocalizedPage,
 } from "@/lib/page-localization-read";
+import { withPublicDocsAdmission } from "@/lib/public-docs-admission";
 import type {
   AutoTranslateLanguage,
   DocsStore,
@@ -61,15 +63,19 @@ export const loadDocsPageForLanguage = async ({
   config,
   locator,
   requestedLanguageCode,
+  request,
+  signal,
   store,
 }: {
   config: GitHubRuntimeConfig;
   locator: { slug?: string; path?: string };
   requestedLanguageCode?: string;
+  request?: ClientIpRequest;
+  signal?: AbortSignal;
   store: DocsStore;
-}): Promise<DocsLanguageData<DocsPageWithSourceHeadings>> => {
+}): Promise<DocsLanguageData<DocsPageWithSourceHeadings>> => withPublicDocsAdmission(request, async () => {
   const access = beginGitHubCacheAccess(config);
-  const sourcePage = await loadGitHubDoc(config, locator);
+  const sourcePage = await loadPublicGitHubDoc(config, locator, { signal });
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
 
   if (isSourceLanguage(language)) {
@@ -105,17 +111,21 @@ export const loadDocsPageForLanguage = async ({
       contentLanguageCode: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
     };
   }
-};
+});
 
 export const loadRenderedDocsPageForLanguage = async ({
   config,
   locator,
   requestedLanguageCode,
+  request,
+  signal,
   store,
 }: {
   config: GitHubRuntimeConfig;
   locator: { slug?: string; path?: string };
   requestedLanguageCode?: string;
+  request?: ClientIpRequest;
+  signal?: AbortSignal;
   store: DocsStore;
 }): Promise<DocsLanguageData<RenderedDocsPageWithSourceHeadings>> => {
   const access = beginGitHubCacheAccess(config);
@@ -123,6 +133,8 @@ export const loadRenderedDocsPageForLanguage = async ({
     config,
     locator,
     requestedLanguageCode,
+    request,
+    signal,
     store,
   });
   const renderedPage = await renderGitHubDocPageMarkdown({
@@ -141,9 +153,10 @@ export const loadRenderedDocsPageForLanguage = async ({
 export const loadDocsTreeForLanguage = async (params: {
   config: GitHubRuntimeConfig;
   requestedLanguageCode?: string;
+  request?: ClientIpRequest;
   store: DocsStore;
   waitForTitleIndex?: boolean;
-}): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => {
+}): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => withPublicDocsAdmission(params.request, async () => {
   const { config, requestedLanguageCode, store } = params;
   const access = beginGitHubCacheAccess(config);
   const { items: sourceItems, pages } = await listMarkdownDocsTreePagesWithTitles(config);
@@ -186,4 +199,4 @@ export const loadDocsTreeForLanguage = async (params: {
       titlesPending: false,
     };
   }
-};
+});

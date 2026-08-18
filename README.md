@@ -199,6 +199,11 @@ Common optional settings:
 | `WIKI_DOCS_SNAPSHOT_DIR` | Persistent GitHub docs snapshot cache directory | `./data/docs-cache/snapshots` |
 | `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
+| `PUBLIC_DOCS_CLIENT_MAX_REQUESTS` | Public page, raw, metadata, and tree reads accepted per client during the docs rate window | `180` |
+| `PUBLIC_DOCS_GLOBAL_MAX_REQUESTS` | Public document reads accepted globally during the docs rate window | `5000` |
+| `PUBLIC_DOCS_RATE_WINDOW_SECONDS` | Public document read rate-limit window | `60` |
+| `PUBLIC_DOCS_CLIENT_MAX_CONCURRENCY` | Concurrent public document reads allowed per client | `12` |
+| `PUBLIC_DOCS_GLOBAL_MAX_CONCURRENCY` | Concurrent public document reads allowed per app process | `128` |
 | `VISITOR_ANALYTICS_CLIENT_MAX_REQUESTS` | Page-view requests accepted per client during the analytics rate window | `60` |
 | `VISITOR_ANALYTICS_GLOBAL_MAX_REQUESTS` | Page-view requests accepted globally during the analytics rate window | `1200` |
 | `VISITOR_ANALYTICS_RATE_WINDOW_SECONDS` | Analytics page-view rate-limit window | `60` |
@@ -212,7 +217,7 @@ Common optional settings:
 | `HTTPS_PORT` | HTTPS listen port | `443` |
 | `LETS_ENCRYPT_STAGING` | Use Let's Encrypt staging CA for test runs | `false` |
 | `AUTH_TRUST_PROXY_HEADERS` | Trust forwarded client IP headers | `false` |
-| `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER` | Trust an ingress-overwritten `x-vicky-client-ip` header for visitor stats and login rate limiting | `false` |
+| `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER` | Trust an ingress-overwritten `x-vicky-client-ip` header for public docs, visitor stats, and login rate limiting | `false` |
 
 Runtime file and directory overrides must point into a dedicated storage directory. On POSIX hosts Vicky enforces and verifies `0700` directories and `0600` sensitive files; it refuses to change permissions on the filesystem root, OS temp root, user home, or project root. Windows deployments must apply equivalent access restrictions through the storage volume's ACLs because Windows does not implement POSIX mode bits.
 
@@ -220,6 +225,8 @@ Runtime file and directory overrides must point into a dedicated storage directo
 `npm run start` sets `x-vicky-client-ip` from the socket address internally; only set `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER=true` yourself when another trusted ingress overwrites that header.
 
 Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the same trusted client-IP settings described below; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. The analytics rate, concurrency, queue, and retry limits above are per app process; use ingress rate limiting as well when deploying multiple instances.
+
+Public document reads accept only bounded canonical paths that already exist in the cached GitHub docs tree. Unknown slugs are negatively cached and never become speculative `.md` or `.mdx` GitHub file requests. The public docs rate and concurrency limits above are per app process; when no trustworthy client address is available, only the global limits apply. Use ingress rate limiting as well for multi-instance deployments.
 
 For the full list of optional runtime settings, check [.env.example](.env.example).
 

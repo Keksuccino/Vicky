@@ -23,6 +23,7 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
     const { data: items, titlesPending } = await loadDocsTreeForLanguage({
       config,
       requestedLanguageCode,
+      request,
       store,
       waitForTitleIndex,
     });

@@ -3,10 +3,12 @@ import { ZodError } from "zod";
 
 export class ApiError extends Error {
   readonly status: number;
+  readonly headers?: HeadersInit;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, headers?: HeadersInit) {
     super(message);
     this.status = status;
+    this.headers = headers;
   }
 }
 
@@ -21,6 +23,14 @@ export const parseJsonBody = async <T>(request: Request): Promise<T> => {
   }
 
   return JSON.parse(text) as T;
+};
+
+export const mergeApiErrorHeaders = (baseHeaders: HeadersInit, error: unknown): Headers => {
+  const headers = new Headers(baseHeaders);
+  if (error instanceof ApiError) {
+    new Headers(error.headers).forEach((value, key) => headers.set(key, value));
+  }
+  return headers;
 };
 
 const formatDetailedError = (error: unknown): string => {
@@ -40,7 +50,7 @@ const formatDetailedError = (error: unknown): string => {
 
 export const errorResponse = (error: unknown, options: { exposeDetails?: boolean } = {}): NextResponse => {
   if (error instanceof ApiError) {
-    return NextResponse.json({ error: error.message }, { status: error.status });
+    return NextResponse.json({ error: error.message }, { status: error.status, headers: error.headers });
   }
 
   if (error instanceof ZodError) {

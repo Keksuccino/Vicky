@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   decryptSecret: vi.fn(),
   listMarkdownDocsTreePagesWithTitles: vi.fn(),
-  loadGitHubDoc: vi.fn(),
+  loadPublicGitHubDoc: vi.fn(),
   loadGitHubLocalizationSnapshot: vi.fn(),
   loadGitHubLocalizedDoc: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
@@ -16,7 +16,7 @@ vi.mock("@/lib/encryption", () => ({
 
 vi.mock("@/lib/github", () => ({
   listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles,
-  loadGitHubDoc: mocks.loadGitHubDoc,
+  loadPublicGitHubDoc: mocks.loadPublicGitHubDoc,
   loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
   loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,
   saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
@@ -72,7 +72,7 @@ const staleLocalizedPage: GitHubDocPage = {
 describe("public docs localization delivery", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.loadGitHubDoc.mockResolvedValue(sourcePage);
+    mocks.loadPublicGitHubDoc.mockResolvedValue(sourcePage);
     mocks.loadGitHubLocalizedDoc.mockResolvedValue({
       sourcePage,
       page: staleLocalizedPage,

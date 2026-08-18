@@ -29,26 +29,21 @@ const firstHeaderValue = (value: string | null): string => value?.split(",")[0]?
 const defaultProtocolForHost = (host: string): "http" | "https" =>
   host.startsWith("localhost") || host.startsWith("127.0.0.1") || host.startsWith("[::1]") ? "http" : "https";
 
-const resolveRequestOrigin = async (customDomain: string): Promise<string | null> => {
+const resolveRequestOrigin = (customDomain: string, headerStore: { get: (name: string) => string | null }): string | null => {
   const normalizedCustomDomain = normalizeCustomDomain(customDomain);
   if (normalizedCustomDomain) {
     return `https://${normalizedCustomDomain}`;
   }
 
-  try {
-    const headerStore = await headers();
-    const forwardedProto = firstHeaderValue(headerStore.get("x-forwarded-proto"));
-    const forwardedHost = firstHeaderValue(headerStore.get("x-forwarded-host"));
-    const host = forwardedHost || firstHeaderValue(headerStore.get("host"));
+  const forwardedProto = firstHeaderValue(headerStore.get("x-forwarded-proto"));
+  const forwardedHost = firstHeaderValue(headerStore.get("x-forwarded-host"));
+  const host = forwardedHost || firstHeaderValue(headerStore.get("host"));
 
-    if (!host) {
-      return null;
-    }
-
-    return `${forwardedProto || defaultProtocolForHost(host)}://${host}`;
-  } catch {
+  if (!host) {
     return null;
   }
+
+  return `${forwardedProto || defaultProtocolForHost(host)}://${host}`;
 };
 
 const absoluteUrl = (origin: string | null, path: string): string => (origin ? `${origin}${path}` : path);
@@ -64,11 +59,13 @@ export async function generateDocsPageMetadata(slugSegments?: string[]): Promise
     const route = parseDocsRoutePath(rawRequestedSlug, store.settings.autoTranslate.languages);
     const requestedSlug = route.pagePath.slice(1);
     const config = resolveRuntimeConfig(store.settings.github);
-    const origin = await resolveRequestOrigin(store.settings.domain.customDomain);
+    const headerStore = await headers();
+    const origin = resolveRequestOrigin(store.settings.domain.customDomain, headerStore);
     const { data: page, language } = await loadDocsPageForLanguage({
       config,
       locator: { slug: requestedSlug },
       requestedLanguageCode: route.languageCode,
+      request: { headers: headerStore },
       store,
     });
     const title = page.title.trim() || prettyFromSlug(page.slug || requestedSlug) || store.settings.siteTitle || FALLBACK_SITE_TITLE;

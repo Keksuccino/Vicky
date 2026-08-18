@@ -6,7 +6,7 @@
 - [x] **HIGH-05** — Incomplete cache invalidation can preserve deleted or previously authorized content.
 - [x] **HIGH-06** — Frequent translation-status polling can exhaust the GitHub API quota.
 - [x] **HIGH-07** — Certificate issuance failures can leave a custom domain serving insecure HTTP.
-- [ ] **HIGH-08 / 1.14** — Arbitrary public document slugs can amplify GitHub API requests.
+- [x] **HIGH-08 / 1.14** — Arbitrary public document slugs can amplify GitHub API requests.
 - [ ] **HIGH-10** — The missing lockfile breaks `npm ci` and prevents reproducible installations.
 - [ ] **1.4** — Known placeholder secrets are accepted instead of being rejected at startup.
 - [ ] **1.6** — The built-in admin password uses fast SHA-256 hashing instead of a password KDF.

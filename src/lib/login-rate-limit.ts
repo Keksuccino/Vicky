@@ -5,6 +5,11 @@ import path from "node:path";
 import { ensurePrivateFile, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import type { NextRequest } from "next/server";
 
+export type ClientIpRequest = {
+  headers: { get: (name: string) => string | null };
+  ip?: string;
+};
+
 type LoginAttemptState = {
   failedAt: number[];
   blockedUntil: number;
@@ -234,7 +239,7 @@ const normalizeIp = (value: string): string | null => {
   return null;
 };
 
-const getForwardedIp = (request: NextRequest): string | null => {
+const getForwardedIp = (request: ClientIpRequest): string | null => {
   if (!TRUST_PROXY_HEADERS) {
     return null;
   }
@@ -259,7 +264,7 @@ const getForwardedIp = (request: NextRequest): string | null => {
   return null;
 };
 
-const getInternalClientIp = (request: NextRequest): string | null => {
+const getInternalClientIp = (request: ClientIpRequest): string | null => {
   if (!TRUST_INTERNAL_CLIENT_IP_HEADER) {
     return null;
   }
@@ -268,8 +273,8 @@ const getInternalClientIp = (request: NextRequest): string | null => {
   return internalIp ? normalizeIp(internalIp) : null;
 };
 
-export const getClientIp = (request: NextRequest): string => {
-  const directIp = (request as NextRequest & { ip?: string }).ip;
+export const getClientIp = (request: ClientIpRequest): string => {
+  const directIp = request.ip;
   if (typeof directIp === "string") {
     const parsed = normalizeIp(directIp);
     if (parsed) {

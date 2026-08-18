@@ -71,10 +71,14 @@ export const beginGitHubCacheAccess = (config: GitHubRuntimeConfig): GitHubCache
     throw staleSourceError();
   }
 
-  return {
-    generation: state.generations.get(runtimeKey) ?? 0,
-    runtimeKey,
-  };
+  // Register read-only sources too. Global invalidation must advance their generation;
+  // otherwise generation-keyed indexes or negative caches could survive a clear-all.
+  const generation = state.generations.get(runtimeKey) ?? 0;
+  if (!state.generations.has(runtimeKey)) {
+    state.generations.set(runtimeKey, generation);
+  }
+
+  return { generation, runtimeKey };
 };
 
 export const assertGitHubCacheAccess = (lease: GitHubCacheLease): void => {
