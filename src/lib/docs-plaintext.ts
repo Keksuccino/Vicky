@@ -1,5 +1,6 @@
 import { aiPlaintextDocsCache } from "@/lib/cache";
 import { listGitHubDocsForPlaintextExport, toRuntimeConfigCacheKey } from "@/lib/github";
+import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
 import type { GitHubPlaintextDocPage, GitHubRuntimeConfig } from "@/lib/types";
 
 export const AI_PLAINTEXT_EXPORT_PATH = "/docs.txt";
@@ -39,8 +40,10 @@ export const renderPlaintextDocsExport = (origin: string, docs: GitHubPlaintextD
 };
 
 export const getPlaintextDocsExport = async (config: GitHubRuntimeConfig, origin: string): Promise<string> => {
+  const access = beginGitHubCacheAccess(config);
   const cacheKey = plaintextDocsCacheKey(config, origin);
   const docs = await listGitHubDocsForPlaintextExport(config);
+  assertGitHubCacheAccess(access);
   const cached = aiPlaintextDocsCache.get(cacheKey);
 
   if (cached) {

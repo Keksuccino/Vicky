@@ -15,6 +15,8 @@ import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeFooterTemplate } from "@/lib/footer";
+import { createGitHubCacheEpoch, normalizeGitHubCacheEpoch } from "@/lib/github-cache-identity";
+import { cleanupLegacyGitHubLogicalSourceCaches } from "@/lib/github-legacy-cache-cleanup";
 import { ensurePrivateFile, openPrivateFileExclusive, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import { normalizeStartPage } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
@@ -265,6 +267,7 @@ const normalizeSettings = (value: unknown, legacyThemes: LegacyTheme[]): AppSett
       branch: normalizeString(sourceGitHub.branch, defaults.github.branch),
       docsPath: normalizeString(sourceGitHub.docsPath, defaults.github.docsPath),
       tokenEncrypted: normalizeOptionalString(sourceGitHub.tokenEncrypted),
+      cacheEpoch: normalizeGitHubCacheEpoch(sourceGitHub.cacheEpoch),
     },
     openRouter: {
       apiKeyEncrypted: normalizeOptionalString(sourceOpenRouter.apiKeyEncrypted) ?? legacyOpenRouterApiKeyEncrypted,
@@ -446,9 +449,41 @@ const updateCachedStore = (store: DocsStore): void => {
   };
 };
 
-const readStoreFresh = async (): Promise<DocsStore> => {
+type StoreReadResult = {
+  requiresLegacyCacheMigration: boolean;
+  store: DocsStore;
+};
+
+const readStoreFresh = async (): Promise<StoreReadResult> => {
   const raw = await readStoreFile();
-  return normalizeStore(raw);
+  const source = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
+  const settings = typeof source.settings === "object" && source.settings !== null ? (source.settings as Record<string, unknown>) : {};
+  const github = typeof settings.github === "object" && settings.github !== null ? (settings.github as Record<string, unknown>) : {};
+  const hasCacheEpoch = typeof github.cacheEpoch === "string" && Boolean(github.cacheEpoch.trim());
+  const storedVersion = typeof source.version === "number" ? source.version : 0;
+
+  return {
+    requiresLegacyCacheMigration: storedVersion < STORE_VERSION || !hasCacheEpoch,
+    store: normalizeStore(raw),
+  };
+};
+
+/**
+ * Pre-v12 cache entries contain no credential identity. Delete their exact
+ * logical-source formats before publishing a fresh epoch, so an interrupted
+ * migration retries cleanup instead of marking legacy artifacts as migrated.
+ */
+const migrateLegacyCacheEpochUnlocked = async (read: StoreReadResult): Promise<DocsStore> => {
+  if (!read.requiresLegacyCacheMigration) {
+    return read.store;
+  }
+
+  const next = cloneStore(read.store);
+  await cleanupLegacyGitHubLogicalSourceCaches({ ...next.settings.github, token: "" });
+  next.settings.github.cacheEpoch = createGitHubCacheEpoch();
+  next.version = STORE_VERSION;
+  await writeStoreFile(next);
+  return next;
 };
 
 const getStoreUnlocked = async (): Promise<DocsStore> => {
@@ -457,7 +492,13 @@ const getStoreUnlocked = async (): Promise<DocsStore> => {
     return cached;
   }
 
-  const normalized = await readStoreFresh();
+  const initialRead = await readStoreFresh();
+  if (!initialRead.requiresLegacyCacheMigration) {
+    updateCachedStore(initialRead.store);
+    return cloneStore(initialRead.store);
+  }
+
+  const normalized = await withStoreLock(async () => migrateLegacyCacheEpochUnlocked(await readStoreFresh()));
   updateCachedStore(normalized);
   return cloneStore(normalized);
 };
@@ -479,7 +520,7 @@ export const updateStore = async (
 ): Promise<DocsStore> =>
   enqueueMutation(async () => {
     return withStoreLock(async () => {
-      const current = await readStoreFresh();
+      const current = await migrateLegacyCacheEpochUnlocked(await readStoreFresh());
       const next = structuredClone(current);
       const result = await mutator(next);
 
@@ -498,7 +539,7 @@ export const updateStore = async (
   });
 
 export const getPublicSettings = (settings: AppSettings): Omit<AppSettings, "github" | "openRouter"> & {
-  github: Omit<AppSettings["github"], "tokenEncrypted"> & { tokenConfigured: boolean };
+  github: Omit<AppSettings["github"], "tokenEncrypted" | "cacheEpoch"> & { tokenConfigured: boolean };
   openRouter: { apiKeyConfigured: boolean };
 } => ({
   ...settings,

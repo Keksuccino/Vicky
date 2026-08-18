@@ -21,6 +21,11 @@ import {
 import { renderedMarkdownCache } from "@/lib/cache";
 import { toRuntimeConfigCacheKey } from "@/lib/github";
 import {
+  assertGitHubCacheAccess,
+  beginGitHubCacheAccess,
+  trackGitHubCacheWrite,
+} from "@/lib/github-cache-invalidation";
+import {
   isSafeMarkdownHref,
   MARKDOWN_RENDER_VERSION,
   markdownAutolinkHeadingsOptions,
@@ -352,6 +357,7 @@ export const renderMarkdownToHtmlCached = async ({
   languageCode?: string;
   slug: string;
 }): Promise<RenderedMarkdownDocument> => {
+  const access = beginGitHubCacheAccess(config);
   const normalizedContent = content ?? "";
   const { cacheKey, contentHash } = markdownRenderCacheKey({
     config,
@@ -371,14 +377,18 @@ export const renderMarkdownToHtmlCached = async ({
   }
 
   const queueState = getMarkdownRenderQueueState();
-  const pending = queueState.renders.get(cacheKey);
+  const renderQueueKey = `${cacheKey}|generation-${access.generation}`;
+  const pending = queueState.renders.get(renderQueueKey);
   if (pending) {
-    return pending;
+    const rendered = await pending;
+    assertGitHubCacheAccess(access);
+    return rendered;
   }
 
   const renderPromise = Promise.resolve()
     .then(async () => {
       const fromPersistentCache = await readPersistentRenderedMarkdown(cacheKey);
+      assertGitHubCacheAccess(access);
       if (fromPersistentCache) {
         renderedMarkdownCache.set(cacheKey, fromPersistentCache);
         return {
@@ -390,8 +400,10 @@ export const renderMarkdownToHtmlCached = async ({
       }
 
       const rendered = await renderMarkdownToHtml(normalizedContent, languageCode);
+      assertGitHubCacheAccess(access);
       renderedMarkdownCache.set(cacheKey, rendered);
-      await writePersistentRenderedMarkdown(cacheKey, rendered);
+      await trackGitHubCacheWrite(access, writePersistentRenderedMarkdown(cacheKey, rendered));
+      assertGitHubCacheAccess(access);
 
       return {
         ...rendered,
@@ -401,12 +413,12 @@ export const renderMarkdownToHtmlCached = async ({
       };
     })
     .finally(() => {
-      if (queueState.renders.get(cacheKey) === renderPromise) {
-        queueState.renders.delete(cacheKey);
+      if (queueState.renders.get(renderQueueKey) === renderPromise) {
+        queueState.renders.delete(renderQueueKey);
       }
     });
 
-  queueState.renders.set(cacheKey, renderPromise);
+  queueState.renders.set(renderQueueKey, renderPromise);
   return renderPromise;
 };
 

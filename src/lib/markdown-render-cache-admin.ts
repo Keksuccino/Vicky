@@ -10,6 +10,7 @@ import {
 } from "@/lib/auto-translate";
 import { renderedMarkdownCache } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot } from "@/lib/github";
+import { assertGitHubCacheAccess, beginGitHubCacheAccess, trackGitHubCacheWrite } from "@/lib/github-cache-invalidation";
 import { badRequest } from "@/lib/http";
 import {
   deletePersistentRenderedMarkdownWhere,
@@ -206,6 +207,7 @@ const buildMarkdownRenderCacheVariants = async ({
   config: GitHubRuntimeConfig;
   store: DocsStore;
 }): Promise<{ pages: GitHubDocPage[]; variants: MarkdownRenderCacheVariant[] }> => {
+  const access = beginGitHubCacheAccess(config);
   const { pages } = await listMarkdownDocsTreePagesWithTitles(config);
   const languages = uniqueLanguagesByCode(normalizeAutoTranslateLanguages(store.settings.autoTranslate.languages));
   const defaultLanguage = languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ?? sourceLanguage();
@@ -246,6 +248,8 @@ const buildMarkdownRenderCacheVariants = async ({
     }
   }
 
+  assertGitHubCacheAccess(access);
+
   return {
     pages,
     variants,
@@ -259,6 +263,7 @@ export const createMarkdownRenderCacheStatus = async ({
   config: GitHubRuntimeConfig;
   store: DocsStore;
 }): Promise<MarkdownRenderCacheStatus> => {
+  const access = beginGitHubCacheAccess(config);
   const prefix = markdownRenderCachePrefix(config);
   const [allCacheEntries, lastMutation, variantData] = await Promise.all([
     listPersistentRenderedMarkdownCacheEntries(),
@@ -325,6 +330,7 @@ export const createMarkdownRenderCacheStatus = async ({
   const globalStaleEntries = allCacheEntries.reduce((count, entry) => count + (expectedKeys.has(entry.key) ? 0 : 1), 0);
   const currentSourceHtmlBytes = cacheEntries.reduce((bytes, entry) => bytes + entry.htmlBytes, 0);
   const globalHtmlBytes = allCacheEntries.reduce((bytes, entry) => bytes + entry.htmlBytes, 0);
+  assertGitHubCacheAccess(access);
 
   return {
     cacheDirectory: getPersistentRenderedMarkdownCacheDir(),
@@ -357,12 +363,14 @@ export const warmMarkdownRenderCache = async ({
   config: GitHubRuntimeConfig;
   store: DocsStore;
 }): Promise<MarkdownRenderCacheWarmResult> => {
+  const access = beginGitHubCacheAccess(config);
   const { pages, variants } = await buildMarkdownRenderCacheVariants({ config, store });
   const missingVariants: Array<MarkdownRenderCacheVariant & { cacheKey: string }> = [];
 
   for (const variant of variants) {
     const { cacheKey } = markdownRenderCacheVariantKey(config, variant);
     const persisted = await readPersistentRenderedMarkdownMetadata(cacheKey);
+    assertGitHubCacheAccess(access);
     if (!persisted) {
       missingVariants.push({
         ...variant,
@@ -382,9 +390,11 @@ export const warmMarkdownRenderCache = async ({
             ? (fromMemory as Awaited<ReturnType<typeof renderMarkdownToHtml>>)
             : await renderMarkdownToHtml(variant.content, variant.language.code);
 
+        assertGitHubCacheAccess(access);
         renderedMarkdownCache.set(variant.cacheKey, rendered);
 
-        const persisted = await writePersistentRenderedMarkdown(variant.cacheKey, rendered);
+        const persisted = await trackGitHubCacheWrite(access, writePersistentRenderedMarkdown(variant.cacheKey, rendered));
+        assertGitHubCacheAccess(access);
         if (!persisted) {
           throw new Error("Failed to write rendered Markdown HTML cache.");
         }
@@ -410,6 +420,7 @@ export const warmMarkdownRenderCache = async ({
       languageCode: result.variant.language.code,
       slug: result.variant.page.slug,
     }));
+  assertGitHubCacheAccess(access);
 
   return {
     cachedVariants: variants.length - missingVariants.length,

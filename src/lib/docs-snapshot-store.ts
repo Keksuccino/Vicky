@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { gitHubDocsLogicalSourceKey, gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import type { GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig } from "@/lib/types";
 
@@ -24,27 +25,17 @@ type PersistedGitHubDocsSnapshotEntry = PersistedGitHubDocsSnapshot & {
   savedAt: string;
 };
 
-const normalizeSourcePart = (value: string): string =>
-  value
-    .trim()
-    .replace(/\\+/g, "/")
-    .replace(/^\/+/, "")
-    .replace(/\/+$/, "");
-
 export const gitHubDocsSnapshotSourceKey = (config: GitHubRuntimeConfig): string =>
-  [
-    normalizeSourcePart(config.owner),
-    normalizeSourcePart(config.repo),
-    normalizeSourcePart(config.branch),
-    normalizeSourcePart(config.docsPath),
-  ].join("|");
+  gitHubRuntimeCacheKey(config);
 
 const getDocsSnapshotDir = (): string => process.env.WIKI_DOCS_SNAPSHOT_DIR?.trim() || DEFAULT_DOCS_SNAPSHOT_DIR;
 
 const hashSourceKey = (sourceKey: string): string => createHash("sha256").update(sourceKey).digest("hex");
 
-const snapshotFilePath = (config: GitHubRuntimeConfig): string =>
-  path.join(getDocsSnapshotDir(), `${hashSourceKey(gitHubDocsSnapshotSourceKey(config))}.json`);
+const snapshotFilePathForSourceKey = (sourceKey: string): string =>
+  path.join(getDocsSnapshotDir(), `${hashSourceKey(sourceKey)}.json`);
+
+const snapshotFilePath = (config: GitHubRuntimeConfig): string => snapshotFilePathForSourceKey(gitHubDocsSnapshotSourceKey(config));
 
 const isMissingFileError = (error: unknown): boolean =>
   typeof error === "object" &&
@@ -234,6 +225,25 @@ export const deletePersistentGitHubDocsSnapshot = async (config: GitHubRuntimeCo
     }
 
     warnSnapshotFailure("delete", config, error);
+    return false;
+  }
+};
+
+/** Deletes the exact token-agnostic snapshot filename written before store v12. */
+export const deleteLegacyPersistentGitHubDocsSnapshot = async (config: GitHubRuntimeConfig): Promise<boolean> => {
+  const sourceKey = gitHubDocsLogicalSourceKey(config);
+  try {
+    const filePath = snapshotFilePathForSourceKey(sourceKey);
+    await ensurePrivateFile(filePath);
+    await unlink(filePath);
+    return true;
+  } catch (error: unknown) {
+    if (isMissingFileError(error)) {
+      return false;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[docs] Failed to delete legacy persistent docs snapshot ${sourceKey}: ${message}`);
     return false;
   }
 };

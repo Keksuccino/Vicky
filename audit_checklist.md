@@ -3,7 +3,7 @@
 - [x] **HIGH-01 / 1.2** — Failed localization uploads retry forever and leave translation jobs permanently running.
 - [x] **HIGH-02 / 1.8** — The public SSL-status endpoint exposes filesystem paths and internal error details.
 - [x] **HIGH-03 / 1.13** — Public analytics ingestion is unbounded and accepts client-controlled data.
-- [ ] **HIGH-05** — Incomplete cache invalidation can preserve deleted or previously authorized content.
+- [x] **HIGH-05** — Incomplete cache invalidation can preserve deleted or previously authorized content.
 - [ ] **HIGH-06** — Frequent translation-status polling can exhaust the GitHub API quota.
 - [ ] **HIGH-07** — Certificate issuance failures can leave a custom domain serving insecure HTTP.
 - [ ] **HIGH-08 / 1.14** — Arbitrary public document slugs can amplify GitHub API requests.

@@ -25,10 +25,12 @@ import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from 
 import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { decryptSecret, encryptSecret } from "@/lib/encryption";
+import { createGitHubCacheEpoch, gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
+import { transitionGitHubRuntimeCaches } from "@/lib/github-cache-invalidation";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
 import { normalizeStartPage } from "@/lib/start-page";
 import { getPublicSettings, getStore, updateStore } from "@/lib/store";
-import type { AutoTranslateLanguage } from "@/lib/types";
+import type { AutoTranslateLanguage, GitHubRuntimeConfig } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -164,8 +166,17 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
     const body = await parseJsonBody<unknown>(request);
     const patch = settingsPatchSchema.parse(body);
     const autoTranslateSettingLogs: Array<() => void> = [];
+    const githubCacheTransitions: Array<{ previous: GitHubRuntimeConfig; next: GitHubRuntimeConfig }> = [];
 
     const updatedStore = await updateStore(async (store) => {
+      const previousGitHubConfig: GitHubRuntimeConfig = {
+        owner: store.settings.github.owner,
+        repo: store.settings.github.repo,
+        branch: store.settings.github.branch,
+        docsPath: store.settings.github.docsPath,
+        token: decryptStoredSecret(store.settings.github.tokenEncrypted),
+        cacheEpoch: store.settings.github.cacheEpoch,
+      };
       if (patch.siteTitle !== undefined) {
         store.settings.siteTitle = patch.siteTitle.trim() || store.settings.siteTitle;
       }
@@ -282,6 +293,26 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
           } else if (decryptStoredSecret(store.settings.github.tokenEncrypted) !== nextToken) {
             store.settings.github.tokenEncrypted = encryptSecret(nextToken);
           }
+        }
+
+        const candidateGitHubConfig: GitHubRuntimeConfig = {
+          owner: store.settings.github.owner,
+          repo: store.settings.github.repo,
+          branch: store.settings.github.branch,
+          docsPath: store.settings.github.docsPath,
+          token: decryptStoredSecret(store.settings.github.tokenEncrypted),
+          cacheEpoch: store.settings.github.cacheEpoch,
+        };
+
+        if (gitHubRuntimeCacheKey(previousGitHubConfig) !== gitHubRuntimeCacheKey(candidateGitHubConfig)) {
+          store.settings.github.cacheEpoch = createGitHubCacheEpoch();
+          githubCacheTransitions.push({
+            previous: previousGitHubConfig,
+            next: {
+              ...candidateGitHubConfig,
+              cacheEpoch: store.settings.github.cacheEpoch,
+            },
+          });
         }
       }
 
@@ -453,6 +484,12 @@ export const PATCH = async (request: NextRequest): Promise<NextResponse> => {
       }
     });
 
+    // Rotate/revoke only after the atomic settings write succeeds. A failed settings
+    // mutation must leave the still-current source's caches usable.
+    const githubCacheTransition = githubCacheTransitions[0];
+    if (githubCacheTransition) {
+      await transitionGitHubRuntimeCaches(githubCacheTransition.previous, githubCacheTransition.next);
+    }
     setDocsCacheTtlMs(updatedStore.settings.docsCacheTtlMs);
     autoTranslateSettingLogs.forEach((writeLog) => writeLog());
 

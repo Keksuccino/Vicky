@@ -6,6 +6,7 @@ export interface GitHubSettings {
   branch: string;
   docsPath: string;
   tokenEncrypted: string | null;
+  cacheEpoch: string;
 }
 
 export interface DocsIconSettings {
@@ -175,7 +176,7 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 11;
+  version: 12;
   settings: AppSettings;
   moderators: ModeratorAccount[];
 }
@@ -186,6 +187,7 @@ export interface GitHubRuntimeConfig {
   branch: string;
   docsPath: string;
   token: string;
+  cacheEpoch?: string;
 }
 
 export interface GitHubValidationResult {

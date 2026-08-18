@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import {
@@ -42,6 +42,8 @@ const hashCacheKey = (key: string): string => createHash("sha256").update(key).d
 
 const cacheFilePath = (kind: TranslationCacheKind, key: string): string =>
   path.join(getTranslationCacheDir(), kind, `${hashCacheKey(key)}.json`);
+
+const cacheKindDir = (kind: TranslationCacheKind): string => path.join(/*turbopackIgnore: true*/ getTranslationCacheDir(), kind);
 
 const ensurePrivateCacheFile = async (filePath: string): Promise<boolean> => {
   await ensurePrivateDirectory(getTranslationCacheDir());
@@ -293,4 +295,58 @@ export const writePersistentTitleTranslations = async (
     warnCacheFailure("write", key, error);
     return false;
   }
+};
+
+const readPersistentTranslationCacheKey = async (kind: TranslationCacheKind, fileName: string): Promise<string | null> => {
+  const filePath = path.join(/*turbopackIgnore: true*/ cacheKindDir(kind), fileName);
+
+  try {
+    await ensurePrivateCacheFile(filePath);
+    const source = asRecord(JSON.parse(await readFile(/*turbopackIgnore: true*/ filePath, "utf8")) as unknown);
+    return source?.kind === kind && typeof source.key === "string" ? source.key : null;
+  } catch (error: unknown) {
+    if (!isMissingFileError(error)) {
+      warnCacheFailure("inspect", `${kind}/${fileName}`, error);
+    }
+
+    return null;
+  }
+};
+
+/** Deletes only entries whose embedded cache key matches the caller's source scope. */
+export const deletePersistentTranslationCacheWhere = async (predicate: (key: string) => boolean): Promise<number> => {
+  let deletedEntries = 0;
+
+  for (const kind of ["pages", "titles"] as const) {
+    let fileNames: string[];
+    try {
+      await ensurePrivateDirectory(cacheKindDir(kind));
+      fileNames = (await readdir(/*turbopackIgnore: true*/ cacheKindDir(kind))).filter((fileName) => fileName.endsWith(".json"));
+    } catch (error: unknown) {
+      if (!isMissingFileError(error)) {
+        warnCacheFailure("list", kind, error);
+      }
+      continue;
+    }
+
+    for (const fileName of fileNames) {
+      const key = await readPersistentTranslationCacheKey(kind, fileName);
+      if (!key || !predicate(key)) {
+        continue;
+      }
+
+      try {
+        const filePath = path.join(/*turbopackIgnore: true*/ cacheKindDir(kind), fileName);
+        await ensurePrivateCacheFile(filePath);
+        await unlink(filePath);
+        deletedEntries += 1;
+      } catch (error: unknown) {
+        if (!isMissingFileError(error)) {
+          warnCacheFailure("delete", `${kind}/${fileName}`, error);
+        }
+      }
+    }
+  }
+
+  return deletedEntries;
 };

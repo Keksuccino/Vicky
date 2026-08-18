@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
   deletePersistentGitHubDocsSnapshot,
+  gitHubDocsSnapshotSourceKey,
   readPersistentGitHubDocsSnapshot,
   writePersistentGitHubDocsSnapshot,
 } from "@/lib/docs-snapshot-store";
@@ -87,5 +88,20 @@ describe("docs snapshot store", () => {
       pages: [{ slug: "home" }],
     });
     expect(await deletePersistentGitHubDocsSnapshot(config)).toBe(true);
+  });
+
+  it("does not reuse a snapshot across credential or security-epoch rotation", async () => {
+    const authorizedConfig = { ...config, token: "old-private-token", cacheEpoch: "epoch-one" };
+    expect(gitHubDocsSnapshotSourceKey(authorizedConfig)).not.toContain("old-private-token");
+    await writePersistentGitHubDocsSnapshot(authorizedConfig, {
+      fetchedAt: "2026-05-05T10:00:00.000Z",
+      expiresAt: "2999-05-05T10:00:00.000Z",
+      tree: [{ path: page.path, slug: page.slug, name: page.title }],
+      pages: [page],
+    });
+
+    await expect(readPersistentGitHubDocsSnapshot({ ...authorizedConfig, token: "new-token" })).resolves.toBeNull();
+    await expect(readPersistentGitHubDocsSnapshot({ ...authorizedConfig, cacheEpoch: "epoch-two" })).resolves.toBeNull();
+    await expect(readPersistentGitHubDocsSnapshot(authorizedConfig)).resolves.toMatchObject({ pages: [{ slug: "home" }] });
   });
 });

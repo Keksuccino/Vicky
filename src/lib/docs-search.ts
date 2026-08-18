@@ -1,5 +1,6 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot, toRuntimeConfigCacheKey } from "@/lib/github";
+import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
 import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
@@ -190,19 +191,24 @@ const splitIntoSections = (content: string, headings: MarkdownHeading[]): Search
 };
 
 const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<SearchableDoc[]> => {
+  const access = beginGitHubCacheAccess(config);
   const cacheKey = `${toRuntimeConfigCacheKey(config)}|search-corpus`;
+  const loadKey = `${cacheKey}|generation-${access.generation}`;
   const cached = docsSearchCorpusCache.get(cacheKey);
   if (cached) {
     return cached as SearchableDoc[];
   }
 
-  const pending = docsSearchCorpusLoads.get(cacheKey);
+  const pending = docsSearchCorpusLoads.get(loadKey);
   if (pending) {
-    return pending;
+    const corpus = await pending;
+    assertGitHubCacheAccess(access);
+    return corpus;
   }
 
   const loadPromise = listMarkdownDocsTreePagesWithTitles(config)
     .then(({ items, pages }) => {
+      assertGitHubCacheAccess(access);
       if (pages.length === 0) {
         docsSearchCorpusCache.set(cacheKey, []);
         return [];
@@ -215,12 +221,12 @@ const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<Searchable
       return corpus;
     })
     .finally(() => {
-      if (docsSearchCorpusLoads.get(cacheKey) === loadPromise) {
-        docsSearchCorpusLoads.delete(cacheKey);
+      if (docsSearchCorpusLoads.get(loadKey) === loadPromise) {
+        docsSearchCorpusLoads.delete(loadKey);
       }
     });
 
-  docsSearchCorpusLoads.set(cacheKey, loadPromise);
+  docsSearchCorpusLoads.set(loadKey, loadPromise);
   return loadPromise;
 };
 
@@ -229,6 +235,7 @@ const applyLocalizedPagesToCorpus = async (
   corpus: SearchableDoc[],
   translation?: SearchTranslationOptions,
 ): Promise<SearchableDoc[]> => {
+  const access = beginGitHubCacheAccess(config);
   if (!translation || isSourceLanguage(translation.language)) {
     return corpus;
   }
@@ -246,6 +253,7 @@ const applyLocalizedPagesToCorpus = async (
     localizationPath: translation.localizationPath,
     sourcePages,
   });
+  assertGitHubCacheAccess(access);
   const localizedByPath = new Map(snapshot.pages.map((page) => [page.path, page]));
 
   const localizedCorpus = corpus.map((doc) => {
@@ -539,6 +547,7 @@ export const searchDocsCorpus = async (
   query: string,
   options?: { limit?: number; translation?: SearchTranslationOptions },
 ): Promise<DocsSearchResult[]> => {
+  const access = beginGitHubCacheAccess(config);
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery) {
     return [];
@@ -551,6 +560,7 @@ export const searchDocsCorpus = async (
 
   const sourceCorpus = await loadSearchCorpus(config);
   const corpus = await applyLocalizedPagesToCorpus(config, sourceCorpus, options?.translation);
+  assertGitHubCacheAccess(access);
   const results: DocsSearchResult[] = [];
 
   for (const doc of corpus) {

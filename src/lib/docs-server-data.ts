@@ -11,6 +11,7 @@ import {
   listMarkdownDocsTreePagesWithTitles,
   loadGitHubDoc,
 } from "@/lib/github";
+import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
 import {
   renderGitHubDocPageMarkdown,
   type RenderedGitHubDocPage,
@@ -67,6 +68,7 @@ export const loadDocsPageForLanguage = async ({
   requestedLanguageCode?: string;
   store: DocsStore;
 }): Promise<DocsLanguageData<DocsPageWithSourceHeadings>> => {
+  const access = beginGitHubCacheAccess(config);
   const sourcePage = await loadGitHubDoc(config, locator);
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
 
@@ -86,6 +88,7 @@ export const loadDocsPageForLanguage = async ({
       sourcePage,
     });
     const servedPage = resolveServedLocalizedPage(localized, language);
+    assertGitHubCacheAccess(access);
     const contentLanguageCode = servedPage.sourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code;
 
     return {
@@ -94,6 +97,7 @@ export const loadDocsPageForLanguage = async ({
       contentLanguageCode,
     };
   } catch (error: unknown) {
+    assertGitHubCacheAccess(access);
     warnPageFallback(language, error);
     return {
       data: sourcePage,
@@ -114,6 +118,7 @@ export const loadRenderedDocsPageForLanguage = async ({
   requestedLanguageCode?: string;
   store: DocsStore;
 }): Promise<DocsLanguageData<RenderedDocsPageWithSourceHeadings>> => {
+  const access = beginGitHubCacheAccess(config);
   const pageResult = await loadDocsPageForLanguage({
     config,
     locator,
@@ -125,6 +130,7 @@ export const loadRenderedDocsPageForLanguage = async ({
     languageCode: pageResult.contentLanguageCode ?? pageResult.language.code,
     page: pageResult.data,
   });
+  assertGitHubCacheAccess(access);
 
   return {
     ...pageResult,
@@ -139,6 +145,7 @@ export const loadDocsTreeForLanguage = async (params: {
   waitForTitleIndex?: boolean;
 }): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => {
   const { config, requestedLanguageCode, store } = params;
+  const access = beginGitHubCacheAccess(config);
   const { items: sourceItems, pages } = await listMarkdownDocsTreePagesWithTitles(config);
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
 
@@ -158,6 +165,7 @@ export const loadDocsTreeForLanguage = async (params: {
       sourcePages: pages,
     });
     const data = sourceItems.map((item) => localizedItems.get(item.slug) ?? item);
+    assertGitHubCacheAccess(access);
 
     return {
       data,
@@ -165,6 +173,7 @@ export const loadDocsTreeForLanguage = async (params: {
       titlesPending: false,
     };
   } catch (error: unknown) {
+    assertGitHubCacheAccess(access);
     const message = getAutoTranslateErrorMessage(error);
     logAutoTranslateInfo("Serving source sidebar titles because localized title loading failed", {
       language: formatAutoTranslateLanguageForLog(language),

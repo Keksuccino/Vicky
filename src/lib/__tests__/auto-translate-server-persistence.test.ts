@@ -14,6 +14,7 @@ vi.mock("@/lib/openrouter", () => ({
 }));
 
 import { translatedDocsPageCache, translatedDocsTitleCache } from "@/lib/cache";
+import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 
 import {
   getGitHubDocPageTranslationCacheStatus,
@@ -90,7 +91,7 @@ const legacyPageTranslationCacheKey = (
   model = settings.openRouterModel,
 ): string =>
   [
-    "owner|repo|main|docs",
+    gitHubRuntimeCacheKey(config),
     "auto-translate",
     "page",
     legacyHashValue({
