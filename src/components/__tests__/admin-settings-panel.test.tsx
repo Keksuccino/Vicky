@@ -130,6 +130,8 @@ const SSL_STATUS: DomainSslRuntimeStatus = {
   certificatePresent: false,
   certificateValidForDomain: null,
   certificateExpiresAt: null,
+  httpsAvailable: false,
+  customDomainHttpPolicy: "application",
   checkedAt: "2026-03-10T12:00:00.000Z",
   message: "SSL runtime status is unavailable.",
 };

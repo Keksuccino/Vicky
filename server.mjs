@@ -5,15 +5,16 @@ import { watch } from "node:fs";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
+import tls from "node:tls";
 
 import * as acme from "acme-client";
 import next from "next";
 
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
+import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse } from "./src/lib/https-runtime-policy.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
 import { serveRuntimeSslStatusRequest } from "./src/lib/runtime-ssl-status.mjs";
 
-const ACME_CHALLENGE_PREFIX = "/.well-known/acme-challenge/";
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
 const STORE_PATH = process.env.WIKI_STORE_FILE_PATH ?? DEFAULT_STORE_PATH;
 const SSL_STORAGE_DIR = process.env.WIKI_SSL_STORAGE_DIR ?? path.join(process.cwd(), "data", "ssl");
@@ -51,6 +52,12 @@ let activeDomainState = {
   enabled: false,
 };
 
+let httpsTrafficState = {
+  certificateDomain: "",
+  certificateValidFromMs: 0,
+  certificateExpiresAtMs: 0,
+};
+
 let certificateRetryState = createCertificateRetryState("");
 
 const sslRuntimeState = {
@@ -73,11 +80,13 @@ let queuedRefreshReason = null;
 let httpsServer = null;
 let httpServer = null;
 let sslCheckTimer = null;
+let certificateRetryTimer = null;
 let storeWatcher = null;
 let storeWatchDebounceTimer = null;
 let statusPersistTimer = null;
 let statusPersistQueue = Promise.resolve();
 let shutdownPromise = null;
+let shuttingDown = false;
 
 const app = next({
   dev: IS_DEV,
@@ -178,7 +187,30 @@ function toIsoTimestamp(value) {
   return new Date(value).toISOString();
 }
 
+function isActiveDomainHttpsAvailable(nowMs = Date.now()) {
+  const availability = {
+    configuredDomain: activeDomainState.enabled ? activeDomainState.customDomain : "",
+    httpsListening: Boolean(httpsServer?.listening),
+    certificateDomain: httpsTrafficState.certificateDomain,
+    certificateValidFromMs: httpsTrafficState.certificateValidFromMs,
+    certificateExpiresAtMs: httpsTrafficState.certificateExpiresAtMs,
+    nowMs,
+  };
+  return isHttpsServiceAvailable(availability);
+}
+
+function getCustomDomainHttpPolicy(nowMs = Date.now()) {
+  if (!activeDomainState.enabled) {
+    return "application";
+  }
+
+  return isActiveDomainHttpsAvailable(nowMs) ? "redirect" : "maintenance";
+}
+
 function buildRuntimeStatusSnapshot() {
+  const nowMs = Date.now();
+  const httpsAvailable = isActiveDomainHttpsAvailable(nowMs);
+
   return {
     schemaVersion: 1,
     runtimeInstanceId: SSL_RUNTIME_INSTANCE_ID,
@@ -206,6 +238,10 @@ function buildRuntimeStatusSnapshot() {
     servers: {
       httpListening: Boolean(httpServer?.listening),
       httpsListening: Boolean(httpsServer?.listening),
+      httpsAvailable,
+    },
+    traffic: {
+      customDomainHttpPolicy: getCustomDomainHttpPolicy(nowMs),
     },
     refresh: {
       lastReason: sslRuntimeState.lastRefreshReason,
@@ -267,53 +303,38 @@ async function flushRuntimeStatus() {
   await queuePersistRuntimeStatus();
 }
 
-function getHostWithoutPort(headerValue) {
-  if (!headerValue) {
-    return "";
-  }
-
-  const first = String(Array.isArray(headerValue) ? headerValue[0] : headerValue)
-    .split(",")[0]
-    .trim();
-
-  if (!first) {
-    return "";
-  }
-
-  if (first.startsWith("[")) {
-    const index = first.indexOf("]");
-    if (index > 1) {
-      return first.slice(1, index).toLowerCase();
-    }
-  }
-
-  return first.split(":")[0].toLowerCase();
-}
-
 function formatHttpsAuthority(domain) {
   return HTTPS_PORT === 443 ? domain : `${domain}:${HTTPS_PORT}`;
 }
 
-function shouldRedirectToCanonicalHost(request) {
-  if (!activeDomainState.enabled) {
-    return false;
+function getSafeRequestTarget(request) {
+  try {
+    const parsed = new URL(request.url || "/", "http://localhost");
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return "/";
   }
-
-  const requestedHost = getHostWithoutPort(request.headers.host);
-  if (!requestedHost) {
-    return false;
-  }
-
-  return requestedHost !== activeDomainState.customDomain;
 }
 
 function redirectToHttps(request, response, domain) {
-  const location = `https://${formatHttpsAuthority(domain)}${request.url || "/"}`;
+  const location = `https://${formatHttpsAuthority(domain)}${getSafeRequestTarget(request)}`;
   response.writeHead(308, {
     Location: location,
     "Cache-Control": "no-store",
+    "Content-Length": "0",
   });
   response.end();
+}
+
+function getRuntimeRequestAction(request, protocol) {
+  const requestContext = {
+    protocol,
+    requestUrl: request.url,
+    requestHost: request.headers.host,
+    configuredDomain: activeDomainState.enabled ? activeDomainState.customDomain : "",
+    httpsAvailable: isActiveDomainHttpsAvailable(),
+  };
+  return decideRuntimeRequestAction(requestContext);
 }
 
 function getRequestPath(request) {
@@ -348,11 +369,11 @@ function tryServeRuntimeStatus(request, response) {
 }
 
 function getChallengeToken(requestUrl) {
-  if (!requestUrl.startsWith(ACME_CHALLENGE_PREFIX)) {
+  if (!requestUrl.startsWith(ACME_HTTP_CHALLENGE_PREFIX)) {
     return null;
   }
 
-  const rawToken = requestUrl.slice(ACME_CHALLENGE_PREFIX.length).split("?")[0];
+  const rawToken = requestUrl.slice(ACME_HTTP_CHALLENGE_PREFIX.length).split("?")[0];
   if (!rawToken) {
     return null;
   }
@@ -398,9 +419,43 @@ function getIssueRetryDelayMs(failureCount) {
   return Math.min(Math.max(SSL_ISSUE_RETRY_BASE_MS, SSL_ISSUE_RETRY_MAX_MS), cappedDelay + jitter);
 }
 
-function shouldFallbackToExistingCertificate(certPem, domain) {
+function clearCertificateRetryTimer() {
+  if (!certificateRetryTimer) {
+    return;
+  }
+
+  clearTimeout(certificateRetryTimer);
+  certificateRetryTimer = null;
+}
+
+function scheduleCertificateRetry(nextAttemptAtMs) {
+  clearCertificateRetryTimer();
+  if (shuttingDown || !Number.isFinite(nextAttemptAtMs) || nextAttemptAtMs <= 0) {
+    return;
+  }
+
+  // Node clamps oversized timeout values to 1ms. Cap each wait and re-check the target
+  // timestamp so unusually large operator-configured backoffs cannot become retry loops.
+  const delayMs = Math.min(Math.max(1, nextAttemptAtMs - Date.now()), 2_147_483_647);
+  certificateRetryTimer = setTimeout(() => {
+    certificateRetryTimer = null;
+    if (shuttingDown) {
+      return;
+    }
+
+    if (Date.now() < nextAttemptAtMs) {
+      scheduleCertificateRetry(nextAttemptAtMs);
+      return;
+    }
+
+    void refreshDomainState("issuance-retry");
+  }, delayMs);
+  certificateRetryTimer.unref?.();
+}
+
+function shouldFallbackToExistingCertificate(keyPem, certPem, domain) {
   const certInfo = readCertificateInfo(certPem, domain);
-  if (!certInfo.validToMs || !certInfo.hostMatches) {
+  if (!isCertificateInfoUsable(certInfo) || !isCertificateBundleLoadable(keyPem, certPem)) {
     return false;
   }
 
@@ -417,7 +472,14 @@ function setRetryDomain(domain) {
 }
 
 function isScheduledCertificateCheck(reason) {
-  return reason === "startup" || reason === "periodic" || reason.startsWith("queued:startup") || reason.startsWith("queued:periodic");
+  return (
+    reason === "startup" ||
+    reason === "periodic" ||
+    reason === "issuance-retry" ||
+    reason.startsWith("queued:startup") ||
+    reason.startsWith("queued:periodic") ||
+    reason.startsWith("queued:issuance-retry")
+  );
 }
 
 function shouldRunHttpsRefresh(reason, domainSettingsChanged) {
@@ -546,18 +608,40 @@ function getCertificatePaths(domain) {
 function readCertificateInfo(certPem, domain) {
   try {
     const cert = new X509Certificate(certPem);
+    const validFromMs = Date.parse(cert.validFrom);
     const validToMs = Date.parse(cert.validTo);
     const hostMatch = cert.checkHost(domain);
 
     return {
+      validFromMs: Number.isFinite(validFromMs) ? validFromMs : null,
       validToMs: Number.isFinite(validToMs) ? validToMs : null,
       hostMatches: Boolean(hostMatch),
     };
   } catch {
     return {
+      validFromMs: null,
       validToMs: null,
       hostMatches: false,
     };
+  }
+}
+
+function isCertificateInfoUsable(certInfo, nowMs = Date.now()) {
+  return Boolean(
+    certInfo.hostMatches &&
+      Number.isFinite(certInfo.validFromMs) &&
+      certInfo.validFromMs <= nowMs &&
+      Number.isFinite(certInfo.validToMs) &&
+      certInfo.validToMs > nowMs,
+  );
+}
+
+function isCertificateBundleLoadable(keyPem, certPem) {
+  try {
+    tls.createSecureContext({ key: keyPem, cert: certPem, minVersion: "TLSv1.2" });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -566,6 +650,10 @@ function getRenewalDecision(certPem, domain) {
 
   if (!certInfo.validToMs) {
     return { renew: true, reason: "Certificate validity could not be parsed." };
+  }
+
+  if (!certInfo.validFromMs || certInfo.validFromMs > Date.now()) {
+    return { renew: true, reason: "Certificate is not valid yet." };
   }
 
   if (!certInfo.hostMatches) {
@@ -590,34 +678,25 @@ function getRenewalDecision(certPem, domain) {
 }
 
 async function loadDomainStateFromStore() {
-  try {
-    const storeRaw = await readTextFileIfExists(STORE_PATH);
-    if (!storeRaw) {
-      return {
-        customDomain: "",
-        letsEncryptEmail: "",
-        enabled: false,
-      };
-    }
-
-    const parsed = JSON.parse(storeRaw);
-    const domainSettings = parsed?.settings?.domain ?? {};
-    const customDomain = normalizeCustomDomainInput(domainSettings.customDomain);
-    const letsEncryptEmail = normalizeEmailInput(domainSettings.letsEncryptEmail);
-
-    return {
-      customDomain,
-      letsEncryptEmail,
-      enabled: Boolean(customDomain && letsEncryptEmail),
-    };
-  } catch (error) {
-    warn("Failed to load domain settings from store.", error);
+  const storeRaw = await readTextFileIfExists(STORE_PATH);
+  if (!storeRaw) {
     return {
       customDomain: "",
       letsEncryptEmail: "",
       enabled: false,
     };
   }
+
+  const parsed = JSON.parse(storeRaw);
+  const domainSettings = parsed?.settings?.domain ?? {};
+  const customDomain = normalizeCustomDomainInput(domainSettings.customDomain);
+  const letsEncryptEmail = normalizeEmailInput(domainSettings.letsEncryptEmail);
+
+  return {
+    customDomain,
+    letsEncryptEmail,
+    enabled: Boolean(customDomain && letsEncryptEmail),
+  };
 }
 
 async function ensureAccountKey(accountKeyPath) {
@@ -670,6 +749,10 @@ async function issueCertificate(domainState, paths, reason) {
 
     const keyPem = toPemString(privateKey);
     const certPem = toPemString(certificate);
+    const certInfo = readCertificateInfo(certPem, domainState.customDomain);
+    if (!isCertificateInfoUsable(certInfo) || !isCertificateBundleLoadable(keyPem, certPem)) {
+      throw new Error(`The certificate authority returned an unusable certificate for ${domainState.customDomain}.`);
+    }
 
     await ensurePrivateDirectory(paths.folder);
     await secureAtomicWriteFile(paths.privateKey, keyPem, "utf8");
@@ -690,6 +773,7 @@ async function issueCertificateWithBackoff(domainState, paths, reason) {
   const now = Date.now();
   if (certificateRetryState.nextAttemptAtMs > now) {
     const nextRetryAt = toIsoTimestamp(certificateRetryState.nextAttemptAtMs);
+    scheduleCertificateRetry(certificateRetryState.nextAttemptAtMs);
     throw new CertificateBackoffError(
       `Certificate issuance for ${domainState.customDomain} is in backoff until ${nextRetryAt}.`,
       certificateRetryState.nextAttemptAtMs,
@@ -705,6 +789,7 @@ async function issueCertificateWithBackoff(domainState, paths, reason) {
     const certInfo = readCertificateInfo(bundle.cert, domainState.customDomain);
 
     certificateRetryState = createCertificateRetryState(domainState.customDomain);
+    clearCertificateRetryTimer();
 
     sslRuntimeState.certificateLastIssuedAtMs = Date.now();
     sslRuntimeState.certificateLastIssueFailedAtMs = 0;
@@ -719,6 +804,7 @@ async function issueCertificateWithBackoff(domainState, paths, reason) {
     certificateRetryState.lastFailureAtMs = failedAt;
     certificateRetryState.lastErrorMessage = getErrorMessage(error);
     certificateRetryState.nextAttemptAtMs = failedAt + getIssueRetryDelayMs(certificateRetryState.failureCount);
+    scheduleCertificateRetry(certificateRetryState.nextAttemptAtMs);
 
     sslRuntimeState.certificateLastIssueFailedAtMs = failedAt;
     sslRuntimeState.certificateLastIssueErrorMessage = certificateRetryState.lastErrorMessage;
@@ -745,7 +831,9 @@ async function ensureCertificate(domainState) {
   const existingCert = await readTextFileIfExists(paths.certificate);
 
   if (existingKey && existingCert) {
-    const decision = getRenewalDecision(existingCert, domainState.customDomain);
+    const decision = isCertificateBundleLoadable(existingKey, existingCert)
+      ? getRenewalDecision(existingCert, domainState.customDomain)
+      : { renew: true, reason: "Stored certificate and private key could not be loaded together." };
     sslRuntimeState.certificateLastCheckedAtMs = Date.now();
     sslRuntimeState.certificateLastRenewalReason = decision.reason;
     if (decision.validToMs) {
@@ -765,7 +853,7 @@ async function ensureCertificate(domainState) {
     try {
       return await issueCertificateWithBackoff(domainState, paths, decision.reason);
     } catch (error) {
-      if (error instanceof CertificateBackoffError && shouldFallbackToExistingCertificate(existingCert, domainState.customDomain)) {
+      if (error instanceof CertificateBackoffError && shouldFallbackToExistingCertificate(existingKey, existingCert, domainState.customDomain)) {
         log(
           `Renewal deferred for ${domainState.customDomain}; continuing with existing certificate until ${toIsoTimestamp(sslRuntimeState.certificateExpiresAtMs)}.`,
         );
@@ -788,9 +876,17 @@ async function ensureHttpsServer(domainState) {
   }
 
   const bundle = await ensureCertificate(domainState);
+  const certInfo = readCertificateInfo(bundle.cert, domainState.customDomain);
+  if (!isCertificateInfoUsable(certInfo) || !isCertificateBundleLoadable(bundle.key, bundle.cert)) {
+    throw new Error(`Refusing to activate an unusable certificate for ${domainState.customDomain}.`);
+  }
+
+  if (shuttingDown) {
+    throw new Error("HTTPS activation was cancelled because the server is shutting down.");
+  }
 
   if (!httpsServer) {
-    httpsServer = https.createServer(
+    const candidateServer = https.createServer(
       {
         key: bundle.key,
         cert: bundle.cert,
@@ -801,8 +897,14 @@ async function ensureHttpsServer(domainState) {
           return;
         }
 
-        if (shouldRedirectToCanonicalHost(request)) {
+        const action = getRuntimeRequestAction(request, "https");
+        if (action === "redirect") {
           redirectToHttps(request, response, activeDomainState.customDomain);
+          return;
+        }
+
+        if (action === "maintenance") {
+          writeHttpsMaintenanceResponse(response);
           return;
         }
 
@@ -810,7 +912,18 @@ async function ensureHttpsServer(domainState) {
       },
     );
 
-    await listen(httpsServer, HTTPS_PORT, LISTEN_HOST);
+    await listen(candidateServer, HTTPS_PORT, LISTEN_HOST);
+    if (shuttingDown) {
+      await closeServer(candidateServer);
+      throw new Error("HTTPS activation was cancelled because the server is shutting down.");
+    }
+
+    httpsServer = candidateServer;
+    httpsTrafficState = {
+      certificateDomain: domainState.customDomain,
+      certificateValidFromMs: certInfo.validFromMs,
+      certificateExpiresAtMs: certInfo.validToMs,
+    };
     log(`HTTPS server is listening on https://${LISTEN_HOST}:${HTTPS_PORT}.`);
     return;
   }
@@ -819,18 +932,25 @@ async function ensureHttpsServer(domainState) {
     key: bundle.key,
     cert: bundle.cert,
   });
+  httpsTrafficState = {
+    certificateDomain: domainState.customDomain,
+    certificateValidFromMs: certInfo.validFromMs,
+    certificateExpiresAtMs: certInfo.validToMs,
+  };
 
   log(`Reloaded HTTPS certificate for ${domainState.customDomain}.`);
 }
 
-async function deactivateHttpsServer() {
+async function deactivateHttpsServer(reason = "automatic SSL is disabled in Domain Settings") {
   if (!httpsServer) {
+    httpsTrafficState = { certificateDomain: "", certificateValidFromMs: 0, certificateExpiresAtMs: 0 };
     return;
   }
 
   await closeServer(httpsServer);
   httpsServer = null;
-  log("HTTPS server stopped because automatic SSL is disabled in Domain Settings.");
+  httpsTrafficState = { certificateDomain: "", certificateValidFromMs: 0, certificateExpiresAtMs: 0 };
+  log(`HTTPS server stopped because ${reason}.`);
 }
 
 function scheduleRefreshFromStoreWatcher(eventType) {
@@ -846,7 +966,7 @@ function scheduleRefreshFromStoreWatcher(eventType) {
 }
 
 async function startStoreWatcher() {
-  if (storeWatcher) {
+  if (storeWatcher || shuttingDown) {
     return;
   }
 
@@ -854,6 +974,9 @@ async function startStoreWatcher() {
   const storeFile = path.basename(STORE_PATH);
 
   await ensurePrivateDirectory(storeDir);
+  if (shuttingDown) {
+    return;
+  }
 
   storeWatcher = watch(storeDir, (eventType, filename) => {
     const changedFile = typeof filename === "string" ? filename : filename?.toString();
@@ -882,6 +1005,10 @@ function stopStoreWatcher() {
 }
 
 async function refreshDomainState(reason) {
+  if (shuttingDown) {
+    return;
+  }
+
   if (refreshPromise) {
     queuedRefreshReason = reason;
     return refreshPromise;
@@ -894,18 +1021,27 @@ async function refreshDomainState(reason) {
     schedulePersistRuntimeStatus();
 
     const desired = await loadDomainStateFromStore();
-    const domainSettingsChanged =
-      desired.customDomain !== activeDomainState.customDomain || desired.letsEncryptEmail !== activeDomainState.letsEncryptEmail;
+    const customDomainChanged = desired.customDomain !== activeDomainState.customDomain;
+    const domainSettingsChanged = customDomainChanged || desired.letsEncryptEmail !== activeDomainState.letsEncryptEmail;
     if (domainSettingsChanged) {
       certificateRetryState = createCertificateRetryState(desired.customDomain);
+      clearCertificateRetryTimer();
+    }
+
+    if (customDomainChanged) {
+      sslRuntimeState.certificateExpiresAtMs = 0;
+      sslRuntimeState.certificateLastCheckedAtMs = 0;
+      sslRuntimeState.certificateLastRenewalReason = "";
+      sslRuntimeState.certificateLastIssuedAtMs = 0;
+      sslRuntimeState.certificateLastIssueFailedAtMs = 0;
+      sslRuntimeState.certificateLastIssueErrorMessage = "";
     }
 
     if (!desired.enabled) {
-      if (activeDomainState.enabled || httpsServer) {
-        activeDomainState = desired;
+      activeDomainState = desired;
+      clearCertificateRetryTimer();
+      if (httpsServer) {
         await deactivateHttpsServer();
-      } else {
-        activeDomainState = desired;
       }
 
       sslRuntimeState.phase = "http-only";
@@ -916,8 +1052,15 @@ async function refreshDomainState(reason) {
       return;
     }
 
+    activeDomainState = desired;
+
+    // A listener for the previous domain, or one whose installed certificate has just
+    // expired, must not remain capable of forwarding application content during recovery.
+    if (httpsServer && !isActiveDomainHttpsAvailable()) {
+      await deactivateHttpsServer(customDomainChanged ? "the configured custom domain changed" : "its installed certificate is no longer valid");
+    }
+
     if (!shouldRunHttpsRefresh(reason, domainSettingsChanged)) {
-      activeDomainState = desired;
       sslRuntimeState.phase = "https-ready";
       sslRuntimeState.lastRefreshSucceededAtMs = Date.now();
       sslRuntimeState.lastRefreshErrorMessage = "";
@@ -927,7 +1070,13 @@ async function refreshDomainState(reason) {
     }
 
     await ensureHttpsServer(desired);
-    activeDomainState = desired;
+    // Listener activation failures share the bounded retry scheduler with issuance. Clear
+    // those resolved runtime retries, but preserve a pending renewal retry when the listener
+    // deliberately stayed online with its still-valid previous certificate.
+    if (!sslRuntimeState.certificateLastIssueFailedAtMs) {
+      certificateRetryState = createCertificateRetryState(desired.customDomain);
+      clearCertificateRetryTimer();
+    }
 
     sslRuntimeState.phase = "https-ready";
     sslRuntimeState.lastRefreshSucceededAtMs = Date.now();
@@ -935,10 +1084,33 @@ async function refreshDomainState(reason) {
     schedulePersistRuntimeStatus();
 
     log(`Automatic SSL check (${reason}) complete for ${activeDomainState.customDomain}.`);
-  })().catch((error) => {
+  })().catch(async (error) => {
+    if (shuttingDown) {
+      return;
+    }
+
     sslRuntimeState.lastRefreshFailedAtMs = Date.now();
     sslRuntimeState.lastRefreshErrorMessage = getErrorMessage(error);
     sslRuntimeState.phase = error instanceof CertificateBackoffError ? "backoff" : "error";
+
+    if (!(error instanceof CertificateBackoffError) && activeDomainState.enabled && !isActiveDomainHttpsAvailable()) {
+      const failedAt = Date.now();
+      setRetryDomain(activeDomainState.customDomain);
+      certificateRetryState.failureCount += 1;
+      certificateRetryState.lastFailureAtMs = failedAt;
+      certificateRetryState.lastErrorMessage = getErrorMessage(error);
+      certificateRetryState.nextAttemptAtMs = failedAt + getIssueRetryDelayMs(certificateRetryState.failureCount);
+      scheduleCertificateRetry(certificateRetryState.nextAttemptAtMs);
+    }
+
+    if (activeDomainState.enabled && httpsServer && !isActiveDomainHttpsAvailable()) {
+      try {
+        await deactivateHttpsServer("valid HTTPS is unavailable");
+      } catch (closeError) {
+        warn("Failed to stop an unavailable HTTPS listener.", closeError);
+      }
+    }
+
     schedulePersistRuntimeStatus();
 
     if (error instanceof CertificateBackoffError) {
@@ -955,7 +1127,7 @@ async function refreshDomainState(reason) {
     refreshPromise = null;
   }
 
-  if (queuedRefreshReason) {
+  if (queuedRefreshReason && !shuttingDown) {
     const nextReason = queuedRefreshReason;
     queuedRefreshReason = null;
     await refreshDomainState(`queued:${nextReason}`);
@@ -983,30 +1155,37 @@ async function handleRequest(request, response) {
 async function start() {
   await ensurePrivateDirectory(SSL_STORAGE_DIR);
   await app.prepare();
+  activeDomainState = await loadDomainStateFromStore();
 
   httpServer = http.createServer((request, response) => {
-    if (tryServeRuntimeStatus(request, response)) {
-      return;
-    }
-
-    if (tryServeChallenge(request, response)) {
-      return;
-    }
-
-    if (activeDomainState.enabled) {
-      redirectToHttps(request, response, activeDomainState.customDomain);
-      return;
-    }
-
-    void handleRequest(request, response);
+    const requestContext = {
+      requestUrl: request.url,
+      requestHost: request.headers.host,
+      configuredDomain: activeDomainState.enabled ? activeDomainState.customDomain : "",
+      httpsAvailable: isActiveDomainHttpsAvailable(),
+      serveChallenge: () => tryServeChallenge(request, response),
+      serveRedirect: () => redirectToHttps(request, response, activeDomainState.customDomain),
+      serveMaintenance: () => writeHttpsMaintenanceResponse(response),
+      serveRuntimeStatus: () => tryServeRuntimeStatus(request, response),
+      serveApplication: () => void handleRequest(request, response),
+    };
+    routeRuntimeHttpRequest(requestContext);
   });
 
   await listen(httpServer, HTTP_PORT, LISTEN_HOST);
   log(`HTTP server is listening on http://${LISTEN_HOST}:${HTTP_PORT}.`);
 
   await refreshDomainState("startup");
+  if (shuttingDown) {
+    return;
+  }
+
   await startStoreWatcher();
   await flushRuntimeStatus();
+
+  if (shuttingDown) {
+    return;
+  }
 
   sslCheckTimer = setInterval(() => {
     void refreshDomainState("periodic");
@@ -1016,11 +1195,16 @@ async function start() {
 
 async function performShutdown(signal) {
   log(`Received ${signal}, shutting down.`);
+  shuttingDown = true;
+  queuedRefreshReason = null;
+  challengeResponses.clear();
 
   if (sslCheckTimer) {
     clearInterval(sslCheckTimer);
     sslCheckTimer = null;
   }
+
+  clearCertificateRetryTimer();
 
   stopStoreWatcher();
 
@@ -1033,6 +1217,7 @@ async function performShutdown(signal) {
       closeServer(httpsServer)
         .then(() => {
           httpsServer = null;
+          httpsTrafficState = { certificateDomain: "", certificateValidFromMs: 0, certificateExpiresAtMs: 0 };
         })
         .catch((error) => warn("Failed to close HTTPS server.", error)),
     );

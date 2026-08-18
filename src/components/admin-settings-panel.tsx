@@ -1366,6 +1366,10 @@ function VisitorStatsCard({
 }
 
 const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "warning-text" | "error-text" => {
+  if (status.configured && !status.httpsAvailable) {
+    return "error-text";
+  }
+
   switch (status.certificateState) {
     case "valid":
       return "success-text";
@@ -1378,6 +1382,17 @@ const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "
       return "error-text";
     default:
       return "warning-text";
+  }
+};
+
+const formatCustomDomainHttpPolicy = (status: DomainSslRuntimeStatus): string => {
+  switch (status.customDomainHttpPolicy) {
+    case "redirect":
+      return "redirect to HTTPS";
+    case "maintenance":
+      return "fail-closed maintenance response";
+    default:
+      return "serve application";
   }
 };
 
@@ -3036,6 +3051,9 @@ export function AdminSettingsPanel() {
                             Certificate expiry: {formatStatusTimestamp(sslStatus.certificateExpiresAt)}.
                           </span>
                         ) : null}
+                        <span className="field-hint">
+                          Custom-domain HTTP policy: {formatCustomDomainHttpPolicy(sslStatus)}.
+                        </span>
                         <span className="field-hint">Last checked: {formatStatusTimestamp(sslStatus.checkedAt)}.</span>
                       </>
                     ) : null}

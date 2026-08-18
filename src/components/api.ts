@@ -1106,6 +1106,10 @@ function isDomainSslCertificateState(value: string): value is DomainSslCertifica
   return DOMAIN_SSL_CERTIFICATE_STATES.includes(value as DomainSslCertificateState);
 }
 
+function normalizeCustomDomainHttpPolicy(value: unknown): DomainSslRuntimeStatus["customDomainHttpPolicy"] {
+  return value === "redirect" || value === "maintenance" ? value : "application";
+}
+
 function normalizeDomainSslRuntimeStatus(source: unknown): DomainSslRuntimeStatus {
   const payload = asRecord(asRecord(source).status ?? source);
   const sourceValue = asString(payload.source).trim();
@@ -1122,6 +1126,8 @@ function normalizeDomainSslRuntimeStatus(source: unknown): DomainSslRuntimeStatu
     certificatePresent: asBoolean(payload.certificatePresent, false),
     certificateValidForDomain: asNullableBoolean(payload.certificateValidForDomain),
     certificateExpiresAt: expiresAt || null,
+    httpsAvailable: asBoolean(payload.httpsAvailable, false),
+    customDomainHttpPolicy: normalizeCustomDomainHttpPolicy(payload.customDomainHttpPolicy),
     checkedAt: checkedAt || new Date().toISOString(),
     message: asString(payload.message, "SSL runtime status is unavailable."),
   };

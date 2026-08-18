@@ -5,7 +5,7 @@
 - [x] **HIGH-03 / 1.13** — Public analytics ingestion is unbounded and accepts client-controlled data.
 - [x] **HIGH-05** — Incomplete cache invalidation can preserve deleted or previously authorized content.
 - [x] **HIGH-06** — Frequent translation-status polling can exhaust the GitHub API quota.
-- [ ] **HIGH-07** — Certificate issuance failures can leave a custom domain serving insecure HTTP.
+- [x] **HIGH-07** — Certificate issuance failures can leave a custom domain serving insecure HTTP.
 - [ ] **HIGH-08 / 1.14** — Arbitrary public document slugs can amplify GitHub API requests.
 - [ ] **HIGH-10** — The missing lockfile breaks `npm ci` and prevents reproducible installations.
 - [ ] **1.4** — Known placeholder secrets are accepted instead of being rejected at startup.

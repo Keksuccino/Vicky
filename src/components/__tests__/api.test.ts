@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { fetchAdminLanguageTranslationStatus, saveAdminSettings } from "@/components/api";
+import { fetchAdminDomainSslStatus, fetchAdminLanguageTranslationStatus, saveAdminSettings } from "@/components/api";
 import type { AdminSettings } from "@/components/types";
 
 const createSettings = (overrides: Partial<AdminSettings> = {}): AdminSettings => ({
@@ -94,5 +94,32 @@ describe("admin API helpers", () => {
 
     expect(body).toEqual({ jobId: "translation-123" });
     expect(result.jobState).toBe("unknown");
+  });
+
+  it("normalizes authenticated fail-closed domain status fields", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      status: {
+        source: "runtime",
+        configured: true,
+        customDomain: "docs.example.com",
+        letsEncryptEmail: "admin@example.com",
+        certificateState: "expired",
+        certificatePresent: true,
+        certificateValidForDomain: true,
+        certificateExpiresAt: "2026-08-17T00:00:00.000Z",
+        httpsAvailable: false,
+        customDomainHttpPolicy: "maintenance",
+        checkedAt: "2026-08-18T00:00:00.000Z",
+        message: "HTTPS is unavailable.",
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(fetchAdminDomainSslStatus()).resolves.toMatchObject({
+      source: "runtime",
+      certificateState: "expired",
+      httpsAvailable: false,
+      customDomainHttpPolicy: "maintenance",
+    });
   });
 });

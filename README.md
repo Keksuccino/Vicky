@@ -236,6 +236,11 @@ npm run start
 - starts the Next.js app
 - serves HTTP
 - enables HTTPS automatically when a custom domain and Let's Encrypt email are configured
+- reserves plaintext `/.well-known/acme-challenge/*` requests for HTTP-01 validation
+- redirects configured custom-domain HTTP traffic only while a matching, currently valid certificate is active
+- returns a cache-disabled `503` maintenance response for configured custom-domain HTTP traffic while initial issuance, expired-certificate replacement, or outage recovery is pending
+- keeps localhost and other non-custom HTTP hosts available for local/default-host access
+- retries failed issuance and renewal with capped exponential backoff while the process is running
 - supplies authenticated admins with SSL runtime status from a private on-disk snapshot
 - watches the settings store so domain/SSL changes apply quickly
 - persists runtime SSL status to disk
@@ -246,6 +251,7 @@ The optional external SSL health endpoint defaults to `/.well-known/vicky/ssl-st
 
 If you run Vicky behind a reverse proxy:
 - forward `/.well-known/acme-challenge/*` to Vicky unchanged
+- do not replace Vicky's fail-closed custom-domain `503` response with a plaintext application fallback
 - preserve the original `Host` header
 - keep DNS pointed at the proxy/public ingress
 - set `AUTH_TRUST_PROXY_HEADERS=true` only when the proxy overwrites `x-forwarded-for` or `x-real-ip`

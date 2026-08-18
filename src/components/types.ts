@@ -314,6 +314,7 @@ export type AdminSettings = {
 };
 
 export type DomainSslCertificateState = "missing" | "valid" | "expiring_soon" | "expired" | "domain_mismatch" | "invalid";
+export type CustomDomainHttpPolicy = "application" | "maintenance" | "redirect";
 
 export type DomainSslRuntimeStatus = {
   source: "runtime" | "best-effort";
@@ -324,6 +325,8 @@ export type DomainSslRuntimeStatus = {
   certificatePresent: boolean;
   certificateValidForDomain: boolean | null;
   certificateExpiresAt: string | null;
+  httpsAvailable: boolean;
+  customDomainHttpPolicy: CustomDomainHttpPolicy;
   checkedAt: string;
   message: string;
 };
