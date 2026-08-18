@@ -6,11 +6,13 @@ const mocks = vi.hoisted(() => ({
   authenticateCredentials: vi.fn(),
   clearFailedLoginAttempts: vi.fn(),
   createSessionToken: vi.fn(),
+  getAdminSessionSecurityState: vi.fn(),
   getLoginRateLimitStatus: vi.fn(),
   registerFailedLoginAttempt: vi.fn(),
 }));
 
 vi.mock("@/lib/auth", () => ({ applySessionCookie: mocks.applySessionCookie, createSessionToken: mocks.createSessionToken }));
+vi.mock("@/lib/admin-session-security", () => ({ getAdminSessionSecurityState: mocks.getAdminSessionSecurityState }));
 vi.mock("@/lib/login-rate-limit", () => ({ clearFailedLoginAttempts: mocks.clearFailedLoginAttempts, getLoginRateLimitStatus: mocks.getLoginRateLimitStatus, registerFailedLoginAttempt: mocks.registerFailedLoginAttempt }));
 vi.mock("@/lib/moderators", () => ({ authenticateCredentials: mocks.authenticateCredentials }));
 
@@ -31,6 +33,7 @@ describe("POST /api/auth/login", () => {
     vi.clearAllMocks();
     mocks.getLoginRateLimitStatus.mockResolvedValue({ blocked: false, retryAfterSeconds: 0 });
     mocks.authenticateCredentials.mockResolvedValue({ role: "admin", username: "admin" });
+    mocks.getAdminSessionSecurityState.mockResolvedValue({ sessionEpoch: "4e70de2c-b614-4caf-859b-a3a545981da6", credentialFingerprint: "fingerprint" });
     mocks.createSessionToken.mockResolvedValue("session-token");
   });
 
@@ -42,8 +45,17 @@ describe("POST /api/auth/login", () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ authenticated: true, role: "admin", username: "admin" });
     expect(mocks.clearFailedLoginAttempts).toHaveBeenCalledOnce();
-    expect(mocks.createSessionToken).toHaveBeenCalledWith({ role: "admin", username: "admin" });
+    expect(mocks.createSessionToken).toHaveBeenCalledWith({ role: "admin", username: "admin", adminSessionEpoch: "4e70de2c-b614-4caf-859b-a3a545981da6" });
     expect(mocks.applySessionCookie).toHaveBeenCalledWith(expect.any(Response), "session-token");
+  });
+
+  it("does not couple moderator token issuance to the built-in admin epoch", async () => {
+    mocks.authenticateCredentials.mockResolvedValueOnce({ role: "moderator", username: "editor" });
+    const response = await POST(createRequest({ username: "editor", password: "moderator password" }));
+
+    expect(response.status).toBe(200);
+    expect(mocks.getAdminSessionSecurityState).not.toHaveBeenCalled();
+    expect(mocks.createSessionToken).toHaveBeenCalledWith({ role: "moderator", username: "editor" });
   });
 
   it("rejects missing and unsupported content types before authentication", async () => {

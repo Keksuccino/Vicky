@@ -18,6 +18,7 @@ import { normalizeFooterTemplate } from "@/lib/footer";
 import { createGitHubCacheEpoch, normalizeGitHubCacheEpoch } from "@/lib/github-cache-identity";
 import { cleanupLegacyGitHubLogicalSourceCaches } from "@/lib/github-legacy-cache-cleanup";
 import { ensurePrivateFile, openPrivateFileExclusive, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
+import { createAdminCredentialFingerprint, isAdminCredentialFingerprint, isAdminSessionEpoch } from "@/lib/session-security";
 import { normalizeStartPage } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
 import type {
@@ -132,6 +133,14 @@ const normalizeModerators = (value: unknown): ModeratorAccount[] => {
       seenUsernames.add(entry.username);
       return true;
     });
+};
+
+const normalizeAdminSessionSecurity = (value: unknown): DocsStore["adminSessionSecurity"] => {
+  const source = typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+  return {
+    sessionEpoch: isAdminSessionEpoch(source.sessionEpoch) ? source.sessionEpoch : "",
+    credentialFingerprint: isAdminCredentialFingerprint(source.credentialFingerprint) ? source.credentialFingerprint : "",
+  };
 };
 
 const normalizeThemeAccentValue = (variables: unknown): string | null => {
@@ -300,6 +309,7 @@ const normalizeStore = (value: unknown): DocsStore => {
     version: STORE_VERSION,
     settings,
     moderators: normalizeModerators(source.moderators),
+    adminSessionSecurity: normalizeAdminSessionSecurity(source.adminSessionSecurity),
   };
 };
 
@@ -403,16 +413,21 @@ const withStoreLock = async <T>(work: () => Promise<T>): Promise<T> => {
   }
 };
 
-const readStoreFile = async (): Promise<unknown> => {
+type StoreFileRead = {
+  exists: boolean;
+  value: unknown;
+};
+
+const readStoreFile = async (): Promise<StoreFileRead> => {
   try {
     await ensurePrivateFile(STORE_PATH);
     // The settings store contains mutable encrypted runtime data and may live outside the project; it must not be traced into builds.
     const raw = await readFile(/*turbopackIgnore: true*/ STORE_PATH, "utf8");
-    return JSON.parse(raw) as unknown;
+    return { exists: true, value: JSON.parse(raw) as unknown };
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;
     if (err.code === "ENOENT") {
-      return DEFAULT_STORE();
+      return { exists: false, value: DEFAULT_STORE() };
     }
     throw error;
   }
@@ -450,21 +465,40 @@ const updateCachedStore = (store: DocsStore): void => {
 };
 
 type StoreReadResult = {
+  credentialFingerprint: string;
+  requiresAdminSecurityTransition: boolean;
+  requiresInitialPersistence: boolean;
   requiresLegacyCacheMigration: boolean;
+  requiresVersionMigration: boolean;
   store: DocsStore;
 };
 
-const readStoreFresh = async (): Promise<StoreReadResult> => {
-  const raw = await readStoreFile();
+const readStoreFresh = async (synchronizeAdminSecurity: boolean): Promise<StoreReadResult> => {
+  const read = await readStoreFile();
+  const raw = read.value;
   const source = typeof raw === "object" && raw !== null ? (raw as Record<string, unknown>) : {};
   const settings = typeof source.settings === "object" && source.settings !== null ? (source.settings as Record<string, unknown>) : {};
   const github = typeof settings.github === "object" && settings.github !== null ? (settings.github as Record<string, unknown>) : {};
   const hasCacheEpoch = typeof github.cacheEpoch === "string" && Boolean(github.cacheEpoch.trim());
   const storedVersion = typeof source.version === "number" ? source.version : 0;
+  const normalized = normalizeStore(raw);
+  const requiresVersionMigration = read.exists && storedVersion < STORE_VERSION;
+  const hasValidAdminSecurity = isAdminSessionEpoch(normalized.adminSessionSecurity.sessionEpoch) && isAdminCredentialFingerprint(normalized.adminSessionSecurity.credentialFingerprint);
+  const shouldEvaluateAdminSecurity = synchronizeAdminSecurity || (read.exists && (requiresVersionMigration || !hasValidAdminSecurity));
+  const currentCredentialFingerprint = shouldEvaluateAdminSecurity ? await createAdminCredentialFingerprint() : normalized.adminSessionSecurity.credentialFingerprint;
+  if (!read.exists && synchronizeAdminSecurity) {
+    normalized.adminSessionSecurity.credentialFingerprint = currentCredentialFingerprint;
+  }
 
   return {
-    requiresLegacyCacheMigration: storedVersion < STORE_VERSION || !hasCacheEpoch,
-    store: normalizeStore(raw),
+    credentialFingerprint: currentCredentialFingerprint,
+    requiresAdminSecurityTransition: shouldEvaluateAdminSecurity && (normalized.adminSessionSecurity.credentialFingerprint !== currentCredentialFingerprint || !isAdminSessionEpoch(normalized.adminSessionSecurity.sessionEpoch)),
+    requiresInitialPersistence: synchronizeAdminSecurity && !read.exists,
+    // v12 introduced cache epochs. A v12 -> v13 auth migration must not delete
+    // already-isolated cache data as though it came from a pre-epoch store.
+    requiresLegacyCacheMigration: read.exists && (storedVersion < 12 || !hasCacheEpoch),
+    requiresVersionMigration,
+    store: normalized,
   };
 };
 
@@ -473,40 +507,62 @@ const readStoreFresh = async (): Promise<StoreReadResult> => {
  * logical-source formats before publishing a fresh epoch, so an interrupted
  * migration retries cleanup instead of marking legacy artifacts as migrated.
  */
-const migrateLegacyCacheEpochUnlocked = async (read: StoreReadResult): Promise<DocsStore> => {
-  if (!read.requiresLegacyCacheMigration) {
+const migrateStoreUnlocked = async (read: StoreReadResult): Promise<DocsStore> => {
+  if (!read.requiresAdminSecurityTransition && !read.requiresInitialPersistence && !read.requiresLegacyCacheMigration && !read.requiresVersionMigration) {
     return read.store;
   }
 
   const next = cloneStore(read.store);
-  await cleanupLegacyGitHubLogicalSourceCaches({ ...next.settings.github, token: "" });
-  next.settings.github.cacheEpoch = createGitHubCacheEpoch();
+  if (read.requiresLegacyCacheMigration) {
+    await cleanupLegacyGitHubLogicalSourceCaches({ ...next.settings.github, token: "" });
+    next.settings.github.cacheEpoch = createGitHubCacheEpoch();
+  }
+
+  if (read.requiresAdminSecurityTransition) {
+    next.adminSessionSecurity.sessionEpoch = randomUUID();
+    next.adminSessionSecurity.credentialFingerprint = read.credentialFingerprint;
+  }
+
   next.version = STORE_VERSION;
   await writeStoreFile(next);
   return next;
 };
 
-const getStoreUnlocked = async (): Promise<DocsStore> => {
-  const cached = getCachedStore();
-  if (cached) {
-    return cached;
+const getStoreUnlocked = async (fresh: boolean): Promise<DocsStore> => {
+  if (!fresh) {
+    const cached = getCachedStore();
+    if (cached) {
+      return cached;
+    }
   }
 
-  const initialRead = await readStoreFresh();
-  if (!initialRead.requiresLegacyCacheMigration) {
+  const initialRead = await readStoreFresh(fresh);
+  if (!initialRead.requiresAdminSecurityTransition && !initialRead.requiresInitialPersistence && !initialRead.requiresLegacyCacheMigration && !initialRead.requiresVersionMigration) {
     updateCachedStore(initialRead.store);
     return cloneStore(initialRead.store);
   }
 
-  const normalized = await withStoreLock(async () => migrateLegacyCacheEpochUnlocked(await readStoreFresh()));
+  const normalized = await withStoreLock(async () => migrateStoreUnlocked(await readStoreFresh(fresh)));
   updateCachedStore(normalized);
   return cloneStore(normalized);
 };
 
-export const getStore = async (): Promise<DocsStore> => getStoreUnlocked();
+export const getStore = async (): Promise<DocsStore> => getStoreUnlocked(false);
+
+/**
+ * Security authorization cannot use the ordinary one-second read cache: another
+ * Vicky process may have revoked sessions in the same shared store. A fresh atomic
+ * read keeps cross-process revocation bounded only by an already-running request.
+ */
+export const getStoreFresh = async (): Promise<DocsStore> => getStoreUnlocked(true);
 
 const saveStoreUnlocked = async (store: DocsStore): Promise<DocsStore> => {
   const normalized = normalizeStore(store);
+  const credentialFingerprint = await createAdminCredentialFingerprint();
+  if (normalized.adminSessionSecurity.credentialFingerprint !== credentialFingerprint || !isAdminSessionEpoch(normalized.adminSessionSecurity.sessionEpoch)) {
+    normalized.adminSessionSecurity.sessionEpoch = randomUUID();
+    normalized.adminSessionSecurity.credentialFingerprint = credentialFingerprint;
+  }
   await writeStoreFile(normalized);
   updateCachedStore(normalized);
   return cloneStore(normalized);
@@ -520,7 +576,7 @@ export const updateStore = async (
 ): Promise<DocsStore> =>
   enqueueMutation(async () => {
     return withStoreLock(async () => {
-      const current = await migrateLegacyCacheEpochUnlocked(await readStoreFresh());
+      const current = await migrateStoreUnlocked(await readStoreFresh(true));
       const next = structuredClone(current);
       const result = await mutator(next);
 

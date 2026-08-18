@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAdminRequest } from "@/lib/auth";
+import { requireAdminRequest } from "@/lib/active-auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { refreshGitHubDocsCache, resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse } from "@/lib/http";

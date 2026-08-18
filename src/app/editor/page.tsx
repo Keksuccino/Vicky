@@ -2,8 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { EditorWorkbench } from "@/components/editor-workbench";
+import { getActiveSessionForToken } from "@/lib/active-auth";
 import { ADMIN_COOKIE_NAME } from "@/lib/auth";
-import { getActiveSessionForToken } from "@/lib/moderators";
 
 type EditorPageProps = {
   searchParams?: Promise<{

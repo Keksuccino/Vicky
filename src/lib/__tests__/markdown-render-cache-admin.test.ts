@@ -36,7 +36,7 @@ const config: GitHubRuntimeConfig = {
 };
 
 const store = {
-  version: 12,
+  version: 13,
   settings: {
     autoTranslate: {
       enabled: true,

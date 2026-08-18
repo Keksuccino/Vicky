@@ -9,7 +9,7 @@ const mocks = vi.hoisted(() => ({
   updateStore: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({ requireAdminRequest: mocks.requireAdminRequest }));
+vi.mock("@/lib/active-auth", () => ({ requireAdminRequest: mocks.requireAdminRequest }));
 vi.mock("@/lib/cache", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/cache")>()),
   setDocsCacheTtlMs: mocks.setDocsCacheTtlMs,

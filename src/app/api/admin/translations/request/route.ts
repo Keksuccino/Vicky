@@ -10,7 +10,7 @@ import {
   getDetailedAutoTranslateErrorMessage,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
-import { requireAdminRequest } from "@/lib/auth";
+import { requireAdminRequest } from "@/lib/active-auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { decryptSecret } from "@/lib/encryption";

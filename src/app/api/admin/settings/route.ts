@@ -20,7 +20,7 @@ import {
   formatAutoTranslateLanguageForLog,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
-import { requireAdminRequest } from "@/lib/auth";
+import { requireAdminRequest } from "@/lib/active-auth";
 import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS, setDocsCacheTtlMs } from "@/lib/cache";
 import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";

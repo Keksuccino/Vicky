@@ -1,13 +1,10 @@
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, type ScryptOptions } from "node:crypto";
-import { NextResponse, type NextRequest } from "next/server";
 
 import { verifyAdminPassword } from "@/lib/admin-password";
 import { AUTH_PASSWORD_MAX_CHARACTERS, AUTH_PASSWORD_MAX_UTF8_BYTES, countUnicodeCharacters, getUtf8ByteLength, isWellFormedUnicode } from "@/lib/auth-credential-policy.mjs";
 import {
   ADMIN_USERNAME,
-  getRequestSession,
   normalizeUsername,
-  verifySessionToken,
   type AuthSession,
 } from "@/lib/auth";
 import { badRequest, notFound } from "@/lib/http";
@@ -163,36 +160,6 @@ export const authenticateCredentials = async (username: string, password: string
   return (await verifyPasswordHash(password, account.passwordHash))
     ? { role: "moderator", username: account.username }
     : null;
-};
-
-export const getActiveSession = async (session: AuthSession | null): Promise<AuthSession | null> => {
-  if (!session) {
-    return null;
-  }
-
-  if (session.role === "admin") {
-    return session.username === ADMIN_USERNAME ? session : { role: "admin", username: ADMIN_USERNAME };
-  }
-
-  const store = await getStore();
-  const account = store.moderators.find((moderator) => moderator.username === session.username);
-  return account ? session : null;
-};
-
-export const getActiveSessionForToken = async (token: string): Promise<AuthSession | null> =>
-  getActiveSession(await verifySessionToken(token));
-
-export const getActiveRequestSession = async (request: NextRequest): Promise<AuthSession | null> =>
-  getActiveSession(await getRequestSession(request));
-
-export const requireEditorAccountRequest = async (request: NextRequest): Promise<NextResponse | null> => {
-  const session = await getActiveRequestSession(request);
-
-  if (session) {
-    return null;
-  }
-
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 };
 
 export const listModeratorAccounts = async (): Promise<ModeratorAccountSummary[]> => {

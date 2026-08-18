@@ -176,9 +176,13 @@ export interface AppSettings {
 }
 
 export interface DocsStore {
-  version: 12;
+  version: 13;
   settings: AppSettings;
   moderators: ModeratorAccount[];
+  adminSessionSecurity: {
+    sessionEpoch: string;
+    credentialFingerprint: string;
+  };
 }
 
 export interface GitHubRuntimeConfig {

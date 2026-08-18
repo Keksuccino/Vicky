@@ -10,7 +10,7 @@
 - [x] **HIGH-10** — The missing lockfile breaks `npm ci` and prevents reproducible installations.
 - [x] **1.4** — Known placeholder secrets are accepted instead of being rejected at startup.
 - [x] **1.6** — The built-in admin password uses fast SHA-256 hashing instead of a password KDF.
-- [ ] **1.7** — Built-in admin JWT sessions cannot be revoked after password or security changes.
+- [x] **1.7** — Built-in admin JWT sessions cannot be revoked after password or security changes.
 - [ ] **1.9** — Public raw and plaintext endpoints leak unexpected internal error messages.
 - [ ] **1.10** — Forwarded host and protocol headers are trusted without a centralized trust policy.
 - [ ] **1.11** — Client-IP detection can prefer a proxy address over the real client address.

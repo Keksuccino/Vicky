@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { DEFAULT_STORE } from "@/lib/defaults";
 import { gitHubDocsLogicalSourceKey, legacyGitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { listPersistentRenderedMarkdownCacheEntries, writePersistentRenderedMarkdown } from "@/lib/markdown-render-cache-store";
+import { createAdminCredentialFingerprint } from "@/lib/session-security";
 import { readPersistentTranslatedPage, writePersistentTranslatedPage } from "@/lib/translation-cache-store";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
@@ -15,6 +16,7 @@ const tempDirs: string[] = [];
 const previousMarkdownCacheDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
 const previousSnapshotCacheDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
 const previousTranslationCacheDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
+const previousAdminPassword = process.env.ADMIN_PASSWORD;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -27,6 +29,7 @@ const createStorePath = async (): Promise<string> => {
 const writeStore = async (storePath: string, siteTitle: string): Promise<void> => {
   const store = DEFAULT_STORE();
   store.settings.siteTitle = siteTitle;
+  store.adminSessionSecurity.credentialFingerprint = await createAdminCredentialFingerprint();
   await mkdir(path.dirname(storePath), { recursive: true });
   await writeFile(storePath, JSON.stringify(store, null, 2), "utf8");
 };
@@ -53,6 +56,11 @@ afterEach(async () => {
     delete process.env.WIKI_TRANSLATION_CACHE_DIR;
   } else {
     process.env.WIKI_TRANSLATION_CACHE_DIR = previousTranslationCacheDir;
+  }
+  if (previousAdminPassword === undefined) {
+    delete process.env.ADMIN_PASSWORD;
+  } else {
+    process.env.ADMIN_PASSWORD = previousAdminPassword;
   }
   vi.resetModules();
 
@@ -102,7 +110,7 @@ describe("store reads", () => {
     const { getStore } = await importStore(storePath);
     const normalized = await getStore();
 
-    expect(normalized.version).toBe(12);
+    expect(normalized.version).toBe(13);
     expect(normalized.settings.github.cacheEpoch).toMatch(/^[0-9a-f-]{36}$/i);
     expect(normalized.settings.github.cacheEpoch).not.toBe("initial");
     const persisted = JSON.parse(await readFile(storePath, "utf8")) as { settings: { github: { cacheEpoch: string } } };
@@ -118,6 +126,58 @@ describe("store reads", () => {
 
   it("uses a unique cache security epoch for every newly created store", () => {
     expect(DEFAULT_STORE().settings.github.cacheEpoch).not.toBe(DEFAULT_STORE().settings.github.cacheEpoch);
+  });
+
+  it("keeps ordinary missing-store reads side-effect free and persists security state on demand", async () => {
+    const storePath = await createStorePath();
+    await rm(storePath, { force: true });
+    const { getStore, getStoreFresh } = await importStore(storePath);
+
+    const ordinaryStore = await getStore();
+    expect(ordinaryStore.adminSessionSecurity.credentialFingerprint).toBe("");
+    await expect(access(storePath)).rejects.toMatchObject({ code: "ENOENT" });
+
+    const securityStore = await getStoreFresh();
+    expect(securityStore.adminSessionSecurity.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
+    await expect(access(storePath)).resolves.toBeUndefined();
+  });
+
+  it("migrates a v12 store to durable admin security state without rotating its cache epoch", async () => {
+    const storePath = await createStorePath();
+    const legacyStore = DEFAULT_STORE() as unknown as Record<string, unknown>;
+    const settings = legacyStore.settings as Record<string, unknown>;
+    const github = settings.github as Record<string, unknown>;
+    const existingCacheEpoch = github.cacheEpoch;
+    legacyStore.version = 12;
+    delete legacyStore.adminSessionSecurity;
+    await mkdir(path.dirname(storePath), { recursive: true });
+    await writeFile(storePath, JSON.stringify(legacyStore, null, 2), "utf8");
+
+    const { getStoreFresh } = await importStore(storePath);
+    const stores = await Promise.all(Array.from({ length: 8 }, () => getStoreFresh()));
+    const sessionEpochs = new Set(stores.map((store) => store.adminSessionSecurity.sessionEpoch));
+    const persisted = JSON.parse(await readFile(storePath, "utf8")) as ReturnType<typeof DEFAULT_STORE>;
+
+    expect(sessionEpochs.size).toBe(1);
+    expect(persisted.version).toBe(13);
+    expect(persisted.settings.github.cacheEpoch).toBe(existingCacheEpoch);
+    expect(persisted.adminSessionSecurity.sessionEpoch).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(persisted.adminSessionSecurity.credentialFingerprint).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("rotates one stable epoch across concurrent credential-transition reads", async () => {
+    const storePath = await createStorePath();
+    await writeStore(storePath, "Credential transition");
+    const { getStoreFresh } = await importStore(storePath);
+    const initial = await getStoreFresh();
+
+    process.env.ADMIN_PASSWORD = "Vicky rotated: amber! summit8 quartz";
+    const stores = await Promise.all(Array.from({ length: 12 }, () => getStoreFresh()));
+    const sessionEpochs = new Set(stores.map((store) => store.adminSessionSecurity.sessionEpoch));
+
+    expect(sessionEpochs.size).toBe(1);
+    expect(stores[0].adminSessionSecurity.sessionEpoch).not.toBe(initial.adminSessionSecurity.sessionEpoch);
+    expect(stores[0].adminSessionSecurity.credentialFingerprint).not.toBe(initial.adminSessionSecurity.credentialFingerprint);
   });
 
   it("does not wait on the write lock for ordinary reads", async () => {

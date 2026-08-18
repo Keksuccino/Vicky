@@ -2,8 +2,10 @@ import { jwtVerify, SignJWT } from "jose";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { getRuntimeSecret } from "@/lib/runtime-secrets.mjs";
+import { createAdminCredentialFingerprint, isAdminSessionEpoch, SESSION_TOKEN_AUDIENCE, SESSION_TOKEN_ISSUER, SESSION_TOKEN_SCHEMA_VERSION } from "@/lib/session-security";
 
 const encoder = new TextEncoder();
+const MODERATOR_USERNAME_PATTERN = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 
 export const ADMIN_COOKIE_NAME = "vicky_admin_session";
 export const ADMIN_USERNAME = "admin";
@@ -13,6 +15,7 @@ export type AuthRole = "admin" | "moderator";
 export type AuthSession = {
   role: AuthRole;
   username: string;
+  adminSessionEpoch?: string;
 };
 
 const defaultSessionSeconds = Number(process.env.ADMIN_SESSION_MAX_AGE_SECONDS ?? "43200");
@@ -25,32 +28,80 @@ export const normalizeUsername = (value: string): string => value.trim().toLower
 
 export const createSessionToken = async (session: AuthSession): Promise<string> => {
   const secret = getJwtSecret();
+  const username = normalizeUsername(session.username);
+  const isValidAdmin = session.role === "admin" && username === ADMIN_USERNAME && isAdminSessionEpoch(session.adminSessionEpoch);
+  const isValidModerator = session.role === "moderator" && username !== ADMIN_USERNAME && MODERATOR_USERNAME_PATTERN.test(username);
+  if (!isValidAdmin && !isValidModerator) {
+    throw new TypeError("Cannot create a token for an invalid session.");
+  }
+
+  const adminCredentialFingerprint = session.role === "admin" ? await createAdminCredentialFingerprint() : undefined;
 
   return new SignJWT({
     role: session.role,
-    username: normalizeUsername(session.username),
+    username,
+    tokenVersion: SESSION_TOKEN_SCHEMA_VERSION,
+    ...(session.role === "admin"
+      ? {
+          adminSessionEpoch: session.adminSessionEpoch,
+          adminCredentialFingerprint,
+        }
+      : {}),
   })
-    .setProtectedHeader({ alg: "HS256" })
+    .setProtectedHeader({ alg: "HS256", typ: "JWT" })
+    .setIssuer(SESSION_TOKEN_ISSUER)
+    .setAudience(SESSION_TOKEN_AUDIENCE)
+    .setSubject(username)
+    .setJti(crypto.randomUUID())
     .setIssuedAt()
     .setExpirationTime(`${ADMIN_SESSION_MAX_AGE_SECONDS}s`)
     .sign(secret);
 };
 
-export const createAdminSessionToken = async (): Promise<string> =>
-  createSessionToken({ role: "admin", username: ADMIN_USERNAME });
-
 export const verifySessionToken = async (token: string): Promise<AuthSession | null> => {
   try {
     const secret = getJwtSecret();
-    const { payload } = await jwtVerify(token, secret);
+    const { payload, protectedHeader } = await jwtVerify(token, secret, {
+      algorithms: ["HS256"],
+      audience: SESSION_TOKEN_AUDIENCE,
+      issuer: SESSION_TOKEN_ISSUER,
+      maxTokenAge: ADMIN_SESSION_MAX_AGE_SECONDS,
+      requiredClaims: ["aud", "exp", "iat", "iss", "jti", "role", "sub", "tokenVersion", "username"],
+      typ: "JWT",
+    });
+    if (protectedHeader.typ !== "JWT" || payload.aud !== SESSION_TOKEN_AUDIENCE || typeof payload.jti !== "string" || !payload.jti || payload.tokenVersion !== SESSION_TOKEN_SCHEMA_VERSION) {
+      return null;
+    }
+
     const role = payload.role === "admin" || payload.role === "moderator" ? payload.role : null;
     if (!role) {
       return null;
     }
 
     const rawUsername = typeof payload.username === "string" ? payload.username : "";
-    const username = normalizeUsername(rawUsername || (role === "admin" ? ADMIN_USERNAME : ""));
-    if (!username) {
+    const username = normalizeUsername(rawUsername);
+    if (!username || username !== rawUsername || payload.sub !== username) {
+      return null;
+    }
+
+    if (role === "admin") {
+      if (username !== ADMIN_USERNAME || !isAdminSessionEpoch(payload.adminSessionEpoch)) {
+        return null;
+      }
+
+      const credentialFingerprint = await createAdminCredentialFingerprint();
+      if (payload.adminCredentialFingerprint !== credentialFingerprint) {
+        return null;
+      }
+
+      return {
+        role,
+        username,
+        adminSessionEpoch: payload.adminSessionEpoch,
+      };
+    }
+
+    if (username === ADMIN_USERNAME || !MODERATOR_USERNAME_PATTERN.test(username) || payload.adminSessionEpoch !== undefined || payload.adminCredentialFingerprint !== undefined) {
       return null;
     }
 
@@ -61,11 +112,6 @@ export const verifySessionToken = async (token: string): Promise<AuthSession | n
   } catch {
     return null;
   }
-};
-
-export const verifyAdminSessionToken = async (token: string): Promise<boolean> => {
-  const session = await verifySessionToken(token);
-  return session?.role === "admin";
 };
 
 export const applySessionCookie = (response: NextResponse, token: string): void => {
@@ -105,19 +151,4 @@ export const getRequestSession = async (request: NextRequest): Promise<AuthSessi
   }
 
   return verifySessionToken(token);
-};
-
-export const isAdminRequest = async (request: NextRequest): Promise<boolean> => {
-  const session = await getRequestSession(request);
-  return session?.role === "admin";
-};
-
-export const requireAdminRequest = async (request: NextRequest): Promise<NextResponse | null> => {
-  const authorized = await isAdminRequest(request);
-
-  if (authorized) {
-    return null;
-  }
-
-  return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 };

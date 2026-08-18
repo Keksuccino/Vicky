@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   translatePageLocalizations: vi.fn(),
 }));
 
-vi.mock("@/lib/auth", () => ({ requireAdminRequest: mocks.requireAdminRequest }));
+vi.mock("@/lib/active-auth", () => ({ requireAdminRequest: mocks.requireAdminRequest }));
 vi.mock("@/lib/github", () => ({ listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationStatusIndex: mocks.loadGitHubLocalizationStatusIndex }));
 vi.mock("@/lib/page-localization", () => ({ translatePageLocalizations: mocks.translatePageLocalizations }));
 vi.mock("@/lib/store", () => ({ getStore: mocks.getStore }));

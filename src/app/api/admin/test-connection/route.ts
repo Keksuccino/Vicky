@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAdminRequest } from "@/lib/auth";
+import { requireAdminRequest } from "@/lib/active-auth";
 import { resolveRuntimeConfig, testGitHubConnection } from "@/lib/github";
 import { errorResponse, parseJsonBody } from "@/lib/http";
 import { getStore } from "@/lib/store";

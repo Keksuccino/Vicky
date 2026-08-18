@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-import { getActiveRequestSession } from "@/lib/moderators";
+import { getActiveRequestSession } from "@/lib/active-auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

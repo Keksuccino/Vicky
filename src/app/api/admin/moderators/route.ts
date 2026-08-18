@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAdminRequest } from "@/lib/auth";
+import { requireAdminRequest } from "@/lib/active-auth";
 import { errorResponse, parseJsonBody } from "@/lib/http";
 import { createModeratorAccount, listModeratorAccounts } from "@/lib/moderators";
 

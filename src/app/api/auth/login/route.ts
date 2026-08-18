@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getAdminSessionSecurityState } from "@/lib/admin-session-security";
 import { applySessionCookie, createSessionToken } from "@/lib/auth";
 import { ADMIN_PASSWORD_BUSY_RETRY_AFTER_SECONDS, AdminPasswordVerificationBusyError } from "@/lib/admin-password";
 import { errorResponse } from "@/lib/http";
@@ -52,7 +53,8 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
     }
 
     await clearFailedLoginAttempts(request);
-    const token = await createSessionToken(session);
+    const tokenSession = session.role === "admin" ? { ...session, adminSessionEpoch: (await getAdminSessionSecurityState()).sessionEpoch } : session;
+    const token = await createSessionToken(tokenSession);
     const response = NextResponse.json({ authenticated: true, role: session.role, username: session.username });
     applySessionCookie(response, token);
 

@@ -4,7 +4,7 @@ import path from "node:path";
 import tls from "node:tls";
 import { NextResponse, type NextRequest } from "next/server";
 
-import { requireAdminRequest } from "@/lib/auth";
+import { requireAdminRequest } from "@/lib/active-auth";
 import { isSslDomainConfigured, normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { errorResponse } from "@/lib/http";
 import { ensurePrivateFile } from "@/lib/runtime-file-security.mjs";

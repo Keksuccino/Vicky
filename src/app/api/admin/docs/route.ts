@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { requireEditorAccountRequest } from "@/lib/active-auth";
 import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadGitHubDoc, resolveRuntimeConfig, saveGitHubDoc } from "@/lib/github";
 import { badRequest, errorResponse, parseJsonBody } from "@/lib/http";
-import { requireEditorAccountRequest } from "@/lib/moderators";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
