@@ -43,7 +43,7 @@ It gives you:
 - Rendered Markdown HTML cache files live in `data/markdown-cache/` by default.
 - GitHub docs snapshot cache files live in `data/docs-cache/` by default.
 - OpenRouter docs translation cache files live in `data/translation-cache/` by default.
-- Optional login rate-limit persistence uses `data/login-rate-limit.json`.
+- Login rate-limit state lives in `data/login-rate-limit.sqlite` by default. A legacy `data/login-rate-limit.json` is migrated once and retained untouched.
 - Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default.
 
 This repo contains the app itself, not your docs content.
@@ -201,6 +201,13 @@ Common optional settings:
 | `WIKI_DOCS_SNAPSHOT_DIR` | Persistent GitHub docs snapshot cache directory | `./data/docs-cache/snapshots` |
 | `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
+| `AUTH_LOGIN_DB_PATH` | Durable multi-process login rate-limit SQLite database | `./data/login-rate-limit.sqlite` |
+| `AUTH_LOGIN_MAX_FAILURES` | Failed logins allowed within the rolling window before blocking | `8` |
+| `AUTH_LOGIN_WINDOW_SECONDS` | Rolling failed-login window | `600` |
+| `AUTH_LOGIN_BLOCK_SECONDS` | Block duration after the failed-login threshold | `10800` |
+| `AUTH_LOGIN_MAX_IDENTITIES` | Maximum durable known-client rate-limit identities before new identities share the unknown bucket | `10000` |
+| `AUTH_LOGIN_DB_BUSY_TIMEOUT_MS` | Maximum SQLite lock wait before the bounded process-local fallback is used | `5000` |
+| `AUTH_LOGIN_STORE_FILE_PATH` | Legacy JSON path read once for non-destructive migration; also supplies the SQLite location when `AUTH_LOGIN_DB_PATH` is unset | `./data/login-rate-limit.json` |
 | `PUBLIC_DOCS_CLIENT_MAX_REQUESTS` | Public page, raw, metadata, and tree reads accepted per client during the docs rate window | `180` |
 | `PUBLIC_DOCS_GLOBAL_MAX_REQUESTS` | Public document reads accepted globally during the docs rate window | `5000` |
 | `PUBLIC_DOCS_RATE_WINDOW_SECONDS` | Public document read rate-limit window | `60` |
@@ -227,6 +234,10 @@ Runtime file and directory overrides must point into a dedicated storage directo
 
 `HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
 Client identity follows one strict policy for login and AI rate limiting, public-docs admission, analytics admission, and visitor identity/event deduplication. `npm run start` normalizes the socket peer and passes it to the app in a private header authenticated by the same random per-process request-context token used for direct origin data. Client-supplied private headers are ignored by plain Next and overwritten by the included server. Current Next.js `NextRequest` objects do not expose a direct `ip` property, so plain `npm run start:next` cannot safely distinguish Next's synthesized XFF value from a client-supplied one and falls back to unknown/global controls.
+
+Failed-login state uses SQLite WAL transactions so app processes on the same host sharing the configured database cannot lose concurrent attempts. The storage volume must provide reliable local-style SQLite file locking; do not place this database on a network filesystem with incomplete locking semantics. Threshold activation, success clearing, and sliding-window updates are serialized; blocked-status checks are read-only and do not refresh timestamps. Known identities and their pending attempts are bounded and stale entries are pruned opportunistically. When the configured identity capacity is full, new addresses conservatively share the explicit `unknown` bucket. A temporary SQLite error retains bounded process-local protection and emits throttled diagnostics rather than disabling the limiter.
+
+On first use, Vicky checks `AUTH_LOGIN_STORE_FILE_PATH` for the former JSON state. Valid entries are canonicalized and imported in one transaction, including merged IPv4-mapped forms; a migration marker prevents cleared attempts from being imported again. The JSON file is never deleted or rewritten. Malformed or oversized legacy state is retained, logged with bounded detail, and activates one temporary global safety block instead of silently discarding possibly active protection. Stop every older JSON-based Vicky process before starting the upgraded version so no legacy writer can add attempts after the one-time migration. If `AUTH_LOGIN_DB_PATH` is unset and a legacy path is configured, the database is placed beside it by replacing a `.json` suffix with `.sqlite` or appending `.sqlite`.
 
 Forwarded client-IP trust requires both `AUTH_TRUST_PROXY_HEADERS=true` and an exact match between the authenticated socket/framework peer and one entry in `AUTH_TRUSTED_PROXY_IPS`. The allowlist accepts comma-separated exact IPv4 or IPv6 addresses only, not hostnames or CIDR ranges; any invalid or empty entry makes the whole allowlist fail closed. IPv4-mapped IPv6 is normalized to IPv4. A trusted ingress must remove client-supplied `x-forwarded-for` and `x-real-ip`, then overwrite either header with one exact client address. Chains and address-plus-port forms are rejected; if both headers are present, both must normalize to the same address. Resolution order is trusted forwarded client, authenticated included-server socket, framework direct IP when a runtime genuinely supplies one, then unknown. Keep the Vicky listener unreachable except through the listed ingress peers; the application allowlist complements, but does not replace, network isolation.
 
@@ -290,7 +301,8 @@ Persist these paths across deployments:
 - `data/docs-cache/`
 - `data/translation-cache/`
 - `data/wiki-analytics.sqlite`, including its `-wal` and `-shm` companions when present
-- `data/login-rate-limit.json`
+- `data/login-rate-limit.sqlite`, including its `-wal` and `-shm` companions when present
+- `data/login-rate-limit.json` when retained as a legacy migration source
 
 # API Overview
 
