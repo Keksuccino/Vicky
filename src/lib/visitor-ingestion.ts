@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { NextRequest } from "next/server";
 
 import { getCachedGitHubDocPage } from "@/lib/github";
-import { ApiError, badRequest, notFound } from "@/lib/http";
+import { ApiError, badRequest, notFound, parseBoundedJsonBody } from "@/lib/http";
 import { normalizeVisitorPageIdentity } from "@/lib/visitors";
 import type { GitHubDocTreeItem, GitHubRuntimeConfig, VisitorPageIdentity } from "@/lib/types";
 
@@ -12,7 +12,6 @@ const MAX_SLUG_LENGTH = 512;
 const MAX_PATH_LENGTH = MAX_SLUG_LENGTH + 1;
 const MAX_TITLE_LENGTH = 256;
 const MAX_SLUG_SEGMENT_LENGTH = 128;
-const JSON_CONTENT_TYPE_PATTERN = /^application\/json(?:\s*;\s*charset\s*=\s*utf-8)?$/i;
 const EVENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/;
 const UNSAFE_PATH_CHARACTER_PATTERN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\?#%<>"`|{}\[\]^]/u;
 const UNSAFE_TITLE_CHARACTER_PATTERN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
@@ -70,78 +69,8 @@ export const assertVisitorIngestionSameSite = (request: NextRequest): void => {
 };
 
 export const parseVisitorIngestionRequest = async (request: NextRequest): Promise<VisitorIngestionPayload> => {
-  const contentType = request.headers.get("content-type")?.trim() ?? "";
-  if (!JSON_CONTENT_TYPE_PATTERN.test(contentType)) {
-    throw new ApiError(415, "Content-Type must be application/json with UTF-8 encoding.");
-  }
-  const contentEncoding = request.headers.get("content-encoding")?.trim().toLowerCase();
-  if (contentEncoding && contentEncoding !== "identity") {
-    throw new ApiError(415, "Compressed analytics request bodies are not supported.");
-  }
-
-  const rawContentLength = request.headers.get("content-length")?.trim();
-  let declaredLength: number | null = null;
-  if (rawContentLength !== undefined) {
-    if (!/^\d+$/.test(rawContentLength)) {
-      throw badRequest("Invalid Content-Length header.");
-    }
-    declaredLength = Number(rawContentLength);
-    if (!Number.isSafeInteger(declaredLength)) {
-      throw badRequest("Invalid Content-Length header.");
-    }
-    if (declaredLength > MAX_BODY_BYTES) {
-      throw new ApiError(413, `Analytics request bodies must not exceed ${MAX_BODY_BYTES} bytes.`);
-    }
-  }
-
-  const chunks: Uint8Array[] = [];
-  let receivedBytes = 0;
-  const reader = request.body?.getReader();
-  if (reader) {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) {
-        break;
-      }
-      receivedBytes += value.byteLength;
-      if (receivedBytes > MAX_BODY_BYTES) {
-        await reader.cancel();
-        throw new ApiError(413, `Analytics request bodies must not exceed ${MAX_BODY_BYTES} bytes.`);
-      }
-      chunks.push(value);
-    }
-  }
-
-  if (declaredLength !== null && declaredLength !== receivedBytes) {
-    throw badRequest("Content-Length does not match the analytics request body.");
-  }
-
-  const bodyBytes = new Uint8Array(receivedBytes);
-  let offset = 0;
-  for (const chunk of chunks) {
-    bodyBytes.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-
-  let text = "";
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bodyBytes);
-  } catch {
-    throw badRequest("Analytics request body must be valid UTF-8.");
-  }
-
-  if (!text.trim()) {
-    throw badRequest("Analytics request body is required.");
-  }
-
-  try {
-    return visitSchema.parse(JSON.parse(text) as unknown);
-  } catch (error: unknown) {
-    if (error instanceof SyntaxError) {
-      throw badRequest("Analytics request body must be valid JSON.");
-    }
-    throw error;
-  }
+  const body = await parseBoundedJsonBody<unknown>(request, { bodyName: "Analytics", maxBytes: MAX_BODY_BYTES });
+  return visitSchema.parse(body);
 };
 
 const sanitizeAuthoritativeTitle = (value: string): string => {

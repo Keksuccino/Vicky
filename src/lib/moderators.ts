@@ -1,11 +1,12 @@
 import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual, type ScryptOptions } from "node:crypto";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { verifyAdminPassword } from "@/lib/admin-password";
+import { AUTH_PASSWORD_MAX_CHARACTERS, AUTH_PASSWORD_MAX_UTF8_BYTES, countUnicodeCharacters, getUtf8ByteLength, isWellFormedUnicode } from "@/lib/auth-credential-policy.mjs";
 import {
   ADMIN_USERNAME,
   getRequestSession,
   normalizeUsername,
-  verifyAdminPassword,
   verifySessionToken,
   type AuthSession,
 } from "@/lib/auth";
@@ -77,6 +78,18 @@ export const validateModeratorUsername = (value: string): string => {
 const validateModeratorPassword = (value: string): string => {
   if (value.length < PASSWORD_MIN_LENGTH) {
     throw badRequest(`Moderator password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
+  }
+
+  if (!isWellFormedUnicode(value)) {
+    throw badRequest("Moderator password must contain well-formed Unicode.");
+  }
+
+  if (countUnicodeCharacters(value) > AUTH_PASSWORD_MAX_CHARACTERS) {
+    throw badRequest(`Moderator password must not exceed ${AUTH_PASSWORD_MAX_CHARACTERS} characters.`);
+  }
+
+  if (getUtf8ByteLength(value) > AUTH_PASSWORD_MAX_UTF8_BYTES) {
+    throw badRequest(`Moderator password must not exceed ${AUTH_PASSWORD_MAX_UTF8_BYTES} UTF-8 bytes.`);
   }
 
   return value;

@@ -1,3 +1,5 @@
+import { AUTH_PASSWORD_MAX_CHARACTERS, AUTH_PASSWORD_MAX_UTF8_BYTES, getUtf8ByteLength, isWellFormedUnicode } from "./auth-credential-policy.mjs";
+
 const AUTOMATED_TEST_SIGNAL_NAME = "VICKY_AUTOMATED_TEST_RUN";
 const AUTOMATED_TEST_SIGNAL_VALUE = "vitest";
 
@@ -6,7 +8,7 @@ export const RUNTIME_SECRET_NAMES = Object.freeze(["AUTH_JWT_SECRET", "ENCRYPTIO
 const SECRET_POLICIES = Object.freeze({
   AUTH_JWT_SECRET: Object.freeze({ minimumLength: 32, minimumDistinctCharacters: 10, minimumEntropyBits: 80 }),
   ENCRYPTION_SECRET: Object.freeze({ minimumLength: 32, minimumDistinctCharacters: 10, minimumEntropyBits: 80 }),
-  ADMIN_PASSWORD: Object.freeze({ minimumLength: 14, minimumDistinctCharacters: 8, minimumEntropyBits: 50 }),
+  ADMIN_PASSWORD: Object.freeze({ minimumLength: 14, minimumDistinctCharacters: 8, minimumEntropyBits: 50, maximumCharacters: AUTH_PASSWORD_MAX_CHARACTERS, maximumUtf8Bytes: AUTH_PASSWORD_MAX_UTF8_BYTES }),
 });
 
 const TEST_FALLBACKS = Object.freeze({
@@ -139,6 +141,18 @@ const validateSecretValue = (secretName, resolved) => {
   const distinctCharacters = new Set(characters).size;
   if (characters.length < policy.minimumLength) {
     issues.push(`${secretName} must contain at least ${policy.minimumLength} characters.`);
+  }
+
+  if (policy.maximumCharacters && characters.length > policy.maximumCharacters) {
+    issues.push(`${secretName} must contain at most ${policy.maximumCharacters} characters.`);
+  }
+
+  if (policy.maximumUtf8Bytes && getUtf8ByteLength(resolved.value) > policy.maximumUtf8Bytes) {
+    issues.push(`${secretName} must not exceed ${policy.maximumUtf8Bytes} UTF-8 bytes.`);
+  }
+
+  if (!isWellFormedUnicode(resolved.value)) {
+    issues.push(`${secretName} must contain well-formed Unicode.`);
   }
 
   const normalizedPlaceholderCandidate = normalizeForPlaceholderCheck(resolved.value);

@@ -21,38 +21,6 @@ export const ADMIN_SESSION_MAX_AGE_SECONDS =
 
 const getJwtSecret = (): Uint8Array => encoder.encode(getRuntimeSecret("AUTH_JWT_SECRET"));
 
-const getAdminPassword = (): string => getRuntimeSecret("ADMIN_PASSWORD");
-
-const constantTimeEqual = (left: Uint8Array, right: Uint8Array): boolean => {
-  const maxLength = Math.max(left.length, right.length);
-
-  if (maxLength === 0) {
-    return true;
-  }
-
-  let mismatch = left.length === right.length ? 0 : 1;
-
-  for (let i = 0; i < maxLength; i += 1) {
-    const leftByte = i < left.length ? left[i] : 0;
-    const rightByte = i < right.length ? right[i] : 0;
-    mismatch |= leftByte ^ rightByte;
-  }
-
-  return mismatch === 0;
-};
-
-const sha256 = async (value: string): Promise<Uint8Array> => {
-  const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
-  return new Uint8Array(digest);
-};
-
-export const verifyAdminPassword = async (candidate: string): Promise<boolean> => {
-  const expectedPassword = getAdminPassword();
-  const [candidateHash, expectedHash] = await Promise.all([sha256(candidate), sha256(expectedPassword)]);
-
-  return constantTimeEqual(candidateHash, expectedHash);
-};
-
 export const normalizeUsername = (value: string): string => value.trim().toLowerCase();
 
 export const createSessionToken = async (session: AuthSession): Promise<string> => {

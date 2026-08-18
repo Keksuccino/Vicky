@@ -1,18 +1,14 @@
-import { z } from "zod";
 import { NextResponse, type NextRequest } from "next/server";
 
 import { applySessionCookie, createSessionToken } from "@/lib/auth";
-import { errorResponse, parseJsonBody } from "@/lib/http";
+import { ADMIN_PASSWORD_BUSY_RETRY_AFTER_SECONDS, AdminPasswordVerificationBusyError } from "@/lib/admin-password";
+import { errorResponse } from "@/lib/http";
+import { parseLoginRequest } from "@/lib/login-input";
 import { clearFailedLoginAttempts, getLoginRateLimitStatus, registerFailedLoginAttempt } from "@/lib/login-rate-limit";
 import { authenticateCredentials } from "@/lib/moderators";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const loginSchema = z.object({
-  username: z.string().min(1, "Username is required."),
-  password: z.string().min(1, "Password is required."),
-});
 
 const blockedLoginResponse = (retryAfterSeconds: number): NextResponse =>
   NextResponse.json(
@@ -28,6 +24,8 @@ const blockedLoginResponse = (retryAfterSeconds: number): NextResponse =>
     },
   );
 
+const passwordVerificationBusyResponse = (): NextResponse => NextResponse.json({ error: "Authentication is temporarily busy. Please try again shortly.", retryAfterSeconds: ADMIN_PASSWORD_BUSY_RETRY_AFTER_SECONDS }, { status: 503, headers: { "Retry-After": String(ADMIN_PASSWORD_BUSY_RETRY_AFTER_SECONDS) } });
+
 export const POST = async (request: NextRequest): Promise<NextResponse> => {
   try {
     const initialRateLimit = await getLoginRateLimitStatus(request);
@@ -35,8 +33,7 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
       return blockedLoginResponse(initialRateLimit.retryAfterSeconds);
     }
 
-    const body = await parseJsonBody<unknown>(request);
-    const parsed = loginSchema.parse(body);
+    const parsed = await parseLoginRequest(request);
 
     const session = await authenticateCredentials(parsed.username, parsed.password);
     if (!session) {
@@ -61,6 +58,10 @@ export const POST = async (request: NextRequest): Promise<NextResponse> => {
 
     return response;
   } catch (error: unknown) {
+    if (error instanceof AdminPasswordVerificationBusyError) {
+      return passwordVerificationBusyResponse();
+    }
+
     return errorResponse(error);
   }
 };

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { AUTH_PASSWORD_MAX_CHARACTERS, AUTH_PASSWORD_MAX_UTF8_BYTES, countUnicodeCharacters, getUtf8ByteLength } from "../auth-credential-policy.mjs";
 import { getRuntimeSecret, RuntimeSecretValidationError, validateRuntimeSecrets } from "../runtime-secrets.mjs";
 
 const STRONG_SECRETS = Object.freeze({
@@ -58,6 +59,20 @@ describe("runtime secret validation", () => {
     expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, AUTH_JWT_SECRET: "short" })).toThrow("AUTH_JWT_SECRET must contain at least 32 characters");
     expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ENCRYPTION_SECRET: "abababababababababababababababab" })).toThrow("ENCRYPTION_SECRET is too predictable");
     expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: "aaaaaaaaaaaaaa" })).toThrow("ADMIN_PASSWORD is too predictable");
+  });
+
+  it("accepts the configured admin password limits and rejects values the login API cannot accept", () => {
+    const characterPrefix = "C3dar! orbit maple 7:";
+    const maximumCharactersPassword = `${characterPrefix}${"x".repeat(AUTH_PASSWORD_MAX_CHARACTERS - countUnicodeCharacters(characterPrefix))}`;
+    const bytePrefix = "C3dar! orbit maple 7:";
+    const remainingBytes = AUTH_PASSWORD_MAX_UTF8_BYTES - getUtf8ByteLength(bytePrefix);
+    const maximumBytesPassword = `${bytePrefix}${"🙂".repeat(Math.floor(remainingBytes / 4))}${"x".repeat(remainingBytes % 4)}`;
+
+    expect(validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: maximumCharactersPassword }).ADMIN_PASSWORD).toBe(maximumCharactersPassword);
+    expect(validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: maximumBytesPassword }).ADMIN_PASSWORD).toBe(maximumBytesPassword);
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${maximumCharactersPassword}x` })).toThrow(`ADMIN_PASSWORD must contain at most ${AUTH_PASSWORD_MAX_CHARACTERS} characters`);
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${maximumBytesPassword}x` })).toThrow(`ADMIN_PASSWORD must not exceed ${AUTH_PASSWORD_MAX_UTF8_BYTES} UTF-8 bytes`);
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${STRONG_SECRETS.ADMIN_PASSWORD}\ud800` })).toThrow("ADMIN_PASSWORD must contain well-formed Unicode");
   });
 
   it("rejects reused values without including them in the error", () => {
