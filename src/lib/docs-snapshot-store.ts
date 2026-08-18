@@ -1,7 +1,8 @@
-import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { readFile, readdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import type { GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig } from "@/lib/types";
 
 const DOCS_SNAPSHOT_ENTRY_VERSION = 1;
@@ -170,10 +171,7 @@ const warnSnapshotFailure = (action: string, config: GitHubRuntimeConfig, error:
 };
 
 const writeJsonFile = async (filePath: string, value: unknown): Promise<void> => {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(tempPath, filePath);
+  await secureAtomicWriteFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
 export const readPersistentGitHubDocsSnapshot = async (
@@ -181,7 +179,9 @@ export const readPersistentGitHubDocsSnapshot = async (
   options?: { allowExpired?: boolean },
 ): Promise<PersistedGitHubDocsSnapshot | null> => {
   try {
-    const raw = await readFile(snapshotFilePath(config), "utf8");
+    const filePath = snapshotFilePath(config);
+    await ensurePrivateFile(filePath);
+    const raw = await readFile(filePath, "utf8");
     const snapshot = normalizeSnapshot(JSON.parse(raw) as unknown, gitHubDocsSnapshotSourceKey(config));
     if (!snapshot) {
       return null;
@@ -224,7 +224,9 @@ export const writePersistentGitHubDocsSnapshot = async (
 
 export const deletePersistentGitHubDocsSnapshot = async (config: GitHubRuntimeConfig): Promise<boolean> => {
   try {
-    await unlink(snapshotFilePath(config));
+    const filePath = snapshotFilePath(config);
+    await ensurePrivateFile(filePath);
+    await unlink(filePath);
     return true;
   } catch (error: unknown) {
     if (isMissingFileError(error)) {
@@ -240,6 +242,7 @@ export const deleteAllPersistentGitHubDocsSnapshots = async (): Promise<number> 
   let deleted = 0;
 
   try {
+    await ensurePrivateDirectory(getDocsSnapshotDir());
     // Snapshot files are mutable runtime cache entries, not build inputs. The directory can also be configured outside the project.
     const fileNames = await readdir(/*turbopackIgnore: true*/ getDocsSnapshotDir());
     for (const fileName of fileNames) {
@@ -248,7 +251,9 @@ export const deleteAllPersistentGitHubDocsSnapshots = async (): Promise<number> 
       }
 
       try {
-        await unlink(path.join(/*turbopackIgnore: true*/ getDocsSnapshotDir(), fileName));
+        const filePath = path.join(/*turbopackIgnore: true*/ getDocsSnapshotDir(), fileName);
+        await ensurePrivateFile(filePath);
+        await unlink(filePath);
         deleted += 1;
       } catch {
         // Best-effort cleanup only.

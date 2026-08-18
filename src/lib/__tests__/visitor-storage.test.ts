@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -68,6 +68,19 @@ describe("visitor SQLite storage", () => {
       { path: "/guide", slug: "guide", title: "Guide", visits: 1, visitors: 1 },
       { path: "/empty", slug: "empty", title: "Empty", visits: 0, visitors: 0 },
     ]);
+
+    if (process.platform !== "win32") {
+      const sqliteFiles = (await readdir(tempDir)).filter((fileName) => fileName.startsWith("analytics.sqlite"));
+      expect(sqliteFiles).toEqual(expect.arrayContaining(["analytics.sqlite", "analytics.sqlite-shm", "analytics.sqlite-wal"]));
+      expect((await stat(tempDir)).mode & 0o777).toBe(0o700);
+      await Promise.all(sqliteFiles.map(async (fileName) => expect((await stat(path.join(tempDir, fileName))).mode & 0o777).toBe(0o600)));
+
+      await chmod(tempDir, 0o755);
+      await Promise.all(sqliteFiles.map((fileName) => chmod(path.join(tempDir, fileName), 0o666)));
+      await getVisitorAnalyticsSalt();
+      expect((await stat(tempDir)).mode & 0o777).toBe(0o700);
+      await Promise.all(sqliteFiles.map(async (fileName) => expect((await stat(path.join(tempDir, fileName))).mode & 0o777).toBe(0o600)));
+    }
   });
 
   it("deduplicates repeated page-view events for the same visitor", async () => {

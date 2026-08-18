@@ -206,6 +206,8 @@ Common optional settings:
 | `AUTH_TRUST_PROXY_HEADERS` | Trust forwarded client IP headers | `false` |
 | `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER` | Trust an ingress-overwritten `x-vicky-client-ip` header for visitor stats and login rate limiting | `false` |
 
+Runtime file and directory overrides must point into a dedicated storage directory. On POSIX hosts Vicky enforces and verifies `0700` directories and `0600` sensitive files; it refuses to change permissions on the filesystem root, OS temp root, user home, or project root. Windows deployments must apply equivalent access restrictions through the storage volume's ACLs because Windows does not implement POSIX mode bits.
+
 `HTTP_PORT` falls back to `PORT` if `HTTP_PORT` is not set.
 `npm run start` sets `x-vicky-client-ip` from the socket address internally; only set `VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER=true` yourself when another trusted ingress overwrites that header.
 

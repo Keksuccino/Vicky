@@ -1,5 +1,5 @@
 - [x] **CRIT-01 / 1.1** — Public page requests can trigger AI translations and GitHub commits.
-- [ ] **CRIT-02 / 1.3** — Sensitive runtime files are written without reliably restrictive permissions.
+- [x] **CRIT-02 / 1.3** — Sensitive runtime files are written without reliably restrictive permissions.
 - [ ] **HIGH-01 / 1.2** — Failed localization uploads retry forever and leave translation jobs permanently running.
 - [ ] **HIGH-02 / 1.8** — The public SSL-status endpoint exposes filesystem paths and internal error details.
 - [ ] **HIGH-03 / 1.13** — Public analytics ingestion is unbounded and accepts client-controlled data.

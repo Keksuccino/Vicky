@@ -1,7 +1,8 @@
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { isIP } from "node:net";
 import path from "node:path";
 
+import { ensurePrivateFile, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import type { NextRequest } from "next/server";
 
 type LoginAttemptState = {
@@ -60,6 +61,19 @@ const ENTRY_TTL_MS = Math.max(BLOCK_MS, WINDOW_MS) * 2;
 
 const attemptsByIp = new Map<string, LoginAttemptState>();
 let mutationQueue: Promise<unknown> = Promise.resolve();
+let persistenceWarningActive = false;
+
+const isMissingFileError = (error: unknown): boolean => typeof error === "object" && error !== null && "code" in error && (error as NodeJS.ErrnoException).code === "ENOENT";
+
+const warnPersistenceFailure = (action: string, error: unknown): void => {
+  if (persistenceWarningActive) {
+    return;
+  }
+
+  persistenceWarningActive = true;
+  const message = error instanceof Error ? error.message : String(error);
+  console.warn(`[auth] Failed to ${action} durable login rate-limit state; using the in-memory fallback: ${message}`);
+};
 
 const enqueueMutation = <T>(work: () => Promise<T>): Promise<T> => {
   const result = mutationQueue.then(work, work);
@@ -171,12 +185,16 @@ const toPersistedStore = (source: Map<string, LoginAttemptState>): PersistedLogi
 
 const readAttemptStore = async (): Promise<Map<string, LoginAttemptState>> => {
   try {
+    await ensurePrivateFile(STORE_PATH);
     // The rate-limit store is mutable runtime state and may be configured outside the project; it must not be traced into builds.
     const raw = await readFile(/*turbopackIgnore: true*/ STORE_PATH, "utf8");
     const parsed = parsePersistedStore(JSON.parse(raw) as unknown);
     replaceInMemoryAttempts(parsed);
     return parsed;
-  } catch {
+  } catch (error: unknown) {
+    if (!isMissingFileError(error)) {
+      warnPersistenceFailure("read", error);
+    }
     return cloneAttemptsMap(attemptsByIp);
   }
 };
@@ -185,11 +203,10 @@ const writeAttemptStore = async (source: Map<string, LoginAttemptState>): Promis
   replaceInMemoryAttempts(source);
 
   try {
-    await mkdir(path.dirname(STORE_PATH), { recursive: true });
-    const tempPath = `${STORE_PATH}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
-    await writeFile(tempPath, JSON.stringify(toPersistedStore(source), null, 2), "utf8");
-    await rename(tempPath, STORE_PATH);
-  } catch {
+    await secureAtomicWriteFile(STORE_PATH, JSON.stringify(toPersistedStore(source), null, 2), "utf8");
+    persistenceWarningActive = false;
+  } catch (error: unknown) {
+    warnPersistenceFailure("write", error);
     // Keep in-memory fallback when filesystem persistence is unavailable.
   }
 };

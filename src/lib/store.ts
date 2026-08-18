@@ -1,4 +1,4 @@
-import { mkdir, open, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { readFile, rm, stat } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 
@@ -15,6 +15,7 @@ import { normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeFooterTemplate } from "@/lib/footer";
+import { ensurePrivateFile, openPrivateFileExclusive, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import { normalizeStartPage } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION, normalizeAccentColor, normalizeThemeCustomization } from "@/lib/theme";
 import type {
@@ -300,10 +301,7 @@ const normalizeStore = (value: unknown): DocsStore => {
 };
 
 const writeStoreFile = async (store: DocsStore): Promise<void> => {
-  await mkdir(path.dirname(STORE_PATH), { recursive: true });
-  const tempPath = `${STORE_PATH}.${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.tmp`;
-  await writeFile(tempPath, JSON.stringify(store, null, 2), "utf8");
-  await rename(tempPath, STORE_PATH);
+  await secureAtomicWriteFile(STORE_PATH, JSON.stringify(store, null, 2), "utf8");
 };
 
 const isProcessAlive = (pid: number): boolean => {
@@ -349,11 +347,9 @@ const shouldRemoveExistingLock = async (lockMtimeMs: number): Promise<boolean> =
 };
 
 const acquireStoreLock = async (): Promise<() => Promise<void>> => {
-  await mkdir(path.dirname(STORE_LOCK_PATH), { recursive: true });
-
   for (;;) {
     try {
-      const handle = await open(STORE_LOCK_PATH, "wx");
+      const handle = await openPrivateFileExclusive(STORE_LOCK_PATH);
       const lockContent = `${process.pid}:${Date.now()}:${randomUUID()}`;
       try {
         await handle.writeFile(lockContent, "utf8");
@@ -376,13 +372,17 @@ const acquireStoreLock = async (): Promise<() => Promise<void>> => {
       }
 
       try {
+        await ensurePrivateFile(STORE_LOCK_PATH);
         const lockStat = await stat(STORE_LOCK_PATH);
         if (await shouldRemoveExistingLock(lockStat.mtimeMs)) {
           await rm(STORE_LOCK_PATH, { force: true });
           continue;
         }
-      } catch {
-        continue;
+      } catch (lockError: unknown) {
+        if ((lockError as NodeJS.ErrnoException).code === "ENOENT") {
+          continue;
+        }
+        throw lockError;
       }
 
       await sleep(STORE_LOCK_RETRY_MS);
@@ -402,6 +402,7 @@ const withStoreLock = async <T>(work: () => Promise<T>): Promise<T> => {
 
 const readStoreFile = async (): Promise<unknown> => {
   try {
+    await ensurePrivateFile(STORE_PATH);
     // The settings store contains mutable encrypted runtime data and may live outside the project; it must not be traced into builds.
     const raw = await readFile(/*turbopackIgnore: true*/ STORE_PATH, "utf8");
     return JSON.parse(raw) as unknown;

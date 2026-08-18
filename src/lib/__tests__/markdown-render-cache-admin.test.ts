@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -124,6 +124,15 @@ describe("markdown render cache admin helpers", () => {
 
     const homeClear = await clearMarkdownRenderCache({ config, slug: "home" });
     expect(homeClear).toMatchObject({ clearedEntries: 2, scope: "page", slug: "home" });
+
+    if (process.platform !== "win32") {
+      const pagesDir = path.join(cacheDir, "pages");
+      const remainingPageFiles = await readdir(pagesDir);
+      expect((await stat(cacheDir)).mode & 0o777).toBe(0o700);
+      expect((await stat(pagesDir)).mode & 0o777).toBe(0o700);
+      expect((await stat(path.join(cacheDir, "metadata.json"))).mode & 0o777).toBe(0o600);
+      await Promise.all(remainingPageFiles.map(async (fileName) => expect((await stat(path.join(pagesDir, fileName))).mode & 0o777).toBe(0o600)));
+    }
 
     const afterHomeClear = await createMarkdownRenderCacheStatus({ config, store });
     expect(afterHomeClear.cachedVariants).toBe(1);

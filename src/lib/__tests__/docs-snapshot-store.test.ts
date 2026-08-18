@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { chmod, mkdtemp, readdir, rm, stat } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -56,6 +56,19 @@ describe("docs snapshot store", () => {
       tree: [{ path: page.path, slug: page.slug, name: page.title }],
       pages: [page],
     });
+
+    if (process.platform !== "win32") {
+      const [snapshotFileName] = await readdir(tempDir);
+      const snapshotPath = path.join(tempDir, snapshotFileName);
+      expect((await stat(tempDir)).mode & 0o777).toBe(0o700);
+      expect((await stat(snapshotPath)).mode & 0o777).toBe(0o600);
+
+      await chmod(tempDir, 0o755);
+      await chmod(snapshotPath, 0o644);
+      await readPersistentGitHubDocsSnapshot(config);
+      expect((await stat(tempDir)).mode & 0o777).toBe(0o700);
+      expect((await stat(snapshotPath)).mode & 0o777).toBe(0o600);
+    }
 
     expect(await readPersistentGitHubDocsSnapshot(config)).toMatchObject({
       tree: [{ path: "home.md", slug: "home", name: "Home" }],

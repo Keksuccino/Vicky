@@ -1,8 +1,15 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 
+import {
+  ensurePrivateDirectory,
+  ensurePrivateDirectorySync,
+  ensurePrivateFile,
+  ensurePrivateFileSync,
+  secureAtomicWriteFile,
+} from "@/lib/runtime-file-security.mjs";
 import type { GitHubDocPage, MarkdownHeading } from "@/lib/types";
 
 const TRANSLATION_CACHE_VERSION = 1;
@@ -35,6 +42,16 @@ const hashCacheKey = (key: string): string => createHash("sha256").update(key).d
 
 const cacheFilePath = (kind: TranslationCacheKind, key: string): string =>
   path.join(getTranslationCacheDir(), kind, `${hashCacheKey(key)}.json`);
+
+const ensurePrivateCacheFile = async (filePath: string): Promise<boolean> => {
+  await ensurePrivateDirectory(getTranslationCacheDir());
+  return ensurePrivateFile(filePath);
+};
+
+const ensurePrivateCacheFileSync = (filePath: string): boolean => {
+  ensurePrivateDirectorySync(getTranslationCacheDir());
+  return ensurePrivateFileSync(filePath);
+};
 
 const isMissingFileError = (error: unknown): boolean =>
   typeof error === "object" &&
@@ -175,15 +192,15 @@ const normalizePersistedTitles = (value: unknown, key: string): Map<string, stri
 };
 
 const writeJsonFile = async (filePath: string, value: unknown): Promise<void> => {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(tempPath, filePath);
+  await ensurePrivateDirectory(getTranslationCacheDir());
+  await secureAtomicWriteFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
 export const readPersistentTranslatedPage = async (key: string): Promise<GitHubDocPage | null> => {
   try {
-    const raw = await readFile(cacheFilePath("pages", key), "utf8");
+    const filePath = cacheFilePath("pages", key);
+    await ensurePrivateCacheFile(filePath);
+    const raw = await readFile(filePath, "utf8");
     return normalizePersistedPage(JSON.parse(raw) as unknown, key);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -196,7 +213,9 @@ export const readPersistentTranslatedPage = async (key: string): Promise<GitHubD
 
 export const readPersistentTranslatedPageSync = (key: string): GitHubDocPage | null => {
   try {
-    const raw = readFileSync(cacheFilePath("pages", key), "utf8");
+    const filePath = cacheFilePath("pages", key);
+    ensurePrivateCacheFileSync(filePath);
+    const raw = readFileSync(filePath, "utf8");
     return normalizePersistedPage(JSON.parse(raw) as unknown, key);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -227,7 +246,9 @@ export const writePersistentTranslatedPage = async (key: string, page: GitHubDoc
 
 export const readPersistentTitleTranslations = async (key: string): Promise<Map<string, string> | null> => {
   try {
-    const raw = await readFile(cacheFilePath("titles", key), "utf8");
+    const filePath = cacheFilePath("titles", key);
+    await ensurePrivateCacheFile(filePath);
+    const raw = await readFile(filePath, "utf8");
     return normalizePersistedTitles(JSON.parse(raw) as unknown, key);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -240,7 +261,9 @@ export const readPersistentTitleTranslations = async (key: string): Promise<Map<
 
 export const readPersistentTitleTranslationsSync = (key: string): Map<string, string> | null => {
   try {
-    const raw = readFileSync(cacheFilePath("titles", key), "utf8");
+    const filePath = cacheFilePath("titles", key);
+    ensurePrivateCacheFileSync(filePath);
+    const raw = readFileSync(filePath, "utf8");
     return normalizePersistedTitles(JSON.parse(raw) as unknown, key);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {

@@ -1,9 +1,16 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { mkdir, readFile, readdir, rename, unlink, writeFile } from "node:fs/promises";
+import { readFile, readdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
+import {
+  ensurePrivateDirectory,
+  ensurePrivateDirectorySync,
+  ensurePrivateFile,
+  ensurePrivateFileSync,
+  secureAtomicWriteFile,
+} from "@/lib/runtime-file-security.mjs";
 import type { MarkdownHeading } from "@/lib/types";
 
 const MARKDOWN_RENDER_CACHE_ENTRY_VERSION = 1;
@@ -82,6 +89,16 @@ const cachePagesDir = (): string => path.join(getMarkdownRenderCacheDir(), "page
 const cacheMetadataFilePath = (): string => path.join(getMarkdownRenderCacheDir(), "metadata.json");
 
 const cacheFilePath = (key: string): string => path.join(getMarkdownRenderCacheDir(), "pages", `${hashCacheKey(key)}.json`);
+
+const ensurePrivateCacheFile = async (filePath: string): Promise<boolean> => {
+  await ensurePrivateDirectory(getMarkdownRenderCacheDir());
+  return ensurePrivateFile(filePath);
+};
+
+const ensurePrivateCacheFileSync = (filePath: string): boolean => {
+  ensurePrivateDirectorySync(getMarkdownRenderCacheDir());
+  return ensurePrivateFileSync(filePath);
+};
 
 const isMissingFileError = (error: unknown): boolean =>
   typeof error === "object" &&
@@ -197,10 +214,8 @@ const normalizePersistedRenderedMarkdownMetadata = (
 };
 
 const writeJsonFile = async (filePath: string, value: unknown): Promise<void> => {
-  await mkdir(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.${process.pid}.${Date.now()}.${randomUUID()}.tmp`;
-  await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
-  await rename(tempPath, filePath);
+  await ensurePrivateDirectory(getMarkdownRenderCacheDir());
+  await secureAtomicWriteFile(filePath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
 };
 
 const normalizeRenderedMarkdownCacheMutation = (value: unknown): RenderedMarkdownCacheMutation | null => {
@@ -237,7 +252,9 @@ const normalizeRenderedMarkdownCacheMutation = (value: unknown): RenderedMarkdow
 
 const readRenderedMarkdownCacheMetadata = async (): Promise<PersistedRenderedMarkdownCacheMetadata | null> => {
   try {
-    const raw = await readFile(cacheMetadataFilePath(), "utf8");
+    const filePath = cacheMetadataFilePath();
+    await ensurePrivateCacheFile(filePath);
+    const raw = await readFile(filePath, "utf8");
     const source = asRecord(JSON.parse(raw) as unknown);
     if (
       !source ||
@@ -300,6 +317,8 @@ export const getRenderedMarkdownCacheLastMutation = async (): Promise<RenderedMa
 
 const listPersistentRenderedMarkdownFileNames = async (): Promise<string[]> => {
   try {
+    await ensurePrivateDirectory(getMarkdownRenderCacheDir());
+    await ensurePrivateDirectory(cachePagesDir());
     return (await readdir(cachePagesDir())).filter((fileName) => fileName.endsWith(".json"));
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -316,6 +335,7 @@ const readPersistentRenderedMarkdownMetadataFile = async (
   const filePath = path.join(cachePagesDir(), fileName);
 
   try {
+    await ensurePrivateCacheFile(filePath);
     const raw = await readFile(filePath, "utf8");
     return normalizePersistedRenderedMarkdownMetadata(JSON.parse(raw) as unknown, fileName);
   } catch (error: unknown) {
@@ -329,7 +349,9 @@ const readPersistentRenderedMarkdownMetadataFile = async (
 
 export const readPersistentRenderedMarkdown = async (key: string): Promise<PersistedRenderedMarkdown | null> => {
   try {
-    const raw = await readFile(cacheFilePath(key), "utf8");
+    const filePath = cacheFilePath(key);
+    await ensurePrivateCacheFile(filePath);
+    const raw = await readFile(filePath, "utf8");
     return normalizePersistedRenderedMarkdown(JSON.parse(raw) as unknown, key);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -342,7 +364,9 @@ export const readPersistentRenderedMarkdown = async (key: string): Promise<Persi
 
 export const readPersistentRenderedMarkdownSync = (key: string): PersistedRenderedMarkdown | null => {
   try {
-    const raw = readFileSync(cacheFilePath(key), "utf8");
+    const filePath = cacheFilePath(key);
+    ensurePrivateCacheFileSync(filePath);
+    const raw = readFileSync(filePath, "utf8");
     return normalizePersistedRenderedMarkdown(JSON.parse(raw) as unknown, key);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -357,7 +381,9 @@ export const readPersistentRenderedMarkdownMetadata = async (
   key: string,
 ): Promise<RenderedMarkdownCacheEntryMetadata | null> => {
   try {
-    const raw = await readFile(cacheFilePath(key), "utf8");
+    const filePath = cacheFilePath(key);
+    await ensurePrivateCacheFile(filePath);
+    const raw = await readFile(filePath, "utf8");
     return normalizePersistedRenderedMarkdownMetadata(JSON.parse(raw) as unknown, `${hashCacheKey(key)}.json`);
   } catch (error: unknown) {
     if (!isMissingFileError(error)) {
@@ -412,7 +438,9 @@ export const listPersistentRenderedMarkdownCacheEntries = async (
 
 export const deletePersistentRenderedMarkdown = async (key: string): Promise<boolean> => {
   try {
-    await unlink(cacheFilePath(key));
+    const filePath = cacheFilePath(key);
+    await ensurePrivateCacheFile(filePath);
+    await unlink(filePath);
     return true;
   } catch (error: unknown) {
     if (isMissingFileError(error)) {
@@ -437,7 +465,9 @@ export const deletePersistentRenderedMarkdownWhere = async (
     }
 
     try {
-      await unlink(path.join(cachePagesDir(), fileName));
+      const filePath = path.join(cachePagesDir(), fileName);
+      await ensurePrivateCacheFile(filePath);
+      await unlink(filePath);
       deletedEntries += 1;
     } catch (error: unknown) {
       if (!isMissingFileError(error)) {

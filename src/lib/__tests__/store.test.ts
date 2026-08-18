@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -64,5 +64,23 @@ describe("store reads", () => {
 
     const second = await getStore();
     expect(second.settings.siteTitle).toBe("Cached");
+  });
+
+  it.skipIf(process.platform === "win32")("repairs existing permissions and atomically saves private state", async () => {
+    const storePath = await createStorePath();
+    await writeStore(storePath, "Private");
+    await chmod(path.dirname(storePath), 0o755);
+    await chmod(storePath, 0o644);
+
+    const { getStore, saveStore } = await importStore(storePath);
+    const store = await getStore();
+    expect((await stat(path.dirname(storePath))).mode & 0o777).toBe(0o700);
+    expect((await stat(storePath)).mode & 0o777).toBe(0o600);
+
+    await chmod(path.dirname(storePath), 0o755);
+    await chmod(storePath, 0o666);
+    await saveStore(store);
+    expect((await stat(path.dirname(storePath))).mode & 0o777).toBe(0o700);
+    expect((await stat(storePath)).mode & 0o777).toBe(0o600);
   });
 });

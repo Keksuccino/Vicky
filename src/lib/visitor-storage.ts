@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync } from "node:fs";
 import path from "node:path";
 
 import Database from "better-sqlite3";
 
+import { ensurePrivateDirectorySync, ensurePrivateFileSync } from "@/lib/runtime-file-security.mjs";
 import type {
   VisitorPageIdentity,
   VisitorStatsPageSummary,
@@ -63,7 +63,7 @@ const setGlobalState = (state: AnalyticsDbState): void => {
   globalState[ANALYTICS_DB_STATE_KEY] = state;
 };
 
-export const resetVisitorAnalyticsStorageForTests = (): void => {
+const clearGlobalState = (): void => {
   const globalState = globalThis as typeof globalThis & Record<symbol, AnalyticsDbState | undefined>;
   const existing = globalState[ANALYTICS_DB_STATE_KEY];
   if (existing?.db.open) {
@@ -71,6 +71,8 @@ export const resetVisitorAnalyticsStorageForTests = (): void => {
   }
   delete globalState[ANALYTICS_DB_STATE_KEY];
 };
+
+export const resetVisitorAnalyticsStorageForTests = (): void => clearGlobalState();
 
 const getTableColumns = (db: SqliteDatabase, tableName: AnalyticsTableName): Set<string> =>
   new Set(db.prepare<[], TableInfoRow>(`PRAGMA table_info(${tableName})`).all().map((row) => row.name));
@@ -156,18 +158,46 @@ const initDatabase = (db: SqliteDatabase): void => {
   `);
 };
 
+const ensurePrivateAnalyticsFiles = (dbPath: string): void => {
+  // SQLite creates WAL/SHM files through native code rather than Node's file APIs. The
+  // containing 0700 directory prevents exposure during creation; repairing every known
+  // sidecar immediately after WAL initialization then guarantees their steady-state mode.
+  for (const filePath of [dbPath, `${dbPath}-wal`, `${dbPath}-shm`, `${dbPath}-journal`]) {
+    ensurePrivateFileSync(filePath);
+  }
+};
+
 const getDatabase = (): SqliteDatabase => {
   const dbPath = getAnalyticsDbPath();
   const existing = getGlobalState();
   if (existing?.path === dbPath && existing.db.open) {
-    return existing.db;
+    try {
+      ensurePrivateAnalyticsFiles(dbPath);
+      return existing.db;
+    } catch (error) {
+      // Do not keep a native connection usable after permission verification fails.
+      // Closing it also removes transient WAL/SHM state when SQLite can do so safely.
+      clearGlobalState();
+      throw error;
+    }
   }
 
-  mkdirSync(path.dirname(dbPath), { recursive: true });
-  const db = new Database(dbPath);
-  initDatabase(db);
-  setGlobalState({ db, path: dbPath });
-  return db;
+  ensurePrivateDirectorySync(path.dirname(dbPath));
+  ensurePrivateFileSync(dbPath);
+  let db: SqliteDatabase | null = null;
+
+  try {
+    db = new Database(dbPath);
+    initDatabase(db);
+    ensurePrivateAnalyticsFiles(dbPath);
+    setGlobalState({ db, path: dbPath });
+    return db;
+  } catch (error) {
+    if (db?.open) {
+      db.close();
+    }
+    throw error;
+  }
 };
 
 const formatDayKey = (date: Date): string => date.toISOString().slice(0, 10);

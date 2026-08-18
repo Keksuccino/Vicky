@@ -2,7 +2,7 @@ import http from "node:http";
 import https from "node:https";
 import { X509Certificate } from "node:crypto";
 import { watch } from "node:fs";
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 
@@ -10,6 +10,7 @@ import * as acme from "acme-client";
 import next from "next";
 
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
+import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
 
 const ACME_CHALLENGE_PREFIX = "/.well-known/acme-challenge/";
 const DEFAULT_STORE_PATH = path.join(process.cwd(), "data", "wiki-store.json");
@@ -32,7 +33,6 @@ const SSL_STATUS_BEARER_TOKEN = String(process.env.SSL_STATUS_BEARER_TOKEN ?? ""
 const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_STORAGE_DIR, "runtime-ssl-status.json");
 const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const DIRECTORY_PERMISSION_MODE = 0o700;
 const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
 
 process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER = "true";
@@ -225,32 +225,12 @@ function buildRuntimeStatusSnapshot() {
   };
 }
 
-async function ensureSecureDirectory(directoryPath) {
-  await mkdir(directoryPath, { recursive: true, mode: DIRECTORY_PERMISSION_MODE });
-
-  try {
-    await chmod(directoryPath, DIRECTORY_PERMISSION_MODE);
-  } catch (error) {
-    if (error && typeof error === "object") {
-      const code = error.code;
-      if (code === "ENOSYS" || code === "EINVAL" || code === "EPERM") {
-        return;
-      }
-    }
-    throw error;
-  }
-}
-
 function queuePersistRuntimeStatus() {
   const payload = JSON.stringify(buildRuntimeStatusSnapshot(), null, 2);
 
   statusPersistQueue = statusPersistQueue
     .then(async () => {
-      await ensureSecureDirectory(path.dirname(SSL_STATUS_FILE_PATH));
-      await writeFile(SSL_STATUS_FILE_PATH, payload, {
-        encoding: "utf8",
-        mode: 0o600,
-      });
+      await secureAtomicWriteFile(SSL_STATUS_FILE_PATH, payload, "utf8");
     })
     .catch((error) => {
       warn(`Failed to persist SSL runtime status at ${SSL_STATUS_FILE_PATH}.`, error);
@@ -537,6 +517,7 @@ async function closeServer(server) {
 
 async function readTextFileIfExists(filePath) {
   try {
+    await ensurePrivateFile(filePath);
     return await readFile(filePath, "utf8");
   } catch (error) {
     if (error && typeof error === "object" && error.code === "ENOENT") {
@@ -640,10 +621,9 @@ async function ensureAccountKey(accountKeyPath) {
     return current;
   }
 
-  await ensureSecureDirectory(path.dirname(accountKeyPath));
   const generated = await acme.crypto.createPrivateKey();
   const pem = toPemString(generated);
-  await writeFile(accountKeyPath, pem, { encoding: "utf8", mode: 0o600 });
+  await secureAtomicWriteFile(accountKeyPath, pem, "utf8");
   return pem;
 }
 
@@ -686,9 +666,9 @@ async function issueCertificate(domainState, paths, reason) {
     const keyPem = toPemString(privateKey);
     const certPem = toPemString(certificate);
 
-    await ensureSecureDirectory(paths.folder);
-    await writeFile(paths.privateKey, keyPem, { encoding: "utf8", mode: 0o600 });
-    await writeFile(paths.certificate, certPem, { encoding: "utf8", mode: 0o600 });
+    await ensurePrivateDirectory(paths.folder);
+    await secureAtomicWriteFile(paths.privateKey, keyPem, "utf8");
+    await secureAtomicWriteFile(paths.certificate, certPem, "utf8");
 
     return {
       key: keyPem,
@@ -753,8 +733,8 @@ async function issueCertificateWithBackoff(domainState, paths, reason) {
 
 async function ensureCertificate(domainState) {
   const paths = getCertificatePaths(domainState.customDomain);
-  await ensureSecureDirectory(SSL_STORAGE_DIR);
-  await ensureSecureDirectory(paths.folder);
+  await ensurePrivateDirectory(SSL_STORAGE_DIR);
+  await ensurePrivateDirectory(paths.folder);
 
   const existingKey = await readTextFileIfExists(paths.privateKey);
   const existingCert = await readTextFileIfExists(paths.certificate);
@@ -868,7 +848,7 @@ async function startStoreWatcher() {
   const storeDir = path.dirname(STORE_PATH);
   const storeFile = path.basename(STORE_PATH);
 
-  await mkdir(storeDir, { recursive: true });
+  await ensurePrivateDirectory(storeDir);
 
   storeWatcher = watch(storeDir, (eventType, filename) => {
     const changedFile = typeof filename === "string" ? filename : filename?.toString();
@@ -996,7 +976,7 @@ async function handleRequest(request, response) {
 }
 
 async function start() {
-  await ensureSecureDirectory(SSL_STORAGE_DIR);
+  await ensurePrivateDirectory(SSL_STORAGE_DIR);
   await app.prepare();
 
   httpServer = http.createServer((request, response) => {

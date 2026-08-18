@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { requireAdminRequest } from "@/lib/auth";
 import { isSslDomainConfigured, normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { errorResponse } from "@/lib/http";
+import { ensurePrivateFile } from "@/lib/runtime-file-security.mjs";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -66,6 +67,7 @@ const MISSING_CERTIFICATE: CertificateInspection = {
 
 const readTextFileIfExists = async (filePath: string): Promise<string | null> => {
   try {
+    await ensurePrivateFile(filePath);
     return await readFile(filePath, "utf8");
   } catch (error: unknown) {
     const err = error as NodeJS.ErrnoException;

@@ -1,5 +1,11 @@
+import { mkdtemp, rm, stat } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+
+const tempDirs: string[] = [];
 
 const createRequest = (headers: Record<string, string>, ip?: string) =>
   ({
@@ -7,10 +13,11 @@ const createRequest = (headers: Record<string, string>, ip?: string) =>
     ip,
   }) as unknown as NextRequest;
 
-describe("client IP detection", () => {
-  afterEach(() => {
+describe("login rate limiting", () => {
+  afterEach(async () => {
     vi.unstubAllEnvs();
     vi.resetModules();
+    await Promise.all(tempDirs.splice(0).map((tempDir) => rm(tempDir, { recursive: true, force: true })));
   });
 
   it("uses the internal client IP header only when explicitly trusted", async () => {
@@ -37,5 +44,19 @@ describe("client IP detection", () => {
         }),
       ),
     ).toBe("198.51.100.20");
+  });
+
+  it.skipIf(process.platform === "win32")("persists rate-limit state in a private directory and file", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-login-rate-limit-"));
+    const storePath = path.join(tempDir, "state", "login-rate-limit.json");
+    tempDirs.push(tempDir);
+    vi.stubEnv("AUTH_LOGIN_STORE_FILE_PATH", storePath);
+    vi.resetModules();
+
+    const { registerFailedLoginAttempt } = await import("@/lib/login-rate-limit");
+    await registerFailedLoginAttempt(createRequest({}, "203.0.113.8"));
+
+    expect((await stat(path.dirname(storePath))).mode & 0o777).toBe(0o700);
+    expect((await stat(storePath)).mode & 0o777).toBe(0o600);
   });
 });
