@@ -66,6 +66,7 @@ type TranslationPayload = {
 
 type TranslationCandidate = {
   language: AutoTranslateLanguage;
+  previousStatus: "missing" | "outdated";
   sourcePage: GitHubDocPage;
 };
 
@@ -77,6 +78,7 @@ export type PageLocalizationTranslationEvent =
       totalPages: number;
       currentPages: number;
       requestedPages: number;
+      statuses: PageLocalizationLanguageStatus[];
       targetLanguages: number;
     }
   | {
@@ -132,6 +134,7 @@ export type PageLocalizationTranslationEvent =
       batchSize: number;
       commitSha: string;
       language: AutoTranslateLanguage;
+      previousStatus: "missing" | "outdated";
       sourcePage: PageLocalizationEventSourcePage;
     }
   | {
@@ -483,67 +486,6 @@ export const translatePageToQueuedGitHubLocalization = async ({
   };
 };
 
-export const getPageLocalizationStatuses = async ({
-  config,
-  languages,
-  localizationPath,
-  sourcePages,
-}: {
-  config: GitHubRuntimeConfig;
-  languages: AutoTranslateLanguage[];
-  localizationPath: string;
-  sourcePages: GitHubDocPage[];
-}): Promise<PageLocalizationLanguageStatus[]> => {
-  const totalPages = sourcePages.length;
-
-  return Promise.all(
-    languages.map(async (language): Promise<PageLocalizationLanguageStatus> => {
-      if (isSourceLanguage(language)) {
-        return {
-          languageCode: language.code,
-          languageName: language.name,
-          sourceLanguage: true,
-          currentPages: totalPages,
-          missingPages: 0,
-          outdatedPages: 0,
-          totalPages,
-        };
-      }
-
-      const localizedByPath = await loadGitHubLocalizationStatusIndex({
-        config,
-        language,
-        localizationPath,
-        sourcePages,
-      });
-      let currentPages = 0;
-      let missingPages = 0;
-      let outdatedPages = 0;
-
-      for (const sourcePage of sourcePages) {
-        const localizedPage = localizedByPath.get(sourcePage.path);
-        if (!localizedPage) {
-          missingPages += 1;
-        } else if (isLocalizedPageOutdated(sourcePage, localizedPage)) {
-          outdatedPages += 1;
-        } else {
-          currentPages += 1;
-        }
-      }
-
-      return {
-        languageCode: language.code,
-        languageName: language.name,
-        sourceLanguage: false,
-        currentPages,
-        missingPages,
-        outdatedPages,
-        totalPages,
-      };
-    }),
-  );
-};
-
 export const translatePageLocalizations = async ({
   apiKey,
   config,
@@ -572,10 +514,12 @@ export const translatePageLocalizations = async ({
   sourcePages: GitHubDocPage[];
 }): Promise<PageLocalizationRequestResult> => {
   const candidates: TranslationCandidate[] = [];
+  const statuses: PageLocalizationLanguageStatus[] = [];
   let currentPages = 0;
 
   for (const language of languages) {
     if (isSourceLanguage(language)) {
+      statuses.push({ languageCode: language.code, languageName: language.name, sourceLanguage: true, currentPages: sourcePages.length, missingPages: 0, outdatedPages: 0, totalPages: sourcePages.length });
       continue;
     }
 
@@ -585,23 +529,31 @@ export const translatePageLocalizations = async ({
       localizationPath,
       sourcePages,
     });
+    let languageCurrentPages = 0;
+    let missingPages = 0;
+    let outdatedPages = 0;
 
     for (const sourcePage of sourcePages) {
       const localizedPage = localizedByPath.get(sourcePage.path);
 
       if (!localizedPage) {
+        missingPages += 1;
         if (mode === "missing-and-outdated") {
-          candidates.push({ language, sourcePage });
+          candidates.push({ language, previousStatus: "missing", sourcePage });
         }
         continue;
       }
 
       if (isLocalizedPageOutdated(sourcePage, localizedPage)) {
-        candidates.push({ language, sourcePage });
+        outdatedPages += 1;
+        candidates.push({ language, previousStatus: "outdated", sourcePage });
       } else {
+        languageCurrentPages += 1;
         currentPages += 1;
       }
     }
+
+    statuses.push({ languageCode: language.code, languageName: language.name, sourceLanguage: false, currentPages: languageCurrentPages, missingPages, outdatedPages, totalPages: sourcePages.length });
   }
 
   onEvent?.({
@@ -609,6 +561,7 @@ export const translatePageLocalizations = async ({
     totalPages: sourcePages.length * Math.max(0, languages.filter((language) => !isSourceLanguage(language)).length),
     currentPages,
     requestedPages: candidates.length,
+    statuses,
     targetLanguages: languages.filter((language) => !isSourceLanguage(language)).length,
   });
 
@@ -618,7 +571,7 @@ export const translatePageLocalizations = async ({
   });
 
   const toUploadEvent = (
-    context: { language: AutoTranslateLanguage; sourcePage: PageLocalizationEventSourcePage },
+    context: { language: AutoTranslateLanguage; previousStatus: "missing" | "outdated"; sourcePage: PageLocalizationEventSourcePage },
     event: GitHubLocalizationUploadEvent,
   ): PageLocalizationTranslationEvent => {
     if (event.type === "queued") {
@@ -649,6 +602,7 @@ export const translatePageLocalizations = async ({
         batchSize: event.batchSize,
         commitSha: event.commitSha,
         language: context.language,
+        previousStatus: context.previousStatus,
         sourcePage: context.sourcePage,
       };
     }
@@ -682,6 +636,7 @@ export const translatePageLocalizations = async ({
     const eventSourcePage = toEventSourcePage(candidate.sourcePage);
     const uploadEventContext = {
       language: candidate.language,
+      previousStatus: candidate.previousStatus,
       sourcePage: eventSourcePage,
     };
 

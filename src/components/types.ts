@@ -187,6 +187,7 @@ export type AdminTranslationJobSnapshot = {
 export type AdminTranslationRuntimeStatus = {
   statuses: AdminLanguageTranslationCacheStatus[];
   job: AdminTranslationJobSnapshot | null;
+  jobState: "none" | "current" | "unknown";
   updatedAt: string;
 };
 

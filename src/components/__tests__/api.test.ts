@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { saveAdminSettings } from "@/components/api";
+import { fetchAdminLanguageTranslationStatus, saveAdminSettings } from "@/components/api";
 import type { AdminSettings } from "@/components/types";
 
 const createSettings = (overrides: Partial<AdminSettings> = {}): AdminSettings => ({
@@ -83,5 +83,16 @@ describe("admin API helpers", () => {
 
     expect(body.github.token).toBe("ghp_new");
     expect(body.openRouter.apiKey).toBe("or_new");
+  });
+
+  it("scopes translation status polls to the tracked local job ID", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ statuses: [], job: null, jobState: "unknown", updatedAt: "2026-08-18T00:00:00.000Z" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = await fetchAdminLanguageTranslationStatus("translation-123");
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+
+    expect(body).toEqual({ jobId: "translation-123" });
+    expect(result.jobState).toBe("unknown");
   });
 });

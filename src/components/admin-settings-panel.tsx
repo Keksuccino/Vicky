@@ -41,6 +41,7 @@ import { ColorPickerField } from "@/components/color-picker-field";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
+import { startTranslationStatusPolling } from "@/components/translation-status-polling";
 import {
   AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
@@ -1579,6 +1580,7 @@ export function AdminSettingsPanel() {
   const lastSavedSnapshotRef = useRef<string | null>(null);
   const translationCacheStatusRequestRef = useRef(0);
   const translationCacheStatusInFlightRef = useRef(false);
+  const translationJobRef = useRef<AdminTranslationJobSnapshot | null>(null);
   const translationLogRef = useRef<HTMLDivElement | null>(null);
   const lastTranslationJobStatusRef = useRef<AdminTranslationJobSnapshot["status"] | null>(null);
   const markdownCacheStatusRequestRef = useRef(0);
@@ -1611,6 +1613,11 @@ export function AdminSettingsPanel() {
   );
   const activeTranslationMode = translationJob?.status === "running" ? translationJob.mode : translationBulkAction;
   const translationLogEntries = translationJob?.logs ?? [];
+
+  const trackTranslationJob = useCallback((job: AdminTranslationJobSnapshot | null): void => {
+    translationJobRef.current = job;
+    setTranslationJob(job);
+  }, []);
 
   const refreshSslStatus = useCallback(async () => {
     setSslStatusLoading(true);
@@ -1941,19 +1948,27 @@ export function AdminSettingsPanel() {
     setTranslationCacheStatusError(null);
 
     try {
-      const draft = latestSettingsRef.current;
-      const runtimeStatus = await fetchAdminLanguageTranslationStatus(
-        draft.autoTranslateLanguages,
-        draft.autoTranslateOpenRouterModel,
-        draft.autoTranslateLocalizationPath,
-      );
+      const requestedJobId = translationJobRef.current?.id;
+      const runtimeStatus = await fetchAdminLanguageTranslationStatus(requestedJobId);
 
       if (translationCacheStatusRequestRef.current !== requestId) {
         return;
       }
 
-      setTranslationCacheStatuses(createTranslationCacheStatusMap(runtimeStatus.statuses));
-      setTranslationJob(runtimeStatus.job);
+      const currentSettings = latestSettingsRef.current;
+      const currentLanguageCodes = new Set(currentSettings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code)));
+      const statusesMatchCurrentPath = runtimeStatus.job && normalizeLocalizationPath(runtimeStatus.job.localizationPath) === normalizeLocalizationPath(currentSettings.autoTranslateLocalizationPath);
+      const applicableStatuses = statusesMatchCurrentPath ? runtimeStatus.statuses.filter((status) => currentLanguageCodes.has(translationCacheStatusKey(status.languageCode))) : [];
+      if (applicableStatuses.length > 0) {
+        setTranslationCacheStatuses((current) => ({ ...current, ...createTranslationCacheStatusMap(applicableStatuses) }));
+      }
+
+      if (runtimeStatus.jobState === "unknown") {
+        trackTranslationJob(null);
+        setTranslationRequestStatus({ tone: "warning", message: "Translation job status is no longer available. The server may have restarted or replaced its in-process job snapshot." });
+      } else {
+        trackTranslationJob(runtimeStatus.job);
+      }
     } catch (error) {
       if (translationCacheStatusRequestRef.current === requestId) {
         setTranslationCacheStatusError(formatApiError(error));
@@ -1965,7 +1980,7 @@ export function AdminSettingsPanel() {
         setTranslationCacheStatusLoading(false);
       }
     }
-  }, []);
+  }, [trackTranslationJob]);
 
   const refreshMarkdownCacheStatus = useCallback(async () => {
     const requestId = markdownCacheStatusRequestRef.current + 1;
@@ -1990,9 +2005,8 @@ export function AdminSettingsPanel() {
 
     if (previousStatus === "running" && nextStatus && nextStatus !== "running") {
       void refreshMarkdownCacheStatus();
-      void refreshTranslationCacheStatuses();
     }
-  }, [refreshMarkdownCacheStatus, refreshTranslationCacheStatuses, translationJob?.status]);
+  }, [refreshMarkdownCacheStatus, translationJob?.status]);
 
   useEffect(() => {
     const logElement = translationLogRef.current;
@@ -2164,7 +2178,7 @@ export function AdminSettingsPanel() {
           languages: [{ name, code, icon, enabled: language.enabled !== false }],
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
-        setTranslationJob(job);
+        trackTranslationJob(job);
         lastTranslationJobStatusRef.current = job.status;
         void refreshTranslationCacheStatuses();
       } catch (error) {
@@ -2180,7 +2194,7 @@ export function AdminSettingsPanel() {
         });
       }
     },
-    [persistLatestSettings, refreshTranslationCacheStatuses, settings.autoTranslateLocalizationPath],
+    [persistLatestSettings, refreshTranslationCacheStatuses, settings.autoTranslateLocalizationPath, trackTranslationJob],
   );
 
   const requestBulkTranslations = useCallback(
@@ -2211,7 +2225,7 @@ export function AdminSettingsPanel() {
           languages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
-        setTranslationJob(job);
+        trackTranslationJob(job);
         lastTranslationJobStatusRef.current = job.status;
         void refreshTranslationCacheStatuses();
       } catch (error) {
@@ -2228,6 +2242,7 @@ export function AdminSettingsPanel() {
       refreshTranslationCacheStatuses,
       settings.autoTranslateLanguages,
       settings.autoTranslateLocalizationPath,
+      trackTranslationJob,
     ],
   );
 
@@ -2240,24 +2255,33 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    const refreshIfVisible = () => {
-      if (document.visibilityState === "hidden") {
+    setTranslationCacheStatuses({});
+    let requested = false;
+    const refreshOnceVisible = () => {
+      if (requested || document.visibilityState === "hidden") {
         return;
       }
 
+      requested = true;
       void refreshTranslationCacheStatuses();
     };
 
-    const timeoutId = window.setTimeout(refreshIfVisible, TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS);
-    const intervalId = window.setInterval(refreshIfVisible, TRANSLATION_CACHE_STATUS_POLL_MS);
-    document.addEventListener("visibilitychange", refreshIfVisible);
+    const timeoutId = window.setTimeout(refreshOnceVisible, TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS);
+    document.addEventListener("visibilitychange", refreshOnceVisible);
 
     return () => {
       window.clearTimeout(timeoutId);
-      window.clearInterval(intervalId);
-      document.removeEventListener("visibilitychange", refreshIfVisible);
+      document.removeEventListener("visibilitychange", refreshOnceVisible);
     };
   }, [loadError, loading, refreshTranslationCacheStatuses, translationCacheStatusSignature]);
+
+  useEffect(() => {
+    if (loading || loadError || translationJob?.status !== "running") {
+      return;
+    }
+
+    return startTranslationStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_CACHE_STATUS_POLL_MS, isJobRunning: () => translationJobRef.current?.status === "running", onPoll: refreshTranslationCacheStatuses, windowTarget: window });
+  }, [loadError, loading, refreshTranslationCacheStatuses, translationJob?.id, translationJob?.status]);
 
   useEffect(() => {
     if (loading || loadError || !autoSaveReadyRef.current) {

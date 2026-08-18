@@ -6,6 +6,7 @@ import {
 import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
 import {
   translatePageLocalizations,
+  type PageLocalizationLanguageStatus,
   type PageLocalizationRequestMode,
   type PageLocalizationRequestResult,
   type PageLocalizationTranslationEvent,
@@ -42,8 +43,14 @@ export type PageLocalizationJobSnapshot = {
   localizationPath: string;
   model: string;
   result: PageLocalizationRequestResult;
+  statuses: PageLocalizationLanguageStatus[];
   error: string | null;
   logs: PageLocalizationJobLogEntry[];
+};
+
+export type PageLocalizationJobLookup = {
+  state: "none" | "current" | "unknown";
+  job: PageLocalizationJobSnapshot | null;
 };
 
 type PageLocalizationJob = PageLocalizationJobSnapshot & {
@@ -69,7 +76,8 @@ type StartPageLocalizationJobInput = {
 };
 
 const PAGE_LOCALIZATION_JOB_STATE_KEY = Symbol.for("vicky.pageLocalization.jobState");
-const MAX_JOB_LOG_ENTRIES = 2_000;
+const MAX_JOB_LOG_ENTRIES = 500;
+const MAX_JOB_STATUS_LOG_ENTRIES = 200;
 
 const emptyResult = (): PageLocalizationRequestResult => ({
   totalPages: 0,
@@ -120,7 +128,7 @@ const addJobLog = (
   }
 };
 
-const cloneJob = (job: PageLocalizationJob): PageLocalizationJobSnapshot => ({
+const cloneJob = (job: PageLocalizationJob, logLimit = MAX_JOB_LOG_ENTRIES): PageLocalizationJobSnapshot => ({
   id: job.id,
   status: job.status,
   phase: job.phase,
@@ -135,8 +143,9 @@ const cloneJob = (job: PageLocalizationJob): PageLocalizationJobSnapshot => ({
     ...job.result,
     failures: job.result.failures.map((failure) => ({ ...failure })),
   },
+  statuses: job.statuses.map((status) => ({ ...status })),
   error: job.error,
-  logs: job.logs.map((entry) => ({ ...entry })),
+  logs: job.logs.slice(-Math.max(1, logLimit)).map((entry) => ({ ...entry })),
 });
 
 const createJob = (input: StartPageLocalizationJobInput): PageLocalizationJob => {
@@ -156,6 +165,7 @@ const createJob = (input: StartPageLocalizationJobInput): PageLocalizationJob =>
     localizationPath: input.localizationPath,
     model: input.model,
     result: emptyResult(),
+    statuses: [],
     error: null,
     logs: [],
     promise: null,
@@ -182,6 +192,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
       cachedPages: event.currentPages,
       requestedPages: event.requestedPages,
     };
+    job.statuses = event.statuses.map((status) => ({ ...status }));
     addJobLog(
       job,
       "info",
@@ -265,6 +276,15 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
       ...job.result,
       uploadedPages: job.result.uploadedPages + 1,
     };
+    const languageStatus = job.statuses.find((status) => status.languageCode.toLowerCase() === event.language.code.toLowerCase());
+    if (languageStatus && !languageStatus.sourceLanguage) {
+      languageStatus.currentPages += 1;
+      if (event.previousStatus === "missing") {
+        languageStatus.missingPages = Math.max(0, languageStatus.missingPages - 1);
+      } else {
+        languageStatus.outdatedPages = Math.max(0, languageStatus.outdatedPages - 1);
+      }
+    }
     addJobLog(job, "success", `Uploaded ${page} to GitHub.`, {
       ...pageContext,
       details: `Commit ${event.commitSha}. Upload completed on attempt ${event.attempt}. Batch size: ${event.batchSize}.`,
@@ -409,4 +429,22 @@ export const startPageLocalizationJob = (input: StartPageLocalizationJobInput): 
 export const getLatestPageLocalizationJob = (): PageLocalizationJobSnapshot | null => {
   const job = getPageLocalizationJobState().latestJob;
   return job ? cloneJob(job) : null;
+};
+
+/**
+ * Returns only the bounded in-process job snapshot. This lookup must remain free of repository,
+ * provider, and filesystem refreshes because the admin client calls it while tracking active work.
+ */
+export const getPageLocalizationJobStatus = (jobId?: string): PageLocalizationJobLookup => {
+  const job = getPageLocalizationJobState().latestJob;
+
+  if (!job) {
+    return { state: jobId ? "unknown" : "none", job: null };
+  }
+
+  if (jobId && job.id !== jobId) {
+    return { state: "unknown", job: null };
+  }
+
+  return { state: "current", job: cloneJob(job, MAX_JOB_STATUS_LOG_ENTRIES) };
 };

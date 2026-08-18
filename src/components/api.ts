@@ -875,10 +875,15 @@ function normalizeAdminTranslationJob(source: unknown): AdminTranslationJobSnaps
 }
 
 function normalizeAdminTranslationRuntimeStatus(source: unknown): AdminTranslationRuntimeStatus {
+  const payload = asRecord(source);
+  const job = normalizeAdminTranslationJob(payload.job);
+  const jobState = asString(payload.jobState).trim();
+
   return {
     statuses: normalizeAdminLanguageTranslationCacheStatuses(source),
-    job: normalizeAdminTranslationJob(asRecord(source).job),
-    updatedAt: asString(asRecord(source).updatedAt).trim() || new Date().toISOString(),
+    job,
+    jobState: jobState === "unknown" || jobState === "none" ? jobState : job ? "current" : "none",
+    updatedAt: asString(payload.updatedAt).trim() || new Date().toISOString(),
   };
 }
 
@@ -1480,25 +1485,17 @@ export async function requestAdminLanguageTranslations(
   return job;
 }
 
-export async function fetchAdminLanguageTranslationStatus(
-  languages: AutoTranslateLanguage[],
-  model: string,
-  localizationPath?: string,
-): Promise<AdminTranslationRuntimeStatus> {
+export async function fetchAdminLanguageTranslationStatus(jobId?: string): Promise<AdminTranslationRuntimeStatus> {
   const response = await requestJson<unknown>("/api/admin/translations/status", {
     method: "POST",
-    body: JSON.stringify({ languages, model, localizationPath }),
+    body: JSON.stringify(jobId ? { jobId } : {}),
   });
 
   return normalizeAdminTranslationRuntimeStatus(response);
 }
 
-export async function fetchAdminLanguageTranslationCacheStatuses(
-  languages: AutoTranslateLanguage[],
-  model: string,
-  localizationPath?: string,
-): Promise<AdminLanguageTranslationCacheStatus[]> {
-  const response = await fetchAdminLanguageTranslationStatus(languages, model, localizationPath);
+export async function fetchAdminLanguageTranslationCacheStatuses(): Promise<AdminLanguageTranslationCacheStatus[]> {
+  const response = await fetchAdminLanguageTranslationStatus();
   return response.statuses;
 }
 

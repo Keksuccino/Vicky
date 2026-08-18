@@ -144,6 +144,25 @@ describe("page localization translations", () => {
       attempt: 3,
       type: "page-success",
     });
+    expect(events.find((event) => event.type === "prepared")).toMatchObject({
+      statuses: [{ languageCode: "de", currentPages: 0, missingPages: 1, outdatedPages: 0, totalPages: 1 }],
+      type: "prepared",
+    });
+  });
+
+  it("tags successful upload progress with the status it replaced", async () => {
+    const events: PageLocalizationTranslationEvent[] = [];
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(translatedPayload);
+    mocks.enqueueGitHubLocalizationUpload.mockImplementation((input: { onEvent?: (event: { type: "queued"; flushAt: string; queueSize: number } | { type: "upload-success"; attempt: number; batchSize: number; commitSha: string }) => void }) => {
+      const flushAt = "2026-05-04T15:42:03.000Z";
+      input.onEvent?.({ type: "queued", flushAt, queueSize: 1 });
+      input.onEvent?.({ type: "upload-success", attempt: 1, batchSize: 1, commitSha: "commit-sha" });
+      return { flushAt, upload: Promise.resolve() };
+    });
+
+    await translatePageLocalizations({ apiKey: "openrouter-key", config, languages: [language], localizationPath: "localizations", mode: "missing-and-outdated", model: "openai/gpt-5.4-mini", onEvent: (event) => events.push(event), origin: "https://docs.example.com", queueUploads: true, siteTitle: "Vicky Docs", sourcePages: [sourcePage] });
+
+    expect(events.find((event) => event.type === "upload-success")).toMatchObject({ type: "upload-success", previousStatus: "missing" });
   });
 
   it("skips a page after ten retries and keeps the batch result usable", async () => {
