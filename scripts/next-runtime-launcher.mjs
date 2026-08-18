@@ -11,8 +11,9 @@ export async function launchOwnedNextRuntime(command, args, environment = proces
   let child;
 
   try {
-    // The bootstrap waits for the atomic PID handoff before importing Next. Keep this
-    // gate intact: it closes the parent-SIGKILL window described in runtime-topology.mjs.
+    // The bootstrap waits for the exclusive child-assignment record before importing
+    // Next. Keep this gate intact: it closes the parent-SIGKILL window described in
+    // runtime-topology.mjs without ever replacing the immutable owner record.
     child = spawn(process.execPath, [childBootstrap, command, ...args], { stdio: "inherit", env: environment });
   } catch (error) {
     await lease.release();
