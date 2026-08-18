@@ -1394,7 +1394,11 @@ const getTranslationJobStatusLabel = (job: AdminTranslationJobSnapshot | null): 
   }
 
   if (job.status === "running") {
-    return "Running";
+    if (job.phase === "queued") {
+      return "Queued";
+    }
+
+    return job.phase === "uploading" ? "Uploading" : "Translating";
   }
 
   if (job.status === "completed") {
@@ -3919,6 +3923,7 @@ export function AdminSettingsPanel() {
                       <span>
                         {translationJob.result.translatedPages}/{translationJob.result.requestedPages} translated
                       </span>
+                      <span>{translationJob.result.uploadedPages} uploaded</span>
                       <span>{translationJob.result.cachedPages} current</span>
                       <span>{translationJob.result.failedPages} failed</span>
                     </div>

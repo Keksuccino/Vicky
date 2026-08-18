@@ -295,6 +295,7 @@ describe("AdminSettingsPanel", () => {
     requestAdminLanguageTranslationsMock.mockResolvedValue({
       id: "translation-test",
       status: "running",
+      phase: "translating",
       mode: "missing-and-outdated",
       createdAt: "2026-03-10T12:00:00.000Z",
       startedAt: "2026-03-10T12:00:00.000Z",
@@ -307,6 +308,9 @@ describe("AdminSettingsPanel", () => {
         cachedPages: 0,
         requestedPages: 1,
         translatedPages: 0,
+        uploadedPages: 0,
+        translationFailedPages: 0,
+        uploadFailedPages: 0,
         failedPages: 0,
         failures: [],
       },

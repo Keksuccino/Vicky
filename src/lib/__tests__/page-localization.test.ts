@@ -137,6 +137,7 @@ describe("page localization translations", () => {
 
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(3);
     expect(result.translatedPages).toBe(1);
+    expect(result.uploadedPages).toBe(1);
     expect(result.failedPages).toBe(0);
     expect(events.filter((event) => event.type === "page-retry")).toHaveLength(2);
     expect(events.find((event) => event.type === "page-success")).toMatchObject({
@@ -153,6 +154,7 @@ describe("page localization translations", () => {
 
     expect(mocks.requestOpenRouterChatCompletion).toHaveBeenCalledTimes(11);
     expect(result.translatedPages).toBe(0);
+    expect(result.translationFailedPages).toBe(1);
     expect(result.failedPages).toBe(1);
     expect(result.failures[0]?.error).toContain("Error: Provider rejected the request");
     expect(events.find((event) => event.type === "page-failed")).toMatchObject({
@@ -200,6 +202,47 @@ describe("page localization translations", () => {
     upload.resolve();
     await expect(run).resolves.toMatchObject({
       translatedPages: 1,
+      uploadedPages: 1,
     });
   });
+
+  it("reports a rejected queued upload as an upload failure without rejecting the whole job", async () => {
+    const events: PageLocalizationTranslationEvent[] = [];
+    const upload = createDeferred<void>();
+    mocks.requestOpenRouterChatCompletion.mockResolvedValueOnce(translatedPayload);
+    mocks.enqueueGitHubLocalizationUpload.mockImplementation(
+      (input: { onEvent?: (event: { type: "queued"; flushAt: string; queueSize: number }) => void }) => {
+        const flushAt = "2026-05-04T15:42:03.000Z";
+        input.onEvent?.({ type: "queued", flushAt, queueSize: 1 });
+        return { flushAt, upload: upload.promise };
+      },
+    );
+
+    const run = translatePageLocalizations({
+      apiKey: "openrouter-key",
+      config,
+      languages: [language],
+      localizationPath: "localizations",
+      mode: "missing-and-outdated",
+      model: "openai/gpt-5.4-mini",
+      onEvent: (event) => events.push(event),
+      origin: "https://docs.example.com",
+      queueUploads: true,
+      siteTitle: "Vicky Docs",
+      sourcePages: [sourcePage],
+    });
+
+    await vi.waitFor(() => expect(events.some((event) => event.type === "uploads-waiting")).toBe(true));
+    upload.reject(new Error("GitHub rejected the commit"));
+
+    await expect(run).resolves.toMatchObject({
+      translatedPages: 1,
+      uploadedPages: 0,
+      failedPages: 1,
+      uploadFailedPages: 1,
+      translationFailedPages: 0,
+      failures: [{ languageCode: "de", path: "home.md", slug: "home", stage: "upload" }],
+    });
+  });
+
 });

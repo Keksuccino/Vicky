@@ -16,6 +16,7 @@ import type {
 } from "@/lib/types";
 
 export type PageLocalizationJobStatus = "running" | "completed" | "completed_with_failures" | "failed";
+export type PageLocalizationJobPhase = "queued" | "translating" | "uploading" | "finished";
 export type PageLocalizationJobLogLevel = "info" | "success" | "warning" | "error";
 
 export type PageLocalizationJobLogEntry = {
@@ -32,6 +33,7 @@ export type PageLocalizationJobLogEntry = {
 export type PageLocalizationJobSnapshot = {
   id: string;
   status: PageLocalizationJobStatus;
+  phase: PageLocalizationJobPhase;
   mode: PageLocalizationRequestMode;
   createdAt: string;
   startedAt: string | null;
@@ -74,6 +76,9 @@ const emptyResult = (): PageLocalizationRequestResult => ({
   cachedPages: 0,
   requestedPages: 0,
   translatedPages: 0,
+  uploadedPages: 0,
+  translationFailedPages: 0,
+  uploadFailedPages: 0,
   failedPages: 0,
   failures: [],
 });
@@ -118,6 +123,7 @@ const addJobLog = (
 const cloneJob = (job: PageLocalizationJob): PageLocalizationJobSnapshot => ({
   id: job.id,
   status: job.status,
+  phase: job.phase,
   mode: job.mode,
   createdAt: job.createdAt,
   startedAt: job.startedAt,
@@ -138,6 +144,7 @@ const createJob = (input: StartPageLocalizationJobInput): PageLocalizationJob =>
   const job: PageLocalizationJob = {
     id: `translation-${Date.now()}-${state.nextJobId}`,
     status: "running",
+    phase: "queued",
     mode: input.mode,
     createdAt: new Date().toISOString(),
     startedAt: null,
@@ -187,6 +194,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
   }
 
   if (event.type === "uploads-waiting") {
+    job.phase = "uploading";
     addJobLog(
       job,
       "warning",
@@ -247,15 +255,19 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
   if (event.type === "upload-start") {
     addJobLog(job, "info", `Uploading ${page} to GitHub.`, {
       ...pageContext,
-      details: `Batch size: ${event.batchSize} localization${event.batchSize === 1 ? "" : "s"}.`,
+      details: `Attempt ${event.attempt} of ${event.maxAttempts}. Batch size: ${event.batchSize} localization${event.batchSize === 1 ? "" : "s"}.`,
     });
     return;
   }
 
   if (event.type === "upload-success") {
+    job.result = {
+      ...job.result,
+      uploadedPages: job.result.uploadedPages + 1,
+    };
     addJobLog(job, "success", `Uploaded ${page} to GitHub.`, {
       ...pageContext,
-      details: `Commit ${event.commitSha}. Batch size: ${event.batchSize}.`,
+      details: `Commit ${event.commitSha}. Upload completed on attempt ${event.attempt}. Batch size: ${event.batchSize}.`,
     });
     return;
   }
@@ -263,15 +275,39 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
   if (event.type === "upload-retry") {
     addJobLog(job, "warning", `GitHub upload for ${page} will retry.`, {
       ...pageContext,
-      details: `Batch size: ${event.batchSize}. Next upload window: ${new Date(
+      details: `Attempt ${event.attempt} of ${event.maxAttempts} failed. Batch size: ${event.batchSize}. Next upload window: ${new Date(
         event.retryAt,
       ).toLocaleString()}. ${event.error}`,
     });
     return;
   }
 
+  if (event.type === "upload-failed") {
+    job.result = {
+      ...job.result,
+      uploadFailedPages: job.result.uploadFailedPages + 1,
+      failedPages: job.result.failedPages + 1,
+      failures: [
+        ...job.result.failures,
+        {
+          languageCode: event.language.code,
+          path: event.sourcePage.path,
+          slug: event.sourcePage.slug,
+          stage: "upload",
+          error: event.error,
+        },
+      ],
+    };
+    addJobLog(job, "error", `GitHub upload failed for ${page} in ${language}.`, {
+      ...pageContext,
+      details: `${event.retryable ? `Stopped after ${event.attempts} attempts.` : "GitHub rejected the upload permanently."} Batch size: ${event.batchSize}. ${event.error}`,
+    });
+    return;
+  }
+
   job.result = {
     ...job.result,
+    translationFailedPages: job.result.translationFailedPages + 1,
     failedPages: job.result.failedPages + 1,
     failures: [
       ...job.result.failures,
@@ -279,6 +315,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
         languageCode: event.language.code,
         path: event.sourcePage.path,
         slug: event.sourcePage.slug,
+        stage: "translation",
         error: event.error,
       },
     ],
@@ -290,12 +327,12 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
 };
 
 const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPageLocalizationJobInput): Promise<void> => {
-  job.startedAt = new Date().toISOString();
-  addJobLog(job, "info", `Started translating ${formatMode(input.mode)}.`, {
-    details: `Languages: ${input.languages.map(formatAutoTranslateLanguageForLog).join(", ")}. Model: ${input.model}.`,
-  });
-
   try {
+    job.startedAt = new Date().toISOString();
+    job.phase = "translating";
+    addJobLog(job, "info", `Started translating ${formatMode(input.mode)}.`, {
+      details: `Languages: ${input.languages.map(formatAutoTranslateLanguageForLog).join(", ")}. Model: ${input.model}.`,
+    });
     addJobLog(job, "info", "Loading source pages from GitHub.");
     const { pages } = await listMarkdownDocsTreePagesWithTitles(input.config, { bypassCache: true, store: false });
     addJobLog(job, "info", `Loaded ${pages.length} source page${pages.length === 1 ? "" : "s"} from GitHub.`);
@@ -317,11 +354,12 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
 
     job.result = result;
     job.status = result.failedPages > 0 ? "completed_with_failures" : "completed";
+    job.phase = "finished";
     job.finishedAt = new Date().toISOString();
     addJobLog(
       job,
       result.failedPages > 0 ? "warning" : "success",
-      `Translation job finished with ${result.translatedPages} translated and uploaded, ${result.cachedPages} current, and ${result.failedPages} failed.`,
+      `Translation job finished with ${result.translatedPages} translated, ${result.uploadedPages} uploaded, ${result.cachedPages} current, and ${result.failedPages} failed.`,
     );
     logAutoTranslateInfo("Page localization background job finished", {
       jobId: job.id,
@@ -332,6 +370,7 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
   } catch (error: unknown) {
     const message = getDetailedAutoTranslateErrorMessage(error);
     job.status = "failed";
+    job.phase = "finished";
     job.error = message;
     job.finishedAt = new Date().toISOString();
     addJobLog(job, "error", "Translation job stopped before all pages could be processed.", {
@@ -363,7 +402,7 @@ export const startPageLocalizationJob = (input: StartPageLocalizationJobInput): 
     details: `Requested ${formatMode(input.mode)} for ${input.languages.length} target language${input.languages.length === 1 ? "" : "s"}.`,
   });
 
-  job.promise = runPageLocalizationJob(job, input);
+  job.promise = Promise.resolve().then(() => runPageLocalizationJob(job, input));
   return cloneJob(job);
 };
 

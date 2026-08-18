@@ -761,6 +761,8 @@ function normalizeAdminTranslationRequestResult(source: unknown): AdminTranslati
           const failure = asRecord(entry);
           const slug = asString(failure.slug).trim();
           const path = asString(failure.path).trim();
+          const languageCode = asString(failure.languageCode).trim();
+          const stage = asString(failure.stage).trim();
           const error = asString(failure.error).trim();
 
           if (!slug && !path && !error) {
@@ -770,17 +772,25 @@ function normalizeAdminTranslationRequestResult(source: unknown): AdminTranslati
           return {
             slug,
             path,
+            languageCode,
+            stage: stage === "upload" ? "upload" as const : "translation" as const,
             error: error || "Translation request failed.",
           };
         })
         .filter((entry): entry is AdminTranslationRequestResult["failures"][number] => Boolean(entry))
     : [];
+  const translatedPages = Math.max(0, Math.round(asNumber(payload.translatedPages, 0)));
+  const translationFailedPages = failures.filter((failure) => failure.stage === "translation").length;
+  const uploadFailedPages = failures.filter((failure) => failure.stage === "upload").length;
 
   return {
     totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
     cachedPages: Math.max(0, Math.round(asNumber(payload.cachedPages, 0))),
     requestedPages: Math.max(0, Math.round(asNumber(payload.requestedPages, 0))),
-    translatedPages: Math.max(0, Math.round(asNumber(payload.translatedPages, 0))),
+    translatedPages,
+    uploadedPages: Math.max(0, Math.round(asNumber(payload.uploadedPages, translatedPages))),
+    translationFailedPages: Math.max(0, Math.round(asNumber(payload.translationFailedPages, translationFailedPages))),
+    uploadFailedPages: Math.max(0, Math.round(asNumber(payload.uploadFailedPages, uploadFailedPages))),
     failedPages: Math.max(0, Math.round(asNumber(payload.failedPages, failures.length))),
     failures,
   };
@@ -817,6 +827,7 @@ function normalizeAdminTranslationJob(source: unknown): AdminTranslationJobSnaps
   const payload = asRecord(asRecord(source).job ?? source);
   const id = asString(payload.id).trim();
   const status = asString(payload.status).trim();
+  const phase = asString(payload.phase).trim();
   const mode = asString(payload.mode).trim();
 
   if (!id) {
@@ -849,6 +860,7 @@ function normalizeAdminTranslationJob(source: unknown): AdminTranslationJobSnaps
     id,
     status:
       status === "completed" || status === "completed_with_failures" || status === "failed" ? status : "running",
+    phase: phase === "queued" || phase === "uploading" || phase === "finished" ? phase : "translating",
     mode: mode === "outdated" ? "outdated" : "missing-and-outdated",
     createdAt: asString(payload.createdAt).trim() || new Date(0).toISOString(),
     startedAt: startedAt || null,

@@ -34,6 +34,7 @@ const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_S
 const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const INTERNAL_CLIENT_IP_HEADER = "x-vicky-client-ip";
+const GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY = Symbol.for("vicky.githubLocalization.uploadQueue.shutdown");
 
 process.env.VICKY_TRUST_INTERNAL_CLIENT_IP_HEADER = "true";
 
@@ -513,6 +514,33 @@ async function closeServer(server) {
 
     server.closeIdleConnections?.();
   });
+}
+
+async function stopGitHubLocalizationUploadQueue() {
+  const shutdownQueue = globalThis[GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY];
+  if (typeof shutdownQueue !== "function") {
+    return;
+  }
+
+  let timeout = null;
+  let timedOut = false;
+  const timeoutPromise = new Promise((resolve) => {
+    timeout = setTimeout(() => {
+      timedOut = true;
+      resolve();
+    }, SERVER_CLOSE_GRACE_MS);
+  });
+
+  try {
+    await Promise.race([Promise.resolve().then(() => shutdownQueue()), timeoutPromise]);
+    if (timedOut) {
+      warn(`GitHub localization uploads did not settle within ${SERVER_CLOSE_GRACE_MS}ms; continuing shutdown.`);
+    }
+  } finally {
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+  }
 }
 
 async function readTextFileIfExists(filePath) {
@@ -1022,6 +1050,7 @@ async function performShutdown(signal) {
   sslRuntimeState.phase = "stopped";
 
   const operations = [];
+  operations.push(stopGitHubLocalizationUploadQueue().catch((error) => warn("Failed to stop the GitHub localization upload queue.", error)));
   if (httpsServer) {
     operations.push(
       closeServer(httpsServer)

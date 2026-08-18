@@ -45,11 +45,15 @@ export type PageLocalizationRequestResult = {
   cachedPages: number;
   requestedPages: number;
   translatedPages: number;
+  uploadedPages: number;
+  translationFailedPages: number;
+  uploadFailedPages: number;
   failedPages: number;
   failures: Array<{
     slug: string;
     path: string;
     languageCode: string;
+    stage: "translation" | "upload";
     error: string;
   }>;
 };
@@ -116,12 +120,15 @@ export type PageLocalizationTranslationEvent =
     }
   | {
       type: "upload-start";
+      attempt: number;
       batchSize: number;
       language: AutoTranslateLanguage;
+      maxAttempts: number;
       sourcePage: PageLocalizationEventSourcePage;
     }
   | {
       type: "upload-success";
+      attempt: number;
       batchSize: number;
       commitSha: string;
       language: AutoTranslateLanguage;
@@ -129,10 +136,21 @@ export type PageLocalizationTranslationEvent =
     }
   | {
       type: "upload-retry";
+      attempt: number;
       batchSize: number;
       error: string;
       language: AutoTranslateLanguage;
+      maxAttempts: number;
       retryAt: string;
+      sourcePage: PageLocalizationEventSourcePage;
+    }
+  | {
+      type: "upload-failed";
+      attempts: number;
+      batchSize: number;
+      error: string;
+      language: AutoTranslateLanguage;
+      retryable: boolean;
       sourcePage: PageLocalizationEventSourcePage;
     };
 
@@ -616,8 +634,10 @@ export const translatePageLocalizations = async ({
     if (event.type === "upload-start") {
       return {
         type: "upload-start",
+        attempt: event.attempt,
         batchSize: event.batchSize,
         language: context.language,
+        maxAttempts: event.maxAttempts,
         sourcePage: context.sourcePage,
       };
     }
@@ -625,6 +645,7 @@ export const translatePageLocalizations = async ({
     if (event.type === "upload-success") {
       return {
         type: "upload-success",
+        attempt: event.attempt,
         batchSize: event.batchSize,
         commitSha: event.commitSha,
         language: context.language,
@@ -632,12 +653,26 @@ export const translatePageLocalizations = async ({
       };
     }
 
+    if (event.type === "upload-retry") {
+      return {
+        type: "upload-retry",
+        attempt: event.attempt,
+        batchSize: event.batchSize,
+        error: event.error,
+        language: context.language,
+        maxAttempts: event.maxAttempts,
+        retryAt: event.retryAt,
+        sourcePage: context.sourcePage,
+      };
+    }
+
     return {
-      type: "upload-retry",
+      type: "upload-failed",
+      attempts: event.attempts,
       batchSize: event.batchSize,
       error: event.error,
       language: context.language,
-      retryAt: event.retryAt,
+      retryable: event.retryable,
       sourcePage: context.sourcePage,
     };
   };
@@ -734,7 +769,7 @@ export const translatePageLocalizations = async ({
   };
 
   const failures: PageLocalizationRequestResult["failures"] = [];
-  const uploads = new Set<Promise<void>>();
+  const uploads: Array<{ promise: Promise<{ candidate: TranslationCandidate; error: string | null }>; settled: boolean }> = [];
   let translatedPages = 0;
 
   await runWithAdaptiveConcurrency({
@@ -747,6 +782,7 @@ export const translatePageLocalizations = async ({
           slug: candidate.sourcePage.slug,
           path: candidate.sourcePage.path,
           languageCode: candidate.language.code,
+          stage: "translation",
           error: result.error,
         });
         return;
@@ -755,27 +791,54 @@ export const translatePageLocalizations = async ({
       translatedPages += 1;
 
       if (result.upload) {
-        const trackedUpload = result.upload.finally(() => {
-          uploads.delete(trackedUpload);
+        // Attach both settlement handlers immediately. A fast queue rejection must not surface as an unhandled rejection while other translations are still running.
+        const tracked = { promise: Promise.resolve({ candidate, error: null as string | null }), settled: false };
+        tracked.promise = result.upload.then(() => ({ candidate, error: null }), (error: unknown) => ({ candidate, error: getDetailedAutoTranslateErrorMessage(error) })).then((outcome) => {
+          tracked.settled = true;
+          return outcome;
         });
-        uploads.add(trackedUpload);
+        uploads.push(tracked);
       }
     },
   });
 
-  if (uploads.size > 0) {
+  let uploadedPages = queueUploads ? 0 : translatedPages;
+  const pendingUploads = uploads.filter((upload) => !upload.settled).length;
+  if (pendingUploads > 0) {
     onEvent?.({
       type: "uploads-waiting",
-      queuedUploads: uploads.size,
+      queuedUploads: pendingUploads,
     });
-    await Promise.all(uploads);
   }
+  if (uploads.length > 0) {
+    const outcomes = await Promise.all(uploads.map((upload) => upload.promise));
+    for (const outcome of outcomes) {
+      if (!outcome.error) {
+        uploadedPages += 1;
+        continue;
+      }
+
+      failures.push({
+        slug: outcome.candidate.sourcePage.slug,
+        path: outcome.candidate.sourcePage.path,
+        languageCode: outcome.candidate.language.code,
+        stage: "upload",
+        error: outcome.error,
+      });
+    }
+  }
+
+  const translationFailedPages = failures.filter((failure) => failure.stage === "translation").length;
+  const uploadFailedPages = failures.filter((failure) => failure.stage === "upload").length;
 
   return {
     totalPages: sourcePages.length * Math.max(0, languages.filter((language) => !isSourceLanguage(language)).length),
     cachedPages: currentPages,
     requestedPages: candidates.length,
     translatedPages,
+    uploadedPages,
+    translationFailedPages,
+    uploadFailedPages,
     failedPages: failures.length,
     failures,
   };

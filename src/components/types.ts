@@ -144,10 +144,15 @@ export type AdminTranslationRequestResult = {
   cachedPages: number;
   requestedPages: number;
   translatedPages: number;
+  uploadedPages: number;
+  translationFailedPages: number;
+  uploadFailedPages: number;
   failedPages: number;
   failures: Array<{
     slug: string;
     path: string;
+    languageCode: string;
+    stage: "translation" | "upload";
     error: string;
   }>;
 };
@@ -166,6 +171,7 @@ export type AdminTranslationJobLogEntry = {
 export type AdminTranslationJobSnapshot = {
   id: string;
   status: "running" | "completed" | "completed_with_failures" | "failed";
+  phase: "queued" | "translating" | "uploading" | "finished";
   mode: "outdated" | "missing-and-outdated";
   createdAt: string;
   startedAt: string | null;
