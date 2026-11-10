@@ -7,7 +7,7 @@
 - Primary branch: `main`
 - App type: Next.js App Router wiki/docs system with admin panel and integrated markdown editor
 - Docs content is stored in a configured GitHub repository (not in this repo)
-- Local runtime state is stored under `data/` by default: app settings in `wiki-store.json`, analytics in `wiki-analytics.sqlite`, SSL material in `ssl/`, and persistent cache/state files in their respective subdirectories.
+- Local runtime state is stored under `data/` by default: app settings in `wiki-store.json`, analytics in `wiki-analytics.sqlite`, SSL material in `ssl/`, the local copy of the docs repository in `docs-cache/`, and other persistent cache/state files in their respective subdirectories.
 
 ## Core Product Behavior
 - `/` redirects to the configured start page (default `/docs/home`).
@@ -52,9 +52,18 @@
   - `src/lib/store.ts`
   - `src/lib/defaults.ts`
   - `src/lib/encryption.ts`
-- GitHub read/write + cache invalidation:
-  - `src/lib/github.ts`
-  - `src/lib/docs-snapshot-store.ts`
+- GitHub layer (see "Caching + GitHub Data Flow"):
+  - `src/lib/github.ts`: public API for routes: config resolution, public/editor page reads, refresh, plaintext export, editor saves
+  - `src/lib/github-docs-source.ts`: the source docs view (index + pages), stale-while-revalidate refresh, atomic publication, applying committed pages
+  - `src/lib/github-client.ts`: the one shared Octokit client (concurrency cap, timeouts, retries, rate limits)
+  - `src/lib/github-repo-index.ts`: recursive tree index of every Markdown file with its blob SHA, persistence, lookup helpers
+  - `src/lib/github-content-store.ts`: content-addressed blob store (parsed once), downloads, unreferenced-blob sweep, reads by path
+  - `src/lib/github-commit-metadata.ts`: "last updated" data per file version (batched GraphQL), persisted
+  - `src/lib/github-docs-cache-files.ts`: on-disk layout of the docs cache directory
+  - `src/lib/github-derived-caches.ts`: pruning of rendered, translated, search, and plaintext caches for changed pages
+  - `src/lib/github-localization.ts`: localization readers and localized saves
+  - `src/lib/github-paths.ts`: repository path rules
+  - `src/lib/github-cache-identity.ts`, `src/lib/github-cache-invalidation.ts`: source/authorization isolation, cache generations, invalidation
 - Search corpus/ranking:
   - `src/lib/docs-search.ts`
 - Cache implementations:
@@ -141,14 +150,17 @@ Useful URLs:
 - Any new write/admin endpoint must require admin auth (`requireAdminRequest` or equivalent).
 
 ## Caching + GitHub Data Flow
-- Tree/page/search corpus are cached in memory with TTL (`src/lib/cache.ts`).
-- GitHub docs snapshots, rendered Markdown HTML, and translated docs are also cached persistently on disk.
-- TTL is admin-configurable in site settings and applied dynamically.
-- Cache is cleared when:
-  - settings that affect source change
-  - docs are saved
-  - explicit clear functions are called
-- Search builds corpus by loading all docs through the same API-backed GitHub path and cache stack.
+- Every GitHub call goes through `getGitHubClient` (`src/lib/github-client.ts`): never construct `Octokit` elsewhere. The client enforces one process-wide concurrency cap, a per-attempt timeout covering the whole body, bounded retries with backoff (GET/HEAD and requests marked `request: { idempotent: true }`; rate-limited requests always), honours `retry-after`/`x-ratelimit-reset`, and fails fast with a 503 `ApiError` (with `Retry-After`) while the quota is exhausted. Mark background bulk work with `request: { priority: "bulk" }` so interactive requests go first.
+- Repository index (`github-repo-index.ts`): one recursive tree request lists every Markdown file of the branch (source docs and localizations) with its blob SHA. Requests are conditional on the stored ETag; an unchanged tree SHA means the refresh is that single request. A truncated tree is listed level by level, never published incomplete.
+- Content store (`github-content-store.ts`): blobs are content-addressed by Git blob SHA, downloaded through the Git blobs API (works above 1 MB), verified against their SHA, and parsed once (title, description, headings, plaintext flag). A blob is only served through an index that lists it, which keeps cross-source sharing safe.
+- Commit metadata (`github-commit-metadata.ts`): looked up once per path + blob SHA in batched GraphQL queries and persisted; failures are retried after a pause, not per request.
+- Source docs view (`github-docs-source.ts`): index + pages, held in `docsSourceCache` without expiry. After the admin-configurable TTL, readers keep the current view while one coalesced background refresh runs (stale-while-revalidate). An explicit refresh (`bypassCache`, admin "Refresh docs") waits for a refresh that starts after the call. A new view is published atomically after its blobs and index are stored; derived caches are pruned only for pages that changed.
+- Editor saves apply the commit response to the index, store, commit metadata, and view directly; the saved page is served without refetching. The index's tree SHA and ETag are dropped so the next refresh compares the full listing.
+- Public reads are index-authorized: an unknown locator is answered from the view and never becomes a GitHub request. Editor reads fall back to reading an unindexed page directly.
+- Persistent layout under `WIKI_DOCS_CACHE_DIR` (`data/docs-cache/`): `sources/<sha256 of the runtime cache key>/repo-index.json` and `commit-metadata.json`, plus `blobs/<2 hex>/<sha>.json`. Whole-docs snapshot files of the earlier format are removed on first use. Rendered Markdown and translations are cached in their own directories.
+- Source isolation: cache keys include the credential fingerprint and the security epoch (`github-cache-identity.ts`). Changing the source repo/branch/path/token revokes the old key, deletes its source directory and the blobs no remaining index references; in-flight work of an older cache generation can never publish (`github-cache-invalidation.ts`).
+- Search builds its corpus from the source view.
+- Tests use the fake GitHub API in `src/lib/__tests__/fixtures/fake-github-api.ts` (`vi.stubGlobal("fetch", fake.fetch)`), which exercises the real client, and must point `WIKI_DOCS_CACHE_DIR` (and the other cache directories) at a temporary directory.
 
 ## Markdown + UI Expectations
 - Markdown should remain GitHub-friendly (GFM behavior expected by users).
@@ -174,11 +186,11 @@ Useful URLs:
 
 ## Generated/Ignored Files
 - `next-env.d.ts` is ignored and generated by Next.js.
-- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*`, `login-rate-limit.json`, SSL files, rendered Markdown, docs snapshots, and translations.
+- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*`, `login-rate-limit.json`, SSL files, rendered Markdown, the docs cache, and translations.
 - `.next/` artifacts are generated and can cause stale type references after route refactors; clean/restart build if needed.
 
 ## Deployment Notes
 - Use `npm run build` then `npm run start` for the included production server with custom-domain and automatic HTTPS support.
 - Use `npm run start:next` only when intentionally running plain Next.js without the included HTTPS/ACME server.
-- Persist `data/wiki-store.json`, `data/wiki-analytics.sqlite*`, `data/login-rate-limit.json`, and `data/ssl/` across deployments. Persist the Markdown, docs snapshot, and translation caches when preserving warm caches or generated translations matters.
+- Persist `data/wiki-store.json`, `data/wiki-analytics.sqlite*`, `data/login-rate-limit.json`, and `data/ssl/` across deployments. Persist the Markdown cache, the docs cache (`data/docs-cache/`), and the translation cache when preserving warm caches or generated translations matters; without the docs cache, the first start downloads every page again.
 - Direct Let's Encrypt HTTP-01 usually requires ports 80/443 or a correctly configured reverse proxy; local development uses port 3000 and does not require privileged ports.

@@ -41,13 +41,27 @@ It gives you:
 - App settings live in `data/wiki-store.json` by default.
 - SSL certificates and runtime SSL status live in `data/ssl/` by default.
 - Rendered Markdown HTML cache files live in `data/markdown-cache/` by default.
-- GitHub docs snapshot cache files live in `data/docs-cache/` by default.
+- The local copy of the docs repository lives in `data/docs-cache/` by default: an index of every Markdown file with its Git blob SHA, the Markdown blobs themselves (stored once per content, already parsed), and per-file "last updated" commit data. See [How Vicky Talks to GitHub](#how-vicky-talks-to-github).
 - OpenRouter docs translation cache files live in `data/translation-cache/` by default.
 - Login rate-limit state lives in `data/login-rate-limit.sqlite` by default. A legacy `data/login-rate-limit.json` is migrated once and retained untouched.
 - Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default.
 - A live process owns `data/wiki-store.json.runtime-owner.json` by default. A launcher that starts a Next.js child also creates `data/wiki-store.json.runtime-owner.json.child.json`. These are exclusive runtime ownership artifacts, not application data or backup artifacts.
 
 This repo contains the app itself, not your docs content.
+
+# How Vicky Talks to GitHub
+
+Vicky keeps GitHub traffic small and predictable, so a busy site stays far below GitHub's API limits:
+
+- **One request per refresh when nothing changed.** Every refresh lists the whole branch with a single recursive tree request, sent as a conditional request. If the repository is unchanged, that request is the only one.
+- **Only changed files are downloaded.** Markdown files are stored by their Git blob SHA, so a refresh downloads exactly the files whose content is new. Changing one page costs one tree request, one file download, and at most one commit lookup.
+- **"Last updated" data is looked up once per file version** in batched GraphQL queries and kept on disk; it is never fetched again for an unchanged file.
+- **Visitors never wait for a refresh.** When the refresh interval (`Docs cache TTL` in the admin settings) passes, Vicky keeps serving the current pages and refreshes in the background. **Refresh docs** in the admin panel does the same: the site keeps answering while new pages are fetched, then switches to them at once. Pages deleted on GitHub disappear with the next refresh.
+- **Saving in the editor updates the local copy immediately**, so the saved page is live without fetching it back from GitHub.
+- **After a restart**, pages are served from the local copy right away; the first refresh normally costs a single request.
+- **One shared GitHub client** caps concurrent requests, times out stalled ones, retries temporary failures with backoff, and honours GitHub's rate-limit responses. When the hourly quota is used up, Vicky stops sending requests until GitHub's reset time and reports when docs can be loaded again.
+
+Files over 1 MB load like any other page.
 
 # Requirements
 
@@ -199,7 +213,7 @@ Common optional settings:
 | `WIKI_STORE_FILE_PATH` | Location of the app settings store | `./data/wiki-store.json` |
 | `WIKI_SSL_STORAGE_DIR` | Certificate storage directory | `./data/ssl` |
 | `WIKI_MARKDOWN_CACHE_DIR` | Persistent rendered Markdown HTML cache directory | `./data/markdown-cache` |
-| `WIKI_DOCS_SNAPSHOT_DIR` | Persistent GitHub docs snapshot cache directory | `./data/docs-cache/snapshots` |
+| `WIKI_DOCS_CACHE_DIR` | Persistent local copy of the docs repository (index, Markdown blobs, commit data) | `./data/docs-cache` |
 | `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
 | `AUTH_LOGIN_DB_PATH` | Durable login rate-limit SQLite database | `./data/login-rate-limit.sqlite` |
@@ -262,7 +276,7 @@ Public origins used for canonical/OpenGraph metadata, plaintext docs links and c
 
 Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the trusted client-IP settings above; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. Unknown-address visits receive independent anonymous identities and do not share event-ID dedup keys, so visitor counts are necessarily approximate until a trustworthy address is available. The analytics rate, concurrency, queue, and retry limits apply to the one supported app process; ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
 
-Public document reads accept only bounded canonical paths that already exist in the cached GitHub docs tree. Unknown slugs are negatively cached and never become speculative `.md` or `.mdx` GitHub file requests. The public docs rate and concurrency limits apply to the one supported app process; when no trustworthy client address is available, only the global limits apply. Ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
+Public document reads accept only bounded canonical paths that already exist in the indexed GitHub docs tree. Unknown slugs are answered from the local index and never become speculative `.md` or `.mdx` GitHub file requests. The public docs rate and concurrency limits apply to the one supported app process; when no trustworthy client address is available, only the global limits apply. Ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
 
 For the full list of optional runtime settings, check [.env.example](.env.example).
 
