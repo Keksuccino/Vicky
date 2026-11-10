@@ -19,7 +19,8 @@ const bytesToHex = (value: ArrayBuffer): string =>
  * Creates a non-reversible deployment binding without exposing a reusable password
  * verifier in either the JWT payload or the store. AUTH_JWT_SECRET is the HMAC key;
  * length-prefixed ADMIN_PASSWORD and ENCRYPTION_SECRET inputs avoid ambiguous encodings.
- * This module deliberately uses Web Crypto so the same check is safe in Edge middleware.
+ * This module deliberately uses Web Crypto only, so the same check runs unchanged in the proxy,
+ * in route handlers, and in any runtime Next.js offers.
  */
 export const createAdminCredentialFingerprint = async (): Promise<string> => {
   const authSecret = getRuntimeSecret("AUTH_JWT_SECRET");

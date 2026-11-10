@@ -43,7 +43,12 @@ const isAuthorized = (session: AuthSession | null, requiredAccess: RequiredAcces
   return requiredAccess === "editor" || session.role === "admin";
 };
 
-export const middleware = async (request: NextRequest): Promise<NextResponse> => {
+/**
+ * Guards the admin panel, the editor, and the admin API before any route renders (Next.js `proxy`
+ * convention, which always runs in the Node.js runtime). Route handlers and the admin/editor pages
+ * check the session again themselves; this is the first of the two layers, not the only one.
+ */
+export const proxy = async (request: NextRequest): Promise<NextResponse> => {
   const { pathname, search } = request.nextUrl;
   const requiredAccess = getRequiredAccess(pathname);
 
@@ -62,7 +67,7 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
     return unauthorizedApiResponse();
   }
 
-  // Next's middleware adapter requires an absolute Location (a relative one fails the request with
+  // Next's proxy adapter requires an absolute Location (a relative one fails the request with
   // `Invalid URL`) and turns every redirect to the origin of the request URL into a relative
   // Location. That origin is Next's own listener (for example http://0.0.0.0:3000), never taken
   // from client headers, so visitors receive `/admin/login?next=...` and stay on the public origin

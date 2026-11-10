@@ -1,31 +1,32 @@
-// Provides the global AsyncLocalStorage that the edge runtime gives the compiled middleware. It must
-// be evaluated before any Next module creates its request-scoped storage.
+// Provides the global AsyncLocalStorage that Next sets up before it runs the compiled proxy. It
+// must be evaluated before any Next module creates its request-scoped storage.
 import "next/dist/server/node-environment-baseline";
 import { adapter } from "next/dist/server/web/adapter";
 import { describe, expect, it } from "vitest";
 
-import { middleware } from "../../../middleware";
+import { proxy } from "../../../proxy";
 
 // Headers a visitor, a proxy, or an attacker may send. None of them may reach the Location header.
 const FORWARDED_HEADERS = { host: "docs.example.com", "x-forwarded-host": "attacker.example", "x-forwarded-proto": "http" };
 
 /**
- * Runs the middleware through Next's edge adapter, which wraps the compiled middleware in
- * production, with the absolute URL a Next server builds from its own listener address. The
- * adapter parses and rewrites the Location header, so calling `middleware()` directly cannot show
- * what a visitor receives. `next/dist/server/web/adapter` is internal to Next: when an upgrade moves
- * it, point this import at the module that `next/dist/build/templates/middleware.js` imports.
+ * Runs the proxy through Next's adapter, which wraps the compiled proxy in production, with the
+ * absolute URL a Next server builds from its own listener address. The adapter parses and rewrites
+ * the Location header, so calling `proxy()` directly cannot show what a visitor receives.
+ * `next/dist/server/web/adapter` is internal to Next: when an upgrade moves it, point this import
+ * at the module that `next/dist/build/templates/middleware.js` (the template of the proxy too)
+ * imports.
  */
 const serve = async (url: string, headers: Record<string, string> = FORWARDED_HEADERS): Promise<Response> => {
   const { response } = await adapter({
-    handler: middleware,
-    page: "/middleware",
+    handler: proxy,
+    page: "/proxy",
     request: { headers, method: "GET", nextConfig: { basePath: "", trailingSlash: false }, signal: new AbortController().signal, url },
   });
   return response;
 };
 
-describe("middleware as served by Next", () => {
+describe("proxy as served by Next", () => {
   it.each(["http://0.0.0.0:3000", "http://127.0.0.1:3417", "https://[::1]:8443"])("redirects unauthenticated pages behind the listener %s to the login page on the visitor's origin", async (listenerOrigin) => {
     const targets = {
       "/admin": "/admin/login?next=%2Fadmin",
