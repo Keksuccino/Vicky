@@ -1,7 +1,8 @@
 // Testing harness: preload for running the real server against the in-memory fake GitHub API of
-// the test suite instead of api.github.com (`NODE_OPTIONS=--import=<this file>`). The GitHub
-// client resolves `globalThis.fetch` per call, so every GitHub request reaches the fake; nothing
-// else is intercepted. Needs Node.js with TypeScript type stripping (22.18 or newer).
+// the test suite instead of api.github.com (`NODE_OPTIONS=--import=<this file>`), and against a
+// fake OpenRouter endpoint instead of openrouter.ai. The GitHub client and the OpenRouter client
+// resolve `globalThis.fetch` per call, so every request to those two hosts reaches a fake;
+// nothing else is intercepted. Needs Node.js with TypeScript type stripping (22.18 or newer).
 // See TESTING_GUIDELINES.md.
 import { appendFileSync, readFileSync } from "node:fs";
 import http from "node:http";
@@ -39,34 +40,87 @@ for (const entry of seed) {
 fake.setLatency(Number(process.env.FAKE_GITHUB_LATENCY_MS ?? 0));
 
 const logPath = process.env.FAKE_GITHUB_LOG;
+const appendLog = (entry) => {
+  if (logPath) {
+    appendFileSync(logPath, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
+  }
+};
+
+// Fake OpenRouter: a "translation" appends the target language to the title and puts a note
+// above the unchanged content. `FAKE_OPENROUTER_LATENCY_MS` delays every answer;
+// `FAKE_OPENROUTER_RATE_LIMITS=<n>` answers the first n requests with a 429 and
+// `retry-after: FAKE_OPENROUTER_RETRY_AFTER_S` (default 2), to watch the job's backoff.
+const openRouter = {
+  latencyMs: Number(process.env.FAKE_OPENROUTER_LATENCY_MS ?? 0),
+  rateLimitsLeft: Number(process.env.FAKE_OPENROUTER_RATE_LIMITS ?? 0),
+  requests: 0,
+  retryAfterSeconds: process.env.FAKE_OPENROUTER_RETRY_AFTER_S ?? "2",
+};
+
+const answerOpenRouter = async (init) => {
+  openRouter.requests += 1;
+  if (openRouter.latencyMs > 0) {
+    await new Promise((resolve) => setTimeout(resolve, openRouter.latencyMs));
+  }
+  if (openRouter.rateLimitsLeft > 0) {
+    openRouter.rateLimitsLeft -= 1;
+    appendLog({ kind: "openrouter", status: 429 });
+    return new Response(JSON.stringify({ error: { message: "Rate limit exceeded (fake OpenRouter)" } }), {
+      status: 429,
+      headers: { "content-type": "application/json", "retry-after": openRouter.retryAfterSeconds },
+    });
+  }
+
+  const prompt = JSON.parse(String(init?.body ?? "{}")).messages?.at(-1)?.content ?? "";
+  const language = /^Translate the following page to (.+?)\. /.exec(prompt)?.[1] ?? "the target language";
+  const pages = JSON.parse(prompt.slice(prompt.indexOf("\n\n[") + 2));
+  const translated = pages.map((page) => ({
+    page_display_name: `${page.page_display_name} (${language})`,
+    page_description: page.page_description,
+    page_content: `> Translated to ${language} by the fake OpenRouter endpoint.\n\n${page.page_content}`,
+  }));
+  appendLog({ kind: "openrouter", status: 200, target: language });
+  return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify(translated) } }] }), { status: 200, headers: { "content-type": "application/json" } });
+};
+
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init) => {
   const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+  if (url.hostname === "openrouter.ai") {
+    return answerOpenRouter(init);
+  }
   if (url.hostname !== "api.github.com") {
     return realFetch(input, init);
   }
 
   const requestIndex = fake.requests.length;
   const response = await fake.fetch(url, init);
-  if (logPath) {
-    const request = fake.requests[requestIndex];
-    appendFileSync(logPath, `${JSON.stringify({ at: new Date().toISOString(), kind: request?.kind, target: request?.target })}\n`);
-  }
+  const request = fake.requests[requestIndex];
+  appendLog({ kind: request?.kind, target: request?.target });
   return response;
 };
 
-// Control endpoint: `/` reports request counts by kind, `/reset` clears them, and
-// `/delete?path=<repo path>` removes a file as a commit on GitHub would.
+// Control endpoint: `/` reports request counts by kind (OpenRouter requests as `openrouter`),
+// `/reset` clears them, `/delete?path=<repo path>` removes a file as a commit on GitHub would,
+// and `/file?path=<repo path>` returns a file's current content.
 http
   .createServer((request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
+    if (url.pathname === "/file") {
+      const bytes = fake.files.get(url.searchParams.get("path") ?? "");
+      response.statusCode = bytes ? 200 : 404;
+      response.setHeader("content-type", "text/plain; charset=utf-8");
+      response.end(bytes ?? "");
+      return;
+    }
     if (url.pathname === "/reset") {
       fake.resetRequests();
+      openRouter.requests = 0;
     } else if (url.pathname === "/delete") {
       fake.deleteFile(url.searchParams.get("path") ?? "");
     }
 
-    const counts = {};
+    const counts = { ...(openRouter.requests > 0 ? { openrouter: openRouter.requests } : {}) };
     for (const entry of fake.requests) {
       counts[entry.kind] = (counts[entry.kind] ?? 0) + 1;
     }

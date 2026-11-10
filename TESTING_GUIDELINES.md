@@ -7,7 +7,7 @@
 
 ## Real server without GitHub
 
-`scripts/fake-github-preload.mjs` runs the production server against the same fake GitHub API (needs Node.js 22.18 or newer for TypeScript type stripping):
+`scripts/fake-github-preload.mjs` runs the production server against the same fake GitHub API, and answers every request to `openrouter.ai` with a fake OpenRouter endpoint, so translation jobs run offline and never reach the real API (needs Node.js 22.18 or newer for TypeScript type stripping):
 
 1. `npm run build`.
 2. Create a temporary directory inside the project (never commit it) and export, for the server process only:
@@ -15,9 +15,10 @@
    - Fresh `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, `ENCRYPTION_SECRET` (`openssl rand -base64 48`), not the values of `.env.local`.
    - Every runtime path, pointed into the temporary directory: `WIKI_STORE_FILE_PATH`, `WIKI_SSL_STORAGE_DIR`, `WIKI_MARKDOWN_CACHE_DIR`, `WIKI_DOCS_CACHE_DIR`, `WIKI_DOCS_SNAPSHOT_DIR`, `WIKI_TRANSLATION_CACHE_DIR`, `WIKI_ANALYTICS_DB_PATH`, `AUTH_LOGIN_DB_PATH`, `AUTH_LOGIN_STORE_FILE_PATH`, `SSL_STATUS_FILE_PATH`. `.env.local` sets some of these to `data/`; exported values take precedence.
    - `NODE_OPTIONS=--import=<absolute path>/scripts/fake-github-preload.mjs`.
-   - Optional: `FAKE_GITHUB_SEED` (JSON array of `{ "path": "docs/x.md", "content": "..." }` or `{ "path": ..., "size": <bytes> }` for synthetic pages, committed in order, so a later entry for a source page makes its earlier translations outdated), `FAKE_GITHUB_LATENCY_MS` (per-request delay), `FAKE_GITHUB_LOG` (one JSON line per GitHub request), `FAKE_GITHUB_CONTROL_PORT` (default `39190`).
-3. `node server.mjs`, then sign in with `POST /api/auth/login` (`{"username":"admin","password":...}`, `Origin` header set to the server) and configure the source with `PATCH /api/admin/settings` (`github.owner`/`repo`/`branch` = `owner`/`repo`/`main` unless `FAKE_GITHUB_OWNER`/`FAKE_GITHUB_REPO`/`FAKE_GITHUB_BRANCH` are set; any token value).
-4. The control endpoint on `127.0.0.1:<FAKE_GITHUB_CONTROL_PORT>`: `/` returns request counts by kind, `/reset` clears them, `/delete?path=<repo path>` deletes a file like a commit on GitHub.
+   - Optional: `FAKE_GITHUB_SEED` (JSON array of `{ "path": "docs/x.md", "content": "..." }` or `{ "path": ..., "size": <bytes> }` for synthetic pages, committed in order, so a later entry for a source page makes its earlier translations outdated), `FAKE_GITHUB_LATENCY_MS` (per-request delay), `FAKE_GITHUB_LOG` (one JSON line per GitHub or OpenRouter request), `FAKE_GITHUB_CONTROL_PORT` (default `39190`).
+   - Optional for translation jobs: `FAKE_OPENROUTER_LATENCY_MS` (delay per translation), `FAKE_OPENROUTER_RATE_LIMITS=<n>` (the first n requests get a 429 with `retry-after: FAKE_OPENROUTER_RETRY_AFTER_S`, default 2, to watch the backoff). A fake translation appends the language name to the title and puts a note above the unchanged content.
+3. `node server.mjs`, then sign in with `POST /api/auth/login` (`{"username":"admin","password":...}`, `Origin` header set to the server) and configure the source with `PATCH /api/admin/settings` (`github.owner`/`repo`/`branch` = `owner`/`repo`/`main` unless `FAKE_GITHUB_OWNER`/`FAKE_GITHUB_REPO`/`FAKE_GITHUB_BRANCH` are set; any token value). For translation jobs also set `openRouter.apiKey` (any value), `autoTranslate.openRouterModel`, and `autoTranslate.languages`. Queued translation uploads are committed at the next upload window, 5 minutes after the first one was queued.
+4. The control endpoint on `127.0.0.1:<FAKE_GITHUB_CONTROL_PORT>`: `/` returns GitHub request counts by kind (`total` counts GitHub requests; OpenRouter requests appear as `openrouter`), `/reset` clears them, `/delete?path=<repo path>` deletes a file like a commit on GitHub, `/file?path=<repo path>` returns a file's current content.
 5. Stop the server with `SIGTERM` and move the temporary directory to the trash.
 
 ## UI checks offscreen
@@ -43,4 +44,4 @@
 }
 ```
 
-Clicks are real mouse events at the element's centre after scrolling it into view; `eval` prints its JSON result; screenshot paths are relative to the steps file, and `selector` clips to one element. The admin session cookie comes from the login response (for example `curl -c cookies.txt`).
+Clicks are real mouse events at the element's centre after scrolling it into view; `eval` prints its JSON result; screenshot paths are relative to the steps file, and `selector` clips to one element. JavaScript dialogs (`window.confirm` before an admin action) are printed with their text and accepted; set `"dialogs": "dismiss"` in the plan to cancel them instead. The admin session cookie comes from the login response (for example `curl -c cookies.txt`).

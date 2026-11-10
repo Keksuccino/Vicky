@@ -188,6 +188,17 @@ const runStep = async (step) => {
   }
 };
 
+// A JavaScript dialog (alert, confirm, prompt) blocks the page until it is answered. Dialogs are
+// printed and answered right away: accepted by default, or as the plan's `dialogs` says
+// ("accept" or "dismiss").
+listeners.add((message) => {
+  if (message.method === "Page.javascriptDialogOpening") {
+    const accept = plan.dialogs !== "dismiss";
+    console.log(`[offscreen-browser] ${accept ? "Accepted" : "Dismissed"} ${message.params.type}: ${JSON.stringify(message.params.message)}`);
+    void send("Page.handleJavaScriptDialog", { accept });
+  }
+});
+
 try {
   await send("Page.enable");
   // The tab is headless and has no OS window; fronting it only lets it render and scroll like a visible tab.
