@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   heapSizeLimit: undefined as number | undefined,
   loadGitHubLocalizationStatuses: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
-  saveGitHubLocalizedDoc: vi.fn(),
   enqueueGitHubLocalizationUpload: vi.fn(),
 }));
 
@@ -21,10 +20,6 @@ vi.mock("@/lib/openrouter", () => ({
 vi.mock("@/lib/github-localization", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/github-localization")>()),
   loadGitHubLocalizationStatuses: mocks.loadGitHubLocalizationStatuses,
-}));
-
-vi.mock("@/lib/github-localization-saves", () => ({
-  saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
 }));
 
 vi.mock("@/lib/github-localization-upload-queue", () => ({
@@ -119,10 +114,6 @@ describe("page localization translations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.loadGitHubLocalizationStatuses.mockResolvedValue(new Map());
-    mocks.saveGitHubLocalizedDoc.mockResolvedValue({
-      localizedRepoPath: "localizations/de/home.md",
-      page: sourcePage,
-    });
     mocks.enqueueGitHubLocalizationUpload.mockImplementation(
       (input: { onEvent?: (event: { type: "queued"; flushAt: string; queueSize: number }) => void }) => {
         const flushAt = "2026-05-04T15:42:03.000Z";
@@ -177,7 +168,7 @@ describe("page localization translations", () => {
       return { flushAt, upload: Promise.resolve() };
     });
 
-    await translatePageLocalizations({ apiKey: "openrouter-key", config, languages: [language], localizationPath: "localizations", mode: "missing-and-outdated", model: "openai/gpt-5.4-mini", onEvent: (event) => events.push(event), origin: "https://docs.example.com", queueUploads: true, siteTitle: "Vicky Docs", sourcePages: [sourcePage] });
+    await translatePageLocalizations({ apiKey: "openrouter-key", config, languages: [language], localizationPath: "localizations", mode: "missing-and-outdated", model: "openai/gpt-5.4-mini", onEvent: (event) => events.push(event), origin: "https://docs.example.com", siteTitle: "Vicky Docs", sourcePages: [sourcePage] });
 
     expect(events.find((event) => event.type === "upload-success")).toMatchObject({ type: "upload-success", previousStatus: "missing" });
     const queuedMarkdown = (mocks.enqueueGitHubLocalizationUpload.mock.calls[0]?.[0] as { input: { markdown: string } }).input.markdown;
@@ -236,7 +227,6 @@ describe("page localization translations", () => {
       model: "openai/gpt-5.4-mini",
       onEvent: (event) => events.push(event),
       origin: "https://docs.example.com",
-      queueUploads: true,
       siteTitle: "Vicky Docs",
       sourcePages: [sourcePage],
     });
@@ -276,7 +266,6 @@ describe("page localization translations", () => {
       model: "openai/gpt-5.4-mini",
       onEvent: (event) => events.push(event),
       origin: "https://docs.example.com",
-      queueUploads: true,
       siteTitle: "Vicky Docs",
       sourcePages: [sourcePage],
     });

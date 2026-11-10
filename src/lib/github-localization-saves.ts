@@ -1,7 +1,7 @@
 import { assertGitHubCacheAccess, beginGitHubCacheAccess, prepareGitHubCacheMutation } from "@/lib/github-cache-invalidation";
-import { getGitHubClient, gitHubErrorStatus } from "@/lib/github-client";
+import { getGitHubClient } from "@/lib/github-client";
 import { extractCommitMetadata, hydrateGitHubDocPageMetadata, type GitHubCommitMetadata } from "@/lib/github-commit-metadata";
-import { fetchGitHubFile, gitBlobSha, loadGitHubBlobs, parseGitHubBlobRecord } from "@/lib/github-content-store";
+import { gitBlobSha, loadGitHubBlobs, parseGitHubBlobRecord } from "@/lib/github-content-store";
 import { pruneRenderedMarkdownCache } from "@/lib/github-derived-caches";
 import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
 import { applyCommittedGitHubFiles, loadGitHubDocsSourceView, validateGitHubRuntimeConfig } from "@/lib/github-docs-source";
@@ -56,14 +56,12 @@ export type SaveGitHubLocalizedDocsBatchResult = {
 
 type MarkdownFields = Pick<GitHubDocPage, "title" | "description" | "content" | "includeInPlaintextExport">;
 
-const isNotFoundError = (error: unknown): boolean => gitHubErrorStatus(error) === 404;
-
 /**
  * Serializes a localized document from the input, falling back to the given fields for anything
  * it omits. Unmanaged front-matter keys and the recorded source version come from the Markdown
- * sent, or else from the translation being replaced.
+ * sent (the translation job carries them over from the translation it replaces).
  */
-const serializeLocalizedMarkdown = (input: Omit<SaveGitHubDocInput, "path" | "slug">, fallback: MarkdownFields, existingMarkdown?: string): string => {
+const serializeLocalizedMarkdown = (input: Omit<SaveGitHubDocInput, "path" | "slug">, fallback: MarkdownFields): string => {
   const base = input.markdown !== undefined ? parseMarkdownDocument(input.markdown) : fallback;
   const markdown = serializeMarkdownDocument(
     {
@@ -72,7 +70,7 @@ const serializeLocalizedMarkdown = (input: Omit<SaveGitHubDocInput, "path" | "sl
       content: input.content ?? base.content,
       includeInPlaintextExport: input.includeInPlaintextExport ?? base.includeInPlaintextExport,
     },
-    input.markdown ?? existingMarkdown,
+    input.markdown,
   );
 
   if (!parseMarkdownDocument(markdown).content.trim()) {
@@ -175,74 +173,6 @@ const toSaveResult = (commitSha: string, page: GitHubDocPage): SaveGitHubDocResu
   commitSha,
   page: { ...page, translationStale: false, localizationStatus: "current" },
 });
-
-export const saveGitHubLocalizedDoc = async ({
-  config,
-  input,
-  language,
-  localizationPath,
-  sourcePage,
-}: {
-  config: GitHubRuntimeConfig;
-  input: Omit<SaveGitHubDocInput, "path" | "slug">;
-  language: Pick<AutoTranslateLanguage, "code">;
-  localizationPath: string;
-  sourcePage: GitHubDocPage;
-}): Promise<SaveGitHubDocResult> => {
-  const access = beginGitHubCacheAccess(config);
-  const validation = validateGitHubRuntimeConfig(config);
-
-  if (!validation.valid) {
-    throw badRequest(validation.errors.join(" "));
-  }
-
-  const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, sourcePage);
-  const fullPath = localizedRepoPathForSourcePath(localizationPath, language.code, resolvedSourcePage.path);
-
-  let existing: { markdown: string; sha: string } | null = null;
-  try {
-    existing = await fetchGitHubFile(config, fullPath);
-  } catch (error: unknown) {
-    if (!isNotFoundError(error)) {
-      throw error;
-    }
-  }
-
-  const markdown = serializeLocalizedMarkdown(input, existing ? parseMarkdownDocument(existing.markdown) : resolvedSourcePage, existing?.markdown);
-  const writeResult = await getGitHubClient(config).repos.createOrUpdateFileContents({
-    owner: config.owner,
-    repo: config.repo,
-    path: fullPath,
-    message: input.commitMessage?.trim() || `docs: update ${language.code} localization for ${resolvedSourcePage.path}`,
-    content: Buffer.from(markdown, "utf8").toString("base64"),
-    branch: config.branch,
-    sha: existing?.sha,
-  });
-  assertGitHubCacheAccess(access);
-
-  const commitSha = writeResult.data.commit?.sha;
-  if (!commitSha) {
-    throw new Error("GitHub response did not include a commit SHA.");
-  }
-
-  const metadata = commitMetadataOrNow(writeResult.data.commit);
-  const sha = writeResult.data.content?.sha ?? gitBlobSha(Buffer.from(markdown, "utf8"));
-  const page = createLocalizedDocPage({
-    languageCode: language.code,
-    localizedRepoPath: fullPath,
-    metadata,
-    record: parseGitHubBlobRecord(sha, markdown),
-    sourcePage: resolvedSourcePage,
-  });
-
-  // As for editor saves, the barrier follows GitHub's confirmation: a failed write keeps every cache.
-  const mutationAccess = await prepareGitHubCacheMutation(config);
-  await applyCommittedGitHubFiles(config, mutationAccess, [{ markdown, metadata, repoPath: fullPath, sha }]);
-  await pruneRenderedMarkdownCache({ config, reason: "localized-page-save", targets: [{ languageCode: language.code, slug: page.slug }] });
-  assertGitHubCacheAccess(mutationAccess);
-
-  return toSaveResult(commitSha, page);
-};
 
 /**
  * Commits several localized documents as one commit (see `commitGitHubMarkdownFiles`): two reads,

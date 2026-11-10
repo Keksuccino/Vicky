@@ -14,7 +14,8 @@ import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import { readPrivateJsonFile, sourceCacheFilePath } from "@/lib/github-docs-cache-files";
 import { loadGitHubLocalizationStatuses } from "@/lib/github-localization";
-import { recordGitHubLocalizationSourceVersions, saveGitHubLocalizedDoc, saveGitHubLocalizedDocsBatch } from "@/lib/github-localization-saves";
+import { recordGitHubLocalizationSourceVersions, saveGitHubLocalizedDocsBatch } from "@/lib/github-localization-saves";
+import { GitHubLocalizationUploadQueue } from "@/lib/github-localization-upload-queue";
 import { parseMarkdownDocument } from "@/lib/markdown";
 import { createMarkdownRenderCacheStatus, warmMarkdownRenderCache } from "@/lib/markdown-render-cache-admin";
 import { translatePageLocalizations, type PageLocalizationTranslationEvent } from "@/lib/page-localization";
@@ -202,6 +203,10 @@ describe("GitHub localizations from the repository index", () => {
     await refreshGitHubDocsCache(config);
     const { pages } = await listMarkdownDocsTreePagesWithTitles(config);
     const openRouterRequests = withFakeOpenRouter(fake, { title: "Startseite", description: "Erste Seite", content: "Willkommen zurück" });
+    // The job's upload queue, with an upload window short enough to commit at once.
+    const queueKey = Symbol.for("vicky.githubLocalization.uploadQueue");
+    const queue = new GitHubLocalizationUploadQueue({ uploadIntervalMs: 1 });
+    (globalThis as typeof globalThis & Record<symbol, unknown>)[queueKey] = queue;
 
     const result = await translatePageLocalizations({
       apiKey: "unused",
@@ -213,27 +218,17 @@ describe("GitHub localizations from the repository index", () => {
       origin: "https://docs.example.com",
       siteTitle: "Docs",
       sourcePages: pages,
+    }).finally(async () => {
+      await queue.shutdown();
+      delete (globalThis as typeof globalThis & Record<symbol, unknown>)[queueKey];
     });
 
-    expect(result).toMatchObject({ requestedPages: 1, translatedPages: 1, failedPages: 0 });
+    expect(result).toMatchObject({ requestedPages: 1, translatedPages: 1, uploadedPages: 1, failedPages: 0 });
     expect(openRouterRequests).toHaveLength(1);
     const replaced = fake.files.get("localizations/de/home.md")?.toString("utf8") ?? "";
     expect(replaced).toContain("reviewed_by: Lena");
     expect(parseMarkdownDocument(replaced)).toMatchObject({ title: "Startseite", content: "Willkommen zurück\n", sourceBlobSha: gitBlobShaOf(newHome) });
     await expect(loadDocsPageForLanguage({ config, locator: { slug: "home" }, requestedLanguageCode: "de", store })).resolves.toMatchObject({ data: { localizationStatus: "current" } });
-  });
-
-  it("keeps a translation's recorded source version and own keys when it is saved from fields", async () => {
-    const home = page("Home", "Welcome home");
-    fake.setFile("localizations/de/home.md", `---\ntitle: Startseite\nsourceBlobSha: ${gitBlobShaOf(home)}\nreviewed_by: Lena\n---\nWillkommen daheim`);
-    await refreshGitHubDocsCache(config);
-    const sourcePage = await loadPublicGitHubDoc(config, { slug: "home" });
-
-    await saveGitHubLocalizedDoc({ config, language: GERMAN, localizationPath: "localizations", sourcePage, input: { title: "Startseite", content: "Willkommen zu Hause" } });
-
-    const saved = fake.files.get("localizations/de/home.md")?.toString("utf8") ?? "";
-    expect(saved).toContain("reviewed_by: Lena");
-    expect(parseMarkdownDocument(saved)).toMatchObject({ content: "Willkommen zu Hause\n", sourceBlobSha: gitBlobShaOf(home) });
   });
 
   it("starts a translation job on a warm index with a single tree request", async () => {
@@ -351,22 +346,6 @@ describe("GitHub localizations from the repository index", () => {
         { languageCode: "fr", currentPages: 1, missingPages: 2, outdatedPages: 0, unrecordedPages: 1 },
       ],
     });
-  });
-
-  it("serves a saved translation at once and needs only the tree request on the next refresh", async () => {
-    const sourcePage = await loadPublicGitHubDoc(config, { slug: "guide/usage" });
-
-    await saveGitHubLocalizedDoc({ config, language: GERMAN, localizationPath: "localizations", sourcePage, input: { markdown: page("Verwendung", "Benutze es") } });
-
-    expect(fake.requests.map((request) => request.kind)).toEqual(["contents", "put-contents"]);
-    fake.resetRequests();
-    await expect(loadDocsPageForLanguage({ config, locator: { slug: "guide/usage" }, requestedLanguageCode: "de", store })).resolves.toMatchObject({
-      data: { title: "Verwendung", localizationStatus: "current", updatedBy: "Editor" },
-    });
-    expect(fake.count()).toBe(0);
-
-    await refreshGitHubDocsCache(config);
-    expect(fake.requests.map((request) => request.kind)).toEqual(["tree"]);
   });
 
   it("applies a batch of saved translations from the commit response", async () => {

@@ -62,7 +62,7 @@
   - `src/lib/github-docs-cache-files.ts`: on-disk layout of the docs cache directory
   - `src/lib/github-derived-caches.ts`: pruning of rendered, search, and plaintext caches for changed pages
   - `src/lib/github-localization.ts`: localization readers (translated pages, sidebar titles, search pages, job status, cache-card variants) and lazy per-language loads
-  - `src/lib/github-localization-saves.ts`: localized saves (single file and batched Git data API commits)
+  - `src/lib/github-localization-saves.ts`: localized saves (batched Git data API commits)
   - `src/lib/github-paths.ts`: repository path rules
   - `src/lib/github-cache-identity.ts`, `src/lib/github-cache-invalidation.ts`: source/authorization isolation, cache generations, invalidation
 - Search corpus/ranking:

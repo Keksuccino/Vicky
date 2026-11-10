@@ -476,7 +476,6 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
       model: input.model,
       onEvent: (event) => updateJobFromEvent(job, event),
       origin: input.origin,
-      queueUploads: true,
       requestTimeoutMs: input.requestTimeoutMs,
       sourcePages: pages,
       siteTitle: input.siteTitle,

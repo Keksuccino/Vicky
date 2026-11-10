@@ -15,7 +15,6 @@ import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-loggi
 import { loadGitHubBlobs } from "@/lib/github-content-store";
 import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
 import { loadGitHubLocalizationStatuses, type GitHubLocalizationStatus } from "@/lib/github-localization";
-import { saveGitHubLocalizedDoc } from "@/lib/github-localization-saves";
 import { isSourceLanguage } from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
@@ -513,24 +512,6 @@ const requestTranslatedMarkdown = async ({
   return toTranslatedMarkdown(sourcePage, normalizeTranslationResponse(text), existing?.markdown);
 };
 
-export const translatePageToGitHubLocalization = async (input: PageTranslationInput): Promise<GitHubDocPage> => {
-  const { config, language, localizationPath, sourcePage } = input;
-  const markdown = await requestTranslatedMarkdown(input);
-  const result = await saveGitHubLocalizedDoc({
-    config,
-    language,
-    localizationPath,
-    sourcePage,
-    input: {
-      markdown,
-      includeInPlaintextExport: sourcePage.includeInPlaintextExport,
-      commitMessage: `docs: update ${language.code} localization for ${sourcePage.path}`,
-    },
-  });
-
-  return result.page;
-};
-
 export const translatePageToQueuedGitHubLocalization = async ({
   onUploadEvent,
   ...input
@@ -597,7 +578,6 @@ export const translatePageLocalizations = async ({
   model,
   onEvent,
   origin,
-  queueUploads,
   requestTimeoutMs = DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
   siteTitle,
   sourcePages,
@@ -610,7 +590,6 @@ export const translatePageLocalizations = async ({
   model: string;
   onEvent?: (event: PageLocalizationTranslationEvent) => void;
   origin: string;
-  queueUploads?: boolean;
   requestTimeoutMs?: number;
   siteTitle: string;
   sourcePages: GitHubDocPage[];
@@ -721,7 +700,7 @@ export const translatePageLocalizations = async ({
     }
   };
 
-  const translateCandidate = async (candidate: TranslationCandidate): Promise<{ ok: true; upload?: Promise<void> } | { ok: false; error: string }> => {
+  const translateCandidate = async (candidate: TranslationCandidate): Promise<{ ok: true; upload: Promise<void> } | { ok: false; error: string }> => {
     const maxAttempts = TRANSLATION_MAX_ATTEMPTS;
     const eventSourcePage = toEventSourcePage(candidate.sourcePage);
     const uploadEventContext = {
@@ -760,13 +739,7 @@ export const translatePageLocalizations = async ({
           siteTitle,
           sourcePage: candidate.sourcePage,
         };
-        const upload = queueUploads
-          ? (await translatePageToQueuedGitHubLocalization({ ...pageInput, onUploadEvent: (event) => onEvent?.(toUploadEvent(uploadEventContext, event)) })).upload
-          : undefined;
-
-        if (!queueUploads) {
-          await translatePageToGitHubLocalization(pageInput);
-        }
+        const { upload } = await translatePageToQueuedGitHubLocalization({ ...pageInput, onUploadEvent: (event) => onEvent?.(toUploadEvent(uploadEventContext, event)) });
 
         onEvent?.({
           type: "page-success",
@@ -837,19 +810,17 @@ export const translatePageLocalizations = async ({
 
       translatedPages += 1;
 
-      if (result.upload) {
-        // Attach both settlement handlers immediately. A fast queue rejection must not surface as an unhandled rejection while other translations are still running.
-        const tracked = { promise: Promise.resolve({ candidate, error: null as string | null }), settled: false };
-        tracked.promise = result.upload.then(() => ({ candidate, error: null }), (error: unknown) => ({ candidate, error: getDetailedAutoTranslateErrorMessage(error) })).then((outcome) => {
-          tracked.settled = true;
-          return outcome;
-        });
-        uploads.push(tracked);
-      }
+      // Attach both settlement handlers immediately. A fast queue rejection must not surface as an unhandled rejection while other translations are still running.
+      const tracked = { promise: Promise.resolve({ candidate, error: null as string | null }), settled: false };
+      tracked.promise = result.upload.then(() => ({ candidate, error: null }), (error: unknown) => ({ candidate, error: getDetailedAutoTranslateErrorMessage(error) })).then((outcome) => {
+        tracked.settled = true;
+        return outcome;
+      });
+      uploads.push(tracked);
     },
   });
 
-  let uploadedPages = queueUploads ? 0 : translatedPages;
+  let uploadedPages = 0;
   const pendingUploads = uploads.filter((upload) => !upload.settled).length;
   if (pendingUploads > 0) {
     onEvent?.({

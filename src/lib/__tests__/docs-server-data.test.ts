@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   loadGitHubLocalizedDoc: vi.fn(),
   loadGitHubLocalizedTitles: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
-  saveGitHubLocalizedDoc: vi.fn(),
+  saveGitHubLocalizedDocsBatch: vi.fn(),
 }));
 
 vi.mock("@/lib/encryption", () => ({
@@ -25,7 +25,7 @@ vi.mock("@/lib/github-localization", () => ({
 }));
 
 vi.mock("@/lib/github-localization-saves", () => ({
-  saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
+  saveGitHubLocalizedDocsBatch: mocks.saveGitHubLocalizedDocsBatch,
 }));
 
 vi.mock("@/lib/openrouter", () => ({
@@ -105,7 +105,7 @@ describe("public docs localization delivery", () => {
     expect(mocks.loadGitHubLocalizedDoc).toHaveBeenCalledTimes(1);
     expect(mocks.decryptSecret).not.toHaveBeenCalled();
     expect(mocks.requestOpenRouterChatCompletion).not.toHaveBeenCalled();
-    expect(mocks.saveGitHubLocalizedDoc).not.toHaveBeenCalled();
+    expect(mocks.saveGitHubLocalizedDocsBatch).not.toHaveBeenCalled();
   });
 
   it("shows translated sidebar titles from the title index and reports titles still loading", async () => {
