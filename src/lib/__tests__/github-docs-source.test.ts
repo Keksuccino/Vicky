@@ -23,7 +23,8 @@ import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake
 
 const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_TRANSLATION_CACHE_DIR"] as const;
 
-const createConfig = (): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: "token", cacheEpoch: randomUUID() });
+// Every test uses its own token: the client paces bulk requests per credential.
+const createConfig = (): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: `token-${randomUUID()}`, cacheEpoch: randomUUID() });
 
 const page = (title: string, body: string): string => `---\ntitle: ${title}\n---\n${body}`;
 

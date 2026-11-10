@@ -1,7 +1,7 @@
 import { Octokit } from "@octokit/rest";
 
 import { gitHubCredentialFingerprint } from "@/lib/github-cache-identity";
-import { ApiError } from "@/lib/http";
+import { ApiError, parseRetryAfterMs } from "@/lib/http";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
@@ -20,8 +20,35 @@ const MAX_CACHED_CLIENTS = 8;
 const TIMEOUT_ERROR_NAME = "GitHubRequestTimeoutError";
 
 /**
- * Bulk requests (blob downloads, tree walks, commit-metadata batches) wait behind interactive
- * ones (single reads, saves), so a large refresh never delays an editor save or a cold page read.
+ * Pacing of bulk requests, from GitHub's documented secondary rate limits ("Rate limits for the
+ * REST API" and "Best practices for using the REST API"): at most 900 points per minute for REST
+ * endpoints and 2,000 for GraphQL, where a GET/HEAD/OPTIONS request or a GraphQL query costs 1
+ * point and a POST/PATCH/PUT/DELETE request 5; at most 80 content-generating requests per minute
+ * and 500 per hour; and, for many mutative requests, at least one second between them.
+ *
+ * Bulk work stays within two thirds of each point budget (bursts of 100 points, then 10 per
+ * second for REST), leaving the rest for interactive requests and other users of the token.
+ * Bulk writes may burst to 5 (one batch commit), then go one second apart (at most 65 per
+ * minute), and are limited to 400 per hour after a burst of 60. Interactive requests never wait
+ * for pacing, but their cost is charged to the same budgets, so bulk work slows down while the
+ * site is busy.
+ */
+const PACING = {
+  core: { pointsPerMinute: 600, burstPoints: 100 },
+  graphql: { pointsPerMinute: 1_200, burstPoints: 100 },
+  writePoints: 5,
+  writeSpacingMs: 1_000,
+  writeSpacingBurst: 5,
+  writesPerHour: 400,
+  writeBurst: 60,
+  /** How far interactive usage may push bulk work back, in bucket capacities. */
+  interactiveDebtCapacities: 2,
+} as const;
+
+/**
+ * Bulk requests (blob downloads, tree walks, commit-metadata batches, background commits) wait
+ * behind interactive ones (single reads, saves) and are paced, so a large refresh or stamping
+ * run never delays an editor save or a cold page read and never trips GitHub's secondary limits.
  */
 export type GitHubRequestPriority = "interactive" | "bulk";
 
@@ -32,17 +59,37 @@ type RequestPolicyOptions = {
   signal?: AbortSignal;
 };
 
+/**
+ * A rate budget as a generic cell rate algorithm: `tat` is the theoretical time at which the
+ * budget is fully replenished. A request of cost c may start once `tat + c·interval − capacity`
+ * has passed, which serves waiting callers in order without polling.
+ */
+type PaceBucket = {
+  capacityMs: number;
+  intervalMs: number;
+  tat: number;
+};
+
+type RequestPacing = {
+  points: PaceBucket;
+  writeSpacing: PaceBucket;
+  writes: PaceBucket;
+};
+
 type GitHubClientState = {
   activeRequests: number;
   clients: Map<string, Octokit>;
+  /** Rate budgets by `<credential fingerprint>|<rate-limit resource>`. */
+  pacing: Map<string, RequestPacing>;
   queues: Record<GitHubRequestPriority, Array<() => void>>;
   /** Earliest time GitHub accepts requests again, by `<credential fingerprint>|<rate-limit resource>`. */
   rateLimitedUntil: Map<string, number>;
 };
 
-const clientState = processSingleton("githubClient.state", (): GitHubClientState => ({
+const clientState = processSingleton("githubClient.state.v2", (): GitHubClientState => ({
   activeRequests: 0,
   clients: new Map(),
+  pacing: new Map(),
   queues: { bulk: [], interactive: [] },
   rateLimitedUntil: new Map(),
 }));
@@ -72,6 +119,47 @@ const acquireRequestSlot = (priority: GitHubRequestPriority): Promise<void> => {
   return new Promise((resolve) => {
     clientState.queues[priority].push(resolve);
   });
+};
+
+type RateLimitResource = "core" | "graphql";
+
+const pacingFor = (rateLimitKey: string, resource: RateLimitResource): RequestPacing => {
+  const existing = clientState.pacing.get(rateLimitKey);
+  if (existing) {
+    return existing;
+  }
+
+  const pointIntervalMs = 60_000 / PACING[resource].pointsPerMinute;
+  const writeIntervalMs = 3_600_000 / PACING.writesPerHour;
+  const pacing: RequestPacing = {
+    points: { capacityMs: PACING[resource].burstPoints * pointIntervalMs, intervalMs: pointIntervalMs, tat: 0 },
+    writeSpacing: { capacityMs: PACING.writeSpacingBurst * PACING.writeSpacingMs, intervalMs: PACING.writeSpacingMs, tat: 0 },
+    writes: { capacityMs: PACING.writeBurst * writeIntervalMs, intervalMs: writeIntervalMs, tat: 0 },
+  };
+  clientState.pacing.set(rateLimitKey, pacing);
+  return pacing;
+};
+
+const pacedCosts = (pacing: RequestPacing, write: boolean): Array<[PaceBucket, number]> =>
+  write ? [[pacing.points, PACING.writePoints], [pacing.writeSpacing, 1], [pacing.writes, 1]] : [[pacing.points, 1]];
+
+/** Reserves the earliest start at which every budget admits the request; returns how long to wait for it. */
+const reserveBulkStart = (costs: Array<[PaceBucket, number]>, now: number): number => {
+  let startAt = now;
+  for (const [bucket, cost] of costs) {
+    startAt = Math.max(startAt, bucket.tat + cost * bucket.intervalMs - bucket.capacityMs);
+  }
+  for (const [bucket, cost] of costs) {
+    bucket.tat = Math.max(bucket.tat, startAt) + cost * bucket.intervalMs;
+  }
+  return startAt - now;
+};
+
+/** Charges an interactive request without delaying it; its usage pushes bulk work back by a bounded amount. */
+const chargeInteractiveRequest = (costs: Array<[PaceBucket, number]>, now: number): void => {
+  for (const [bucket, cost] of costs) {
+    bucket.tat = Math.min(Math.max(bucket.tat, now) + cost * bucket.intervalMs, now + bucket.capacityMs * PACING.interactiveDebtCapacities);
+  }
 };
 
 const releaseRequestSlot = (): void => {
@@ -121,20 +209,6 @@ const fetchWithTimeout = async (input: string | URL | Request, init?: RequestIni
 const readHeader = (headers: Record<string, string | number | undefined> | undefined, name: string): string | undefined => {
   const value = headers?.[name];
   return value === undefined ? undefined : String(value);
-};
-
-const parseRetryAfterMs = (value: string | undefined): number | undefined => {
-  if (!value?.trim()) {
-    return undefined;
-  }
-
-  const seconds = Number(value);
-  if (Number.isFinite(seconds)) {
-    return Math.max(0, seconds * 1000);
-  }
-
-  const date = Date.parse(value);
-  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
 };
 
 const rateLimitResetAtMs = (headers: Record<string, string | number | undefined> | undefined): number | undefined => {
@@ -195,16 +269,21 @@ type OctokitRequest = (options: Record<string, unknown>) => Promise<{ headers: R
 
 /**
  * Applies the request policy shared by every GitHub call: rate-limit pauses known from earlier
- * responses, the global concurrency cap, and bounded retries. Only requests that are safe to
- * repeat retry after timeouts, connection failures, and 5xx responses; a rate-limited request
- * retries regardless of its method because GitHub rejected it before doing any work.
+ * responses, pacing of bulk requests, the global concurrency cap, and bounded retries. Only
+ * requests that are safe to repeat retry after timeouts, connection failures, and 5xx responses;
+ * a rate-limited request retries regardless of its method because GitHub rejected it before
+ * doing any work. Every attempt is paced, retries included.
  */
 const sendWithPolicy = async (credentialKey: string, request: OctokitRequest, options: Record<string, unknown>): Promise<unknown> => {
   const method = String(options.method ?? "GET").toUpperCase();
   const policy = (options.request ?? {}) as RequestPolicyOptions;
   const repeatable = method === "GET" || method === "HEAD" || policy.idempotent === true;
   const priority: GitHubRequestPriority = policy.priority === "bulk" ? "bulk" : "interactive";
-  const rateLimitKey = `${credentialKey}|${String(options.url ?? "").endsWith("/graphql") ? "graphql" : "core"}`;
+  const resource: RateLimitResource = String(options.url ?? "").endsWith("/graphql") ? "graphql" : "core";
+  const rateLimitKey = `${credentialKey}|${resource}`;
+  // GraphQL requests are POSTs, but this app only sends queries, which GitHub counts as reads.
+  const write = resource === "core" && method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
+  const costs = pacedCosts(pacingFor(rateLimitKey, resource), write);
   let rateLimitWaitMs = 0;
 
   for (let attempt = 1; ; attempt += 1) {
@@ -216,6 +295,15 @@ const sendWithPolicy = async (credentialKey: string, request: OctokitRequest, op
       }
       rateLimitWaitMs += pauseMs;
       await sleep(pauseMs);
+    }
+
+    if (priority === "bulk") {
+      const pacingMs = reserveBulkStart(costs, Date.now());
+      if (pacingMs > 0) {
+        await sleep(pacingMs);
+      }
+    } else {
+      chargeInteractiveRequest(costs, Date.now());
     }
 
     let failure: OctokitRequestError;

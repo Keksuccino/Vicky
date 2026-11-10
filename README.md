@@ -63,6 +63,7 @@ Vicky keeps GitHub traffic small and predictable, so a busy site stays far below
 - **The Markdown HTML cache card loads on request** and never downloads page content or contacts GitHub to show its status.
 - **After a restart**, pages are served from the local copy right away; the first refresh normally costs a single request.
 - **One shared GitHub client** caps concurrent requests, times out stalled ones, retries temporary failures with backoff, and honours GitHub's rate-limit responses. When the hourly quota is used up, Vicky stops sending requests until GitHub's reset time and reports when docs can be loaded again.
+- **Background work is paced.** Large downloads and background commits (loading a language's translations, warming the Markdown HTML cache, translation uploads) stay within GitHub's documented secondary rate limits, so they can never pause the site for visitors. Page views and editor saves are never slowed down by this.
 
 Files over 1 MB load like any other page.
 

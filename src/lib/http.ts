@@ -24,6 +24,21 @@ export const ApiError = processSingleton(
 );
 export type ApiError = InstanceType<typeof ApiError>;
 
+/** Milliseconds a `Retry-After` header asks to wait, from delta-seconds or an HTTP date. */
+export const parseRetryAfterMs = (value: string | null | undefined): number | undefined => {
+  if (!value?.trim()) {
+    return undefined;
+  }
+
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+
+  const date = Date.parse(value);
+  return Number.isNaN(date) ? undefined : Math.max(0, date - Date.now());
+};
+
 export const badRequest = (message: string): ApiError => new ApiError(400, message);
 export const unauthorized = (message = "Unauthorized"): ApiError => new ApiError(401, message);
 export const notFound = (message = "Not found"): ApiError => new ApiError(404, message);

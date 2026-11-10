@@ -29,7 +29,8 @@ const SOURCE: AutoTranslateLanguage = { name: "English (US)", code: "en-US", ico
 const GERMAN: AutoTranslateLanguage = { name: "German", code: "de", icon: "de", enabled: true };
 const FRENCH: AutoTranslateLanguage = { name: "French", code: "fr", icon: "fr", enabled: true };
 
-const createConfig = (): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: "token", cacheEpoch: randomUUID() });
+// Every test uses its own token: the client paces bulk requests per credential.
+const createConfig = (): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: `token-${randomUUID()}`, cacheEpoch: randomUUID() });
 
 const createStore = (): DocsStore => {
   const store = DEFAULT_STORE();
