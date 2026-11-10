@@ -17,6 +17,9 @@ vi.mock("@/lib/encryption", () => ({
 vi.mock("@/lib/github", () => ({
   listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles,
   loadPublicGitHubDoc: mocks.loadPublicGitHubDoc,
+}));
+
+vi.mock("@/lib/github-localization", () => ({
   loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
   loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,
   saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,

@@ -347,7 +347,7 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
       details: `Languages: ${input.languages.map(formatAutoTranslateLanguageForLog).join(", ")}. Model: ${input.model}.`,
     });
     addJobLog(job, "info", "Loading source pages from GitHub.");
-    const { pages } = await listMarkdownDocsTreePagesWithTitles(input.config, { bypassCache: true, store: false });
+    const { pages } = await listMarkdownDocsTreePagesWithTitles(input.config, { bypassCache: true });
     addJobLog(job, "info", `Loaded ${pages.length} source page${pages.length === 1 ? "" : "s"} from GitHub.`);
 
     const result = await translatePageLocalizations({

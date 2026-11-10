@@ -13,7 +13,7 @@ vi.mock("@/lib/openrouter", () => ({
   requestOpenRouterChatCompletion: mocks.requestOpenRouterChatCompletion,
 }));
 
-vi.mock("@/lib/github", () => ({
+vi.mock("@/lib/github-localization", () => ({
   loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
   loadGitHubLocalizationStatusIndex: mocks.loadGitHubLocalizationStatusIndex,
   loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,

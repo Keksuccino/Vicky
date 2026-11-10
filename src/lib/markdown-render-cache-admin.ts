@@ -9,7 +9,8 @@ import {
   normalizeAutoTranslateLanguages,
 } from "@/lib/auto-translate";
 import { renderedMarkdownCache } from "@/lib/cache";
-import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot } from "@/lib/github";
+import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
+import { loadGitHubLocalizationSnapshot } from "@/lib/github-localization";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess, trackGitHubCacheWrite } from "@/lib/github-cache-invalidation";
 import { badRequest } from "@/lib/http";
 import {

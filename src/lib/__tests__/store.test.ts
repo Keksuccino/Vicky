@@ -15,6 +15,7 @@ import type { GitHubRuntimeConfig } from "@/lib/types";
 const tempDirs: string[] = [];
 const previousMarkdownCacheDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
 const previousSnapshotCacheDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
+const previousDocsCacheDir = process.env.WIKI_DOCS_CACHE_DIR;
 const previousTranslationCacheDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
 const previousAdminPassword = process.env.ADMIN_PASSWORD;
 
@@ -37,6 +38,8 @@ const writeStore = async (storePath: string, siteTitle: string): Promise<void> =
 const importStore = async (storePath: string): Promise<typeof import("@/lib/store")> => {
   vi.resetModules();
   process.env.WIKI_STORE_FILE_PATH = storePath;
+  // Legacy migrations clean the docs cache; keep them away from the project's runtime data.
+  process.env.WIKI_DOCS_CACHE_DIR = path.join(path.dirname(storePath), "docs-cache");
   return import("@/lib/store");
 };
 
@@ -51,6 +54,11 @@ afterEach(async () => {
     delete process.env.WIKI_DOCS_SNAPSHOT_DIR;
   } else {
     process.env.WIKI_DOCS_SNAPSHOT_DIR = previousSnapshotCacheDir;
+  }
+  if (previousDocsCacheDir === undefined) {
+    delete process.env.WIKI_DOCS_CACHE_DIR;
+  } else {
+    process.env.WIKI_DOCS_CACHE_DIR = previousDocsCacheDir;
   }
   if (previousTranslationCacheDir === undefined) {
     delete process.env.WIKI_TRANSLATION_CACHE_DIR;
@@ -68,7 +76,7 @@ afterEach(async () => {
 });
 
 describe("store reads", () => {
-  it("migrates legacy stores to a unique epoch and removes only their pre-v12 snapshot", async () => {
+  it("migrates legacy stores to a unique epoch and removes obsolete docs snapshots", async () => {
     const storePath = await createStorePath();
     const legacyStore = DEFAULT_STORE() as unknown as Record<string, unknown>;
     const settings = legacyStore.settings as Record<string, unknown>;
@@ -116,7 +124,7 @@ describe("store reads", () => {
     const persisted = JSON.parse(await readFile(storePath, "utf8")) as { settings: { github: { cacheEpoch: string } } };
     expect(persisted.settings.github.cacheEpoch).toBe(normalized.settings.github.cacheEpoch);
     await expect(access(snapshotPath(legacyConfig))).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(access(snapshotPath(otherConfig))).resolves.toBeUndefined();
+    await expect(access(snapshotPath(otherConfig))).rejects.toMatchObject({ code: "ENOENT" });
     const renderKeys = (await listPersistentRenderedMarkdownCacheEntries()).map((entry) => entry.key);
     expect(renderKeys).not.toContain(legacyRenderKey);
     expect(renderKeys).toContain(otherRenderKey);

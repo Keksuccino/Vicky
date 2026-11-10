@@ -1,18 +1,15 @@
 import {
   aiPlaintextDocsCache,
-  docsPageCache,
   docsSearchCorpusCache,
   docsSnapshotCache,
-  docsTreeCache,
+  docsSourceCache,
   renderedMarkdownCache,
   translatedDocsPageCache,
   translatedDocsTitleCache,
 } from "@/lib/cache";
-import {
-  deleteAllPersistentGitHubDocsSnapshots,
-  deletePersistentGitHubDocsSnapshot,
-} from "@/lib/docs-snapshot-store";
 import { gitHubDocsLogicalSourceKey, gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
+import { clearGitHubBlobMemory, sweepUnreferencedGitHubBlobs } from "@/lib/github-content-store";
+import { deleteAllDocsCacheFiles, deleteSourceCacheFiles, getGitHubDocsCacheDir, removeLegacyDocsSnapshots } from "@/lib/github-docs-cache-files";
 import { cleanupLegacyGitHubLogicalSourceCaches } from "@/lib/github-legacy-cache-cleanup";
 import { ApiError } from "@/lib/http";
 import {
@@ -37,8 +34,9 @@ export type GitHubCacheLease = {
 };
 
 export type GitHubCacheInvalidationResult = {
+  /** Removed repository index, commit metadata, blob, and obsolete snapshot files. */
+  docsCacheFiles: number;
   renderedEntries: number;
-  snapshotEntries: number;
   translationEntries: number;
 };
 
@@ -158,9 +156,8 @@ export const prepareGitHubCacheMutation = async (config: GitHubRuntimeConfig): P
 };
 
 const clearMemoryCachesForPrefix = (prefix: string): void => {
+  docsSourceCache.deleteWhere((key) => key.startsWith(prefix));
   docsSnapshotCache.deleteWhere((key) => key.startsWith(prefix));
-  docsTreeCache.deleteWhere((key) => key.startsWith(prefix));
-  docsPageCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
@@ -171,6 +168,7 @@ const clearMemoryCachesForPrefix = (prefix: string): void => {
 /**
  * Invalidates one exact source/authorization epoch. Advancing the generation before
  * filesystem cleanup ensures concurrent work cannot repopulate entries after deletion.
+ * Blobs are shared by content, so only those no remaining index references are deleted.
  */
 export const invalidateGitHubRuntimeCaches = async (
   config: GitHubRuntimeConfig,
@@ -178,16 +176,18 @@ export const invalidateGitHubRuntimeCaches = async (
 ): Promise<GitHubCacheInvalidationResult> => {
   const runtimeKey = gitHubRuntimeCacheKey(config);
   const prefix = `${runtimeKey}|`;
+  const baseDir = getGitHubDocsCacheDir();
   const wasRevoked = runtimeState.revoked.has(runtimeKey);
   const generation = advanceGitHubCacheGeneration(config, { revoke: true });
   clearMemoryCachesForPrefix(prefix);
   await waitForOlderCacheWrites(runtimeKey, generation);
 
-  const [snapshotDeleted, renderedEntries, translationEntries] = await Promise.all([
-    deletePersistentGitHubDocsSnapshot(config),
+  const [sourceFiles, renderedEntries, translationEntries] = await Promise.all([
+    deleteSourceCacheFiles(baseDir, runtimeKey),
     deletePersistentRenderedMarkdownWhere((key) => key.startsWith(prefix)),
     deletePersistentTranslationCacheWhere((key) => key.startsWith(prefix)),
   ]);
+  const blobFiles = await sweepUnreferencedGitHubBlobs(baseDir);
 
   await recordRenderedMarkdownCacheMutation({
     deletedEntries: renderedEntries,
@@ -201,8 +201,8 @@ export const invalidateGitHubRuntimeCaches = async (
   }
 
   return {
+    docsCacheFiles: sourceFiles + blobFiles,
     renderedEntries,
-    snapshotEntries: snapshotDeleted ? 1 : 0,
     translationEntries,
   };
 };
@@ -215,7 +215,7 @@ export const transitionGitHubRuntimeCaches = async (
   const nextKey = gitHubRuntimeCacheKey(nextConfig);
   activateGitHubRuntimeConfig(nextConfig);
   if (previousKey === nextKey) {
-    return { renderedEntries: 0, snapshotEntries: 0, translationEntries: 0 };
+    return { docsCacheFiles: 0, renderedEntries: 0, translationEntries: 0 };
   }
 
   const currentResult = await invalidateGitHubRuntimeCaches(previousConfig, {
@@ -225,8 +225,8 @@ export const transitionGitHubRuntimeCaches = async (
   const legacyResult = await cleanupLegacyGitHubLogicalSourceCaches(previousConfig, { recordMutation: false });
 
   return {
+    docsCacheFiles: legacyResult.docsCacheFiles + currentResult.docsCacheFiles,
     renderedEntries: legacyResult.renderedEntries + currentResult.renderedEntries,
-    snapshotEntries: legacyResult.snapshotEntries + currentResult.snapshotEntries,
     translationEntries: legacyResult.translationEntries + currentResult.translationEntries,
   };
 };
@@ -244,19 +244,21 @@ export const invalidateAllGitHubRuntimeCaches = async (): Promise<GitHubCacheInv
   }
 
   try {
+    docsSourceCache.clear();
     docsSnapshotCache.clear();
-    docsTreeCache.clear();
-    docsPageCache.clear();
     docsSearchCorpusCache.clear();
     aiPlaintextDocsCache.clear();
     translatedDocsPageCache.clear();
     translatedDocsTitleCache.clear();
     renderedMarkdownCache.clear();
+    clearGitHubBlobMemory();
 
     await Promise.all(Array.from(generations, ([runtimeKey, generation]) => waitForOlderCacheWrites(runtimeKey, generation)));
 
-    const [snapshotEntries, renderedEntries, translationEntries] = await Promise.all([
-      deleteAllPersistentGitHubDocsSnapshots(),
+    const baseDir = getGitHubDocsCacheDir();
+    const [docsCacheFiles, legacySnapshotFiles, renderedEntries, translationEntries] = await Promise.all([
+      deleteAllDocsCacheFiles(baseDir),
+      removeLegacyDocsSnapshots(baseDir),
       deletePersistentRenderedMarkdownWhere(() => true),
       deletePersistentTranslationCacheWhere(() => true),
     ]);
@@ -267,7 +269,7 @@ export const invalidateAllGitHubRuntimeCaches = async (): Promise<GitHubCacheInv
       scope: "all",
     });
 
-    return { renderedEntries, snapshotEntries, translationEntries };
+    return { docsCacheFiles: docsCacheFiles + legacySnapshotFiles, renderedEntries, translationEntries };
   } finally {
     runtimeState.allInvalidating = false;
     for (const runtimeKey of runtimeKeys) {

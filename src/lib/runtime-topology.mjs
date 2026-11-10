@@ -63,7 +63,7 @@ export function resolveRuntimeStorageLayout(environment = process.env, cwd = pro
     sslStorageDir,
     path.dirname(sslStatusPath),
     configuredTrimmedPath(environment.WIKI_MARKDOWN_CACHE_DIR, defaultPath(cwd, "data", "markdown-cache"), cwd, "WIKI_MARKDOWN_CACHE_DIR"),
-    configuredTrimmedPath(environment.WIKI_DOCS_SNAPSHOT_DIR, defaultPath(cwd, "data", "docs-cache", "snapshots"), cwd, "WIKI_DOCS_SNAPSHOT_DIR"),
+    configuredTrimmedPath(environment.WIKI_DOCS_CACHE_DIR, defaultPath(cwd, "data", "docs-cache"), cwd, "WIKI_DOCS_CACHE_DIR"),
     configuredTrimmedPath(environment.WIKI_TRANSLATION_CACHE_DIR, defaultPath(cwd, "data", "translation-cache"), cwd, "WIKI_TRANSLATION_CACHE_DIR"),
     path.dirname(analyticsDbPath),
     path.dirname(loginDbPath),

@@ -21,10 +21,13 @@ const listMarkdownDocsTreePagesWithTitlesMock = vi.fn();
 const loadGitHubLocalizationSnapshotMock = vi.fn();
 
 vi.mock("@/lib/github", () => ({
-  loadGitHubLocalizationSnapshot: (...args: unknown[]) => loadGitHubLocalizationSnapshotMock(...args),
   listMarkdownDocsTreePagesWithTitles: (...args: unknown[]) => listMarkdownDocsTreePagesWithTitlesMock(...args),
   toRuntimeConfigCacheKey: (config: GitHubRuntimeConfig) =>
     [config.owner, config.repo, config.branch, config.docsPath].join("|"),
+}));
+
+vi.mock("@/lib/github-localization", () => ({
+  loadGitHubLocalizationSnapshot: (...args: unknown[]) => loadGitHubLocalizationSnapshotMock(...args),
 }));
 
 const config: GitHubRuntimeConfig = {

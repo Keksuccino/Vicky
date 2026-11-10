@@ -7,9 +7,12 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/github", () => ({
-  loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
   listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles,
   toRuntimeConfigCacheKey: mocks.toRuntimeConfigCacheKey,
+}));
+
+vi.mock("@/lib/github-localization", () => ({
+  loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
 }));
 
 import { docsSearchCorpusCache } from "@/lib/cache";

@@ -5,26 +5,12 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
-const githubState = vi.hoisted(() => ({ treeRequests: 0 }));
+import { createFakeGitHub, type FakeGitHub } from "./fixtures/fake-github-api";
 
-vi.mock("@octokit/rest", () => ({
-  Octokit: class {
-    repos = {
-      getBranch: vi.fn(async () => ({ data: { commit: { sha: "branch-sha", commit: { tree: { sha: "tree-sha" } } } } })),
-    };
-
-    git = {
-      getTree: vi.fn(async () => {
-        githubState.treeRequests += 1;
-        return { data: { tree: [{ path: "docs/home.md", sha: "home-sha", type: "blob" }] } };
-      }),
-    };
-  },
-}));
-
-const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_SNAPSHOT_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_STORE_FILE_PATH", "WIKI_TRANSLATION_CACHE_DIR"] as const;
+const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_STORE_FILE_PATH", "WIKI_TRANSLATION_CACHE_DIR"] as const;
 
 // Next.js evaluates every library module once per bundle graph (server-rendered pages, route
 // handlers, ...). Importing again after resetting the module registry creates exactly such a
@@ -38,18 +24,23 @@ const createConfig = (): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo",
 
 describe("process-wide runtime state", () => {
   const previousEnvironment = new Map(RUNTIME_DIRECTORY_VARIABLES.map((name) => [name, process.env[name]]));
+  let fake: FakeGitHub;
   let tempDir = "";
 
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-process-singleton-"));
-    process.env.WIKI_DOCS_SNAPSHOT_DIR = path.join(tempDir, "snapshots");
+    process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
     process.env.WIKI_STORE_FILE_PATH = path.join(tempDir, "wiki-store.json");
     process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
-    githubState.treeRequests = 0;
+    fake = createFakeGitHub();
+    fake.setFile("docs/home.md", "# Home");
+    vi.stubGlobal("fetch", fake.fetch);
+    clearGitHubBlobMemory();
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     for (const [name, value] of previousEnvironment) {
       if (value === undefined) {
         delete process.env[name];
@@ -81,8 +72,8 @@ describe("process-wide runtime state", () => {
     const pageCopy = await importModuleCopy(() => import("@/lib/cache"));
     const routeCopy = await importModuleCopy(() => import("@/lib/cache"));
 
-    expect(routeCopy.docsTreeCache).toBe(pageCopy.docsTreeCache);
-    expect(routeCopy.docsPageCache).toBe(pageCopy.docsPageCache);
+    expect(routeCopy.docsSourceCache).toBe(pageCopy.docsSourceCache);
+    expect(routeCopy.docsSnapshotCache).toBe(pageCopy.docsSnapshotCache);
     expect(routeCopy.renderedMarkdownCache).toBe(pageCopy.renderedMarkdownCache);
   });
 
@@ -95,7 +86,7 @@ describe("process-wide runtime state", () => {
     await routeCopy.clearGitHubDocsCache(config);
     await expect(pageCopy.listMarkdownDocsTree(config)).resolves.toEqual([expect.objectContaining({ slug: "home" })]);
 
-    expect(githubState.treeRequests).toBe(2);
+    expect(fake.count("tree")).toBe(2);
   });
 
   it("coalesces concurrent cold loads started by different copies into one upstream request", async () => {
@@ -106,7 +97,8 @@ describe("process-wide runtime state", () => {
     const [pageTree, routeTree] = await Promise.all([pageCopy.listMarkdownDocsTree(config), routeCopy.listMarkdownDocsTree(config)]);
 
     expect(routeTree).toBe(pageTree);
-    expect(githubState.treeRequests).toBe(1);
+    expect(fake.count("tree")).toBe(1);
+    expect(fake.count("blob")).toBe(1);
   });
 
   it("keeps API error statuses when another copy created the error", async () => {

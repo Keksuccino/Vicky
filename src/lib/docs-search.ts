@@ -1,5 +1,6 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
-import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot, toRuntimeConfigCacheKey } from "@/lib/github";
+import { listMarkdownDocsTreePagesWithTitles, toRuntimeConfigCacheKey } from "@/lib/github";
+import { loadGitHubLocalizationSnapshot } from "@/lib/github-localization";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
 import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
 import { processSingleton } from "@/lib/process-singleton.mjs";

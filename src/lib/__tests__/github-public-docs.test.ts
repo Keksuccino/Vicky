@@ -4,161 +4,116 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const githubState = vi.hoisted(() => ({
-  branchRequests: 0,
-  contentGate: null as Promise<void> | null,
-  contentRequests: [] as string[],
-  files: new Map<string, { markdown: string; sha: string }>(),
-  treeGate: null as Promise<void> | null,
-  treeRequests: 0,
-}));
-
-vi.mock("@octokit/rest", () => ({
-  Octokit: class {
-    repos = {
-      getBranch: vi.fn(async () => {
-        githubState.branchRequests += 1;
-        return { data: { commit: { sha: "branch-sha", commit: { tree: { sha: "tree-sha" } } } } };
-      }),
-      getContent: vi.fn(async ({ path: repoPath }: { path: string }) => {
-        githubState.contentRequests.push(repoPath);
-        await githubState.contentGate;
-        const file = githubState.files.get(repoPath);
-        if (!file) {
-          throw Object.assign(new Error("Document not found."), { status: 404 });
-        }
-        return { data: { type: "file", content: Buffer.from(file.markdown, "utf8").toString("base64"), encoding: "base64", sha: file.sha } };
-      }),
-      listCommits: vi.fn(async () => ({ data: [] })),
-      createOrUpdateFileContents: vi.fn(async ({ content, path: repoPath }: { content: string; path: string }) => {
-        githubState.files.set(repoPath, { markdown: Buffer.from(content, "base64").toString("utf8"), sha: "saved-file-sha" });
-        return { data: { commit: { sha: "saved-commit-sha" }, content: { sha: "saved-file-sha" } } };
-      }),
-    };
-
-    git = {
-      getTree: vi.fn(async () => {
-        githubState.treeRequests += 1;
-        await githubState.treeGate;
-        return {
-          data: {
-            tree: Array.from(githubState.files, ([repoPath, file]) => ({ path: repoPath, sha: file.sha, type: "blob" })),
-          },
-        };
-      }),
-    };
-  },
-}));
-
-import { docsPageCache, docsSnapshotCache, docsTreeCache } from "@/lib/cache";
-import { loadGitHubDoc, loadPublicGitHubDoc, saveGitHubDoc } from "@/lib/github";
+import { docsSourceCache } from "@/lib/cache";
+import { clearGitHubBlobMemory } from "@/lib/github-content-store";
+import { loadGitHubDoc, loadPublicGitHubDoc, refreshGitHubDocsCache, saveGitHubDoc } from "@/lib/github";
 import type { GitHubRuntimeConfig } from "@/lib/types";
+
+import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake-github-api";
 
 const createConfig = (cacheEpoch: string): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: "token", cacheEpoch });
 
+const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_TRANSLATION_CACHE_DIR"] as const;
+
 describe("public GitHub document reads", () => {
-  const previousSnapshotDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
-  const previousMarkdownDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
-  const previousTranslationDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
+  const previousEnvironment = new Map(RUNTIME_DIRECTORY_VARIABLES.map((name) => [name, process.env[name]]));
+  let fake: FakeGitHub;
   let tempDir = "";
 
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-public-docs-"));
-    process.env.WIKI_DOCS_SNAPSHOT_DIR = path.join(tempDir, "snapshots");
+    process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
     process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
-    docsPageCache.clear();
-    docsSnapshotCache.clear();
-    docsTreeCache.clear();
-    githubState.branchRequests = 0;
-    githubState.contentGate = null;
-    githubState.contentRequests = [];
-    githubState.files = new Map([
-      ["docs/home.md", { markdown: "---\ntitle: Home\n---\n\nPublic home", sha: "home-sha" }],
-    ]);
-    githubState.treeGate = null;
-    githubState.treeRequests = 0;
+    docsSourceCache.clear();
+    clearGitHubBlobMemory();
+    fake = createFakeGitHub();
+    fake.setFile("docs/home.md", "---\ntitle: Home\n---\n\nPublic home");
+    vi.stubGlobal("fetch", fake.fetch);
   });
 
   afterEach(async () => {
-    for (const [name, value] of [
-      ["WIKI_DOCS_SNAPSHOT_DIR", previousSnapshotDir],
-      ["WIKI_MARKDOWN_CACHE_DIR", previousMarkdownDir],
-      ["WIKI_TRANSLATION_CACHE_DIR", previousTranslationDir],
-    ] as const) {
+    vi.unstubAllGlobals();
+    for (const [name, value] of previousEnvironment) {
       if (value === undefined) {
         delete process.env[name];
       } else {
         process.env[name] = value;
       }
     }
-    docsPageCache.clear();
-    docsSnapshotCache.clear();
-    docsTreeCache.clear();
+    docsSourceCache.clear();
+    clearGitHubBlobMemory();
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("resolves many random slugs through one authoritative tree without GitHub file probes", async () => {
-    let releaseTree!: () => void;
-    githubState.treeGate = new Promise<void>((resolve) => {
-      releaseTree = resolve;
-    });
+  it("resolves many random slugs through one authoritative index without GitHub file probes", async () => {
+    const releaseTree = fake.hold("tree");
     const config = createConfig("random-slug-containment");
     const reads = Array.from({ length: 250 }, (_, index) => loadPublicGitHubDoc(config, { slug: `random/path-${index}` }));
 
-    await vi.waitFor(() => expect(githubState.treeRequests).toBe(1));
+    await vi.waitFor(() => expect(fake.count("tree")).toBe(1));
     releaseTree();
     const results = await Promise.allSettled(reads);
 
     expect(results.every((result) => result.status === "rejected" && result.reason instanceof Error && /not found/i.test(result.reason.message))).toBe(true);
-    expect(githubState.branchRequests).toBe(1);
-    expect(githubState.treeRequests).toBe(1);
-    expect(githubState.contentRequests).toEqual([]);
+    expect(fake.count("tree")).toBe(1);
+    expect(fake.count("blob")).toBe(1);
+    expect(fake.count("contents")).toBe(0);
   });
 
-  it("coalesces concurrent identical valid reads into one GitHub file request", async () => {
-    let releaseContent!: () => void;
-    githubState.contentGate = new Promise<void>((resolve) => {
-      releaseContent = resolve;
-    });
+  it("coalesces concurrent identical valid reads into one GitHub blob request", async () => {
+    const releaseBlob = fake.hold("blob");
     const config = createConfig("identical-read-coalescing");
     const reads = Array.from({ length: 40 }, () => loadPublicGitHubDoc(config, { slug: "home" }));
 
-    await vi.waitFor(() => expect(githubState.contentRequests).toEqual(["docs/home.md"]));
-    releaseContent();
+    await vi.waitFor(() => expect(fake.count("blob")).toBe(1));
+    releaseBlob();
     const pages = await Promise.all(reads);
 
     expect(pages).toHaveLength(40);
     expect(pages.every((page) => page.slug === "home" && page.content.includes("Public home"))).toBe(true);
-    expect(githubState.branchRequests).toBe(1);
-    expect(githubState.treeRequests).toBe(1);
-    expect(githubState.contentRequests).toEqual(["docs/home.md"]);
+    expect(fake.count("tree")).toBe(1);
+    expect(fake.count("blob")).toBe(1);
+    expect(fake.count("contents")).toBe(0);
   });
 
-  it("keeps authenticated direct reads separate from public tree authorization", async () => {
+  it("keeps authenticated direct reads separate from public index authorization", async () => {
     const config = createConfig("admin-direct-read-separation");
     await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toThrow(/not found/i);
-    expect(githubState.contentRequests).toEqual([]);
+    expect(fake.count("contents")).toBe(0);
 
-    githubState.files.set("docs/draft.md", { markdown: "---\ntitle: Draft\n---\n\nEditor draft", sha: "draft-sha" });
+    fake.setFile("docs/draft.md", "---\ntitle: Draft\n---\n\nEditor draft");
     const draft = await loadGitHubDoc(config, { slug: "draft" });
     expect(draft.slug).toBe("draft");
     expect(draft.content).toContain("Editor draft");
-    expect(githubState.contentRequests).toEqual(["docs/draft.md"]);
+    expect(fake.requests.filter((request) => request.kind === "contents").map((request) => request.target)).toEqual(["docs/draft.md"]);
+    await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toThrow(/not found/i);
   });
 
-  it("invalidates a public miss generation when an authenticated save creates the page", async () => {
+  it("serves a page created by an authenticated save, despite an earlier public miss", async () => {
     const config = createConfig("save-invalidates-public-miss");
     await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).rejects.toThrow(/not found/i);
-    expect(githubState.contentRequests).toEqual([]);
+    expect(fake.count("contents")).toBe(0);
 
     await saveGitHubDoc(config, { slug: "new-page", content: "Newly created content" });
-    await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).resolves.toMatchObject({ slug: "new-page", sha: "saved-file-sha" });
-    expect(githubState.treeRequests).toBe(2);
-    expect(githubState.contentRequests).toEqual(["docs/new-page.md"]);
+    await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).resolves.toMatchObject({ slug: "new-page", sha: gitBlobShaOf("Newly created content") });
+    expect(fake.count("tree")).toBe(2);
+    expect(fake.count("blob")).toBe(2);
+    expect(fake.requests.filter((request) => request.kind === "contents").map((request) => request.target)).toEqual(["docs/new-page.md"]);
   });
 
-  it("rejects malformed public paths before any tree or file request", async () => {
+  it("finds a page added on GitHub right after the refresh that indexes it", async () => {
+    const config = createConfig("refresh-finds-new-page");
+    await expect(loadPublicGitHubDoc(config, { slug: "added" })).rejects.toThrow(/not found/i);
+
+    fake.setFile("docs/added.md", "---\ntitle: Added\n---\nAdded later");
+    await refreshGitHubDocsCache(config);
+
+    await expect(loadPublicGitHubDoc(config, { slug: "added" })).resolves.toMatchObject({ content: "Added later" });
+    expect(fake.count("contents")).toBe(0);
+  });
+
+  it("rejects malformed public paths before any GitHub request", async () => {
     const config = createConfig("invalid-public-paths");
     const invalidLocators = [
       { slug: "../secret" },
@@ -171,8 +126,6 @@ describe("public GitHub document reads", () => {
     for (const locator of invalidLocators) {
       await expect(loadPublicGitHubDoc(config, locator)).rejects.toMatchObject({ status: 400 });
     }
-    expect(githubState.branchRequests).toBe(0);
-    expect(githubState.treeRequests).toBe(0);
-    expect(githubState.contentRequests).toEqual([]);
+    expect(fake.count()).toBe(0);
   });
 });

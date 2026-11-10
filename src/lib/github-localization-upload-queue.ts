@@ -1,10 +1,10 @@
 import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-logging";
+import { toRuntimeConfigCacheKey } from "@/lib/github";
 import {
   saveGitHubLocalizedDocsBatch,
-  toRuntimeConfigCacheKey,
   type GitHubLocalizedDocSourcePage,
   type SaveGitHubLocalizedDocBatchItem,
-} from "@/lib/github";
+} from "@/lib/github-localization";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   AutoTranslateLanguage,

@@ -112,10 +112,9 @@ export class MemoryCache<K, V> {
 const defaultTtlMs = normalizeDocsCacheTtlMs(process.env.DOCS_CACHE_TTL_MS);
 export const DOCS_CACHE_TTL_MS = defaultTtlMs;
 
-const docsMemoryCaches = processSingleton("cache.docsMemoryCaches", () => ({
+const docsMemoryCaches = processSingleton("cache.docsMemoryCaches.v2", () => ({
+  docsSource: new MemoryCache<string, unknown>(),
   docsSnapshot: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
-  docsTree: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
-  docsPage: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
   docsSearchCorpus: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
   aiPlaintextDocs: new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS),
   translatedDocsPage: new MemoryCache<string, unknown>(),
@@ -123,9 +122,13 @@ const docsMemoryCaches = processSingleton("cache.docsMemoryCaches", () => ({
   renderedMarkdown: new MemoryCache<string, unknown>(),
 }));
 
+/**
+ * Published per-source state: the docs view (repository index plus pages) and the commit
+ * metadata. It does not expire; staleness is tracked by the source loader, which keeps serving
+ * the current state while it refreshes. Source invalidation removes entries by key prefix.
+ */
+export const docsSourceCache = docsMemoryCaches.docsSource;
 export const docsSnapshotCache = docsMemoryCaches.docsSnapshot;
-export const docsTreeCache = docsMemoryCaches.docsTree;
-export const docsPageCache = docsMemoryCaches.docsPage;
 export const docsSearchCorpusCache = docsMemoryCaches.docsSearchCorpus;
 export const aiPlaintextDocsCache = docsMemoryCaches.aiPlaintextDocs;
 export const translatedDocsPageCache = docsMemoryCaches.translatedDocsPage;
@@ -135,8 +138,9 @@ export const renderedMarkdownCache = docsMemoryCaches.renderedMarkdown;
 export const setDocsCacheTtlMs = (ttlMs: number): number => {
   const normalized = normalizeDocsCacheTtlMs(ttlMs, docsSnapshotCache.getTtlMs());
   docsSnapshotCache.setTtlMs(normalized);
-  docsTreeCache.setTtlMs(normalized);
-  docsPageCache.setTtlMs(normalized);
   docsSearchCorpusCache.setTtlMs(normalized);
   return normalized;
 };
+
+/** The admin-configured docs refresh interval. */
+export const getDocsCacheTtlMs = (): number => docsSnapshotCache.getTtlMs();

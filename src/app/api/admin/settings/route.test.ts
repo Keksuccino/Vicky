@@ -58,7 +58,7 @@ describe("admin settings GitHub cache transition", () => {
     mocks.requireAdminRequest.mockResolvedValue(null);
     mocks.transitionGitHubRuntimeCaches.mockResolvedValue({
       renderedEntries: 0,
-      snapshotEntries: 0,
+      docsCacheFiles: 0,
       translationEntries: 0,
     });
     mocks.updateStore.mockImplementation(async (mutator: (store: DocsStore) => Promise<void>) => {

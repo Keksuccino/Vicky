@@ -4,7 +4,7 @@ import {
   loadGitHubLocalizedDoc,
   type GitHubLocalizedDocResult,
   type GitHubLocalizationPageStatus,
-} from "@/lib/github";
+} from "@/lib/github-localization";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig } from "@/lib/types";
 
 const sourceFallbackPage = (sourcePage: GitHubDocPage, languageCode: string, status: "missing" | "outdated"): GitHubDocPage => ({

@@ -9,6 +9,7 @@ import { renderedMarkdownCache, translatedDocsPageCache } from "@/lib/cache";
 import { clearGitHubDocsCache, toRuntimeConfigCacheKey } from "@/lib/github";
 import { assertGitHubRuntimeConfigActive, transitionGitHubRuntimeCaches } from "@/lib/github-cache-invalidation";
 import { gitHubDocsLogicalSourceKey, gitHubRuntimeCacheKey, legacyGitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
+import { readPersistentGitHubRepoIndex, writePersistentGitHubRepoIndex, type GitHubRepoIndex } from "@/lib/github-repo-index";
 import { listPersistentRenderedMarkdownCacheEntries, writePersistentRenderedMarkdown } from "@/lib/markdown-render-cache-store";
 import { renderGitHubDocPageMarkdown } from "@/lib/markdown-server-renderer";
 import { readPersistentTranslatedPage, writePersistentTranslatedPage } from "@/lib/translation-cache-store";
@@ -34,16 +35,18 @@ const createPage = (slug: string, content: string): GitHubDocPage => ({
   includeInPlaintextExport: true,
 });
 
+const createIndex = (sha: string): GitHubRepoIndex => ({ checkedAt: "2026-05-05T10:00:00.000Z", files: new Map([["docs/home.md", { sha, size: 7 }]]) });
+
 describe("GitHub docs cache invalidation", () => {
   const previousCacheDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
-  const previousSnapshotCacheDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
+  const previousDocsCacheDir = process.env.WIKI_DOCS_CACHE_DIR;
   const previousTranslationCacheDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
   let cacheDir = "";
 
   beforeEach(async () => {
     cacheDir = await mkdtemp(path.join(os.tmpdir(), "vicky-github-cache-"));
     process.env.WIKI_MARKDOWN_CACHE_DIR = cacheDir;
-    process.env.WIKI_DOCS_SNAPSHOT_DIR = path.join(cacheDir, "snapshots");
+    process.env.WIKI_DOCS_CACHE_DIR = path.join(cacheDir, "docs-cache");
     process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(cacheDir, "translations");
     renderedMarkdownCache.clear();
     translatedDocsPageCache.clear();
@@ -60,10 +63,10 @@ describe("GitHub docs cache invalidation", () => {
     } else {
       process.env.WIKI_TRANSLATION_CACHE_DIR = previousTranslationCacheDir;
     }
-    if (previousSnapshotCacheDir === undefined) {
-      delete process.env.WIKI_DOCS_SNAPSHOT_DIR;
+    if (previousDocsCacheDir === undefined) {
+      delete process.env.WIKI_DOCS_CACHE_DIR;
     } else {
-      process.env.WIKI_DOCS_SNAPSHOT_DIR = previousSnapshotCacheDir;
+      process.env.WIKI_DOCS_CACHE_DIR = previousDocsCacheDir;
     }
 
     renderedMarkdownCache.clear();
@@ -113,7 +116,22 @@ describe("GitHub docs cache invalidation", () => {
     expect(await listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(previousConfig)}|`)).toHaveLength(0);
   });
 
-  it("physically removes only the selected source's pre-v12 persistent artifacts", async () => {
+  it("removes the previous source's persisted index but keeps other sources' indexes", async () => {
+    const previousConfig = { ...config, token: "old-token", cacheEpoch: "index-old" };
+    const nextConfig = { ...config, token: "new-token", cacheEpoch: "index-new" };
+    const otherConfig = { ...config, repo: "OtherDocs", cacheEpoch: "index-other" };
+    const docsCacheDir = process.env.WIKI_DOCS_CACHE_DIR as string;
+    await writePersistentGitHubRepoIndex(previousConfig, createIndex("a".repeat(40)), docsCacheDir);
+    await writePersistentGitHubRepoIndex(otherConfig, createIndex("b".repeat(40)), docsCacheDir);
+
+    await transitionGitHubRuntimeCaches(previousConfig, nextConfig);
+
+    await expect(readPersistentGitHubRepoIndex(previousConfig, docsCacheDir)).resolves.toBeNull();
+    await expect(readPersistentGitHubRepoIndex(nextConfig, docsCacheDir)).resolves.toBeNull();
+    await expect(readPersistentGitHubRepoIndex(otherConfig, docsCacheDir)).resolves.toMatchObject({ files: new Map([["docs/home.md", { sha: "b".repeat(40), size: 7 }]]) });
+  });
+
+  it("physically removes only the selected source's pre-v12 persistent artifacts and every obsolete snapshot", async () => {
     const previousConfig = { ...config, token: "legacy-token", cacheEpoch: "legacy-transition-old" };
     const nextConfig = { ...config, token: "rotated-token", cacheEpoch: "legacy-transition-new" };
     const otherConfig = { ...config, repo: "OtherDocs", token: "other-token", cacheEpoch: "other-epoch" };
@@ -133,15 +151,19 @@ describe("GitHub docs cache invalidation", () => {
     await writePersistentTranslatedPage(otherTranslationKey, createPage("public", "other source"));
     await writePersistentTranslatedPage(nextTranslationKey, createPage("private", "current authorization"));
 
-    const snapshotDir = process.env.WIKI_DOCS_SNAPSHOT_DIR as string;
+    const docsCacheDir = process.env.WIKI_DOCS_CACHE_DIR as string;
+    const snapshotDir = path.join(docsCacheDir, "snapshots");
     const snapshotPath = (sourceKey: string): string => path.join(snapshotDir, `${createHash("sha256").update(sourceKey).digest("hex")}.json`);
-    const legacySnapshotPath = snapshotPath(gitHubDocsLogicalSourceKey(previousConfig));
-    const otherSnapshotPath = snapshotPath(gitHubDocsLogicalSourceKey(otherConfig));
-    const nextSnapshotPath = snapshotPath(gitHubRuntimeCacheKey(nextConfig));
+    const snapshotPaths = [
+      snapshotPath(gitHubDocsLogicalSourceKey(previousConfig)),
+      snapshotPath(gitHubDocsLogicalSourceKey(otherConfig)),
+      snapshotPath(gitHubRuntimeCacheKey(nextConfig)),
+    ];
     await mkdir(snapshotDir, { recursive: true });
-    await writeFile(legacySnapshotPath, "legacy private snapshot", "utf8");
-    await writeFile(otherSnapshotPath, "other source snapshot", "utf8");
-    await writeFile(nextSnapshotPath, "current authorization snapshot", "utf8");
+    for (const filePath of snapshotPaths) {
+      await writeFile(filePath, "whole-docs snapshot", "utf8");
+    }
+    await writePersistentGitHubRepoIndex(otherConfig, createIndex("c".repeat(40)), docsCacheDir);
 
     await transitionGitHubRuntimeCaches(previousConfig, nextConfig);
 
@@ -152,8 +174,9 @@ describe("GitHub docs cache invalidation", () => {
     expect(await readPersistentTranslatedPage(legacyTranslationKey)).toBeNull();
     expect(await readPersistentTranslatedPage(otherTranslationKey)).not.toBeNull();
     expect(await readPersistentTranslatedPage(nextTranslationKey)).not.toBeNull();
-    await expect(access(legacySnapshotPath)).rejects.toMatchObject({ code: "ENOENT" });
-    await expect(access(otherSnapshotPath)).resolves.toBeUndefined();
-    await expect(access(nextSnapshotPath)).resolves.toBeUndefined();
+    for (const filePath of snapshotPaths) {
+      await expect(access(filePath)).rejects.toMatchObject({ code: "ENOENT" });
+    }
+    await expect(readPersistentGitHubRepoIndex(otherConfig, docsCacheDir)).resolves.not.toBeNull();
   });
 });

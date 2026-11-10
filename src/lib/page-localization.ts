@@ -15,7 +15,7 @@ import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-loggi
 import {
   loadGitHubLocalizationStatusIndex,
   saveGitHubLocalizedDoc,
-} from "@/lib/github";
+} from "@/lib/github-localization";
 import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
