@@ -16,6 +16,12 @@ import type {
 export const GITHUB_LOCALIZATION_UPLOAD_INTERVAL_MS = 5 * 60 * 1_000;
 export const GITHUB_LOCALIZATION_UPLOAD_MAX_ATTEMPTS = 4;
 export const GITHUB_LOCALIZATION_UPLOAD_MAX_RETRY_DELAY_MS = 60 * 60 * 1_000;
+/**
+ * Longest a single batch upload may run. Every GitHub request it makes is bounded already, so
+ * only a hang (a stuck store write, a lost promise) reaches it; the batch then fails without a
+ * retry, because its commit may still land, and the queue is free for the next batch.
+ */
+export const GITHUB_LOCALIZATION_UPLOAD_TIMEOUT_MS = 10 * 60 * 1_000;
 
 const GITHUB_LOCALIZATION_UPLOAD_RETRY_JITTER_RATIO = 0.2;
 
@@ -92,6 +98,7 @@ export type GitHubLocalizationUploadQueueOptions = {
   saveBatch?: typeof saveGitHubLocalizedDocsBatch;
   scheduleTimer?: (callback: () => void, delayMs: number) => TimerHandle;
   uploadIntervalMs?: number;
+  uploadTimeoutMs?: number;
 };
 
 // The custom production server cannot import this TypeScript module. It resolves the queue by this process-singleton name and calls
@@ -186,7 +193,7 @@ export const classifyGitHubLocalizationUploadFailure = (error: unknown, nowMs = 
   const retryAfterMs = retryAfterMsFromError(error, nowMs);
   const message = getDetailedAutoTranslateErrorMessage(error).toLowerCase();
 
-  if (errorCode(error) === "ABORT_ERR" || message.includes("aborterror")) {
+  if (errorCode(error) === "ABORT_ERR" || message.includes("aborterror") || error instanceof GitHubLocalizationUploadTimeoutError) {
     return { retryable: false, retryAfterMs: null };
   }
 
@@ -227,6 +234,13 @@ export class GitHubLocalizationUploadError extends Error {
     this.attempts = options.attempts;
     this.retryable = options.retryable;
     this.cause = options.cause;
+  }
+}
+
+export class GitHubLocalizationUploadTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`The GitHub upload did not finish within ${Math.round(timeoutMs / 60_000)} minutes.`);
+    this.name = "GitHubLocalizationUploadTimeoutError";
   }
 }
 
@@ -278,6 +292,7 @@ export class GitHubLocalizationUploadQueue {
   private readonly saveBatch: typeof saveGitHubLocalizedDocsBatch;
   private readonly scheduleTimer: (callback: () => void, delayMs: number) => TimerHandle;
   private readonly uploadIntervalMs: number;
+  private readonly uploadTimeoutMs: number;
   private activeFlush: Promise<void> | null = null;
   private closed = false;
   private lastFlushStartedAt = 0;
@@ -294,6 +309,7 @@ export class GitHubLocalizationUploadQueue {
     this.saveBatch = options.saveBatch ?? saveGitHubLocalizedDocsBatch;
     this.scheduleTimer = options.scheduleTimer ?? setTimeout;
     this.uploadIntervalMs = Math.max(1, options.uploadIntervalMs ?? GITHUB_LOCALIZATION_UPLOAD_INTERVAL_MS);
+    this.uploadTimeoutMs = Math.max(1, options.uploadTimeoutMs ?? GITHUB_LOCALIZATION_UPLOAD_TIMEOUT_MS);
   }
 
   enqueue(input: GitHubLocalizationUploadQueueInput): GitHubLocalizationQueuedUpload {
@@ -466,11 +482,13 @@ export class GitHubLocalizationUploadQueue {
     }
 
     try {
-      const result = await this.saveBatch({
-        config: group[0].config,
-        includePages: false,
-        items: group.map(toBatchItem),
-      });
+      const result = await this.withUploadTimeout(
+        this.saveBatch({
+          config: group[0].config,
+          includePages: false,
+          items: group.map(toBatchItem),
+        }),
+      );
 
       for (const item of group) {
         this.notify(item, {
@@ -512,6 +530,24 @@ export class GitHubLocalizationUploadQueue {
         this.failItem(item, new GitHubLocalizationUploadError(message, { attempts: item.attempts, cause: error, retryable: classification.retryable }), classification.retryable);
       }
     }
+  }
+
+  /** Settles with the upload, or rejects once it runs longer than the upload timeout; a late result is ignored. */
+  private withUploadTimeout<T>(upload: Promise<T>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = this.scheduleTimer(() => reject(new GitHubLocalizationUploadTimeoutError(this.uploadTimeoutMs)), this.uploadTimeoutMs);
+      timer.unref?.();
+      upload.then(
+        (value) => {
+          this.clearTimer(timer);
+          resolve(value);
+        },
+        (error: unknown) => {
+          this.clearTimer(timer);
+          reject(error);
+        },
+      );
+    });
   }
 
   private retryDelayMs(attempts: number, retryAfterMs: number | null, random: number): number {

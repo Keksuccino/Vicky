@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   classifyGitHubLocalizationUploadFailure,
+  GITHUB_LOCALIZATION_UPLOAD_TIMEOUT_MS,
   GitHubLocalizationUploadError,
   GitHubLocalizationUploadQueue,
   GitHubLocalizationUploadQueueClosedError,
@@ -239,6 +240,27 @@ describe("GitHub localization upload queue", () => {
 
     await expect(queued.upload).resolves.toBeUndefined();
     expect(stopped).toBe(true);
+  });
+
+  it("fails a batch that never settles once the upload timeout passes and keeps the queue usable", async () => {
+    const saveBatch = vi.fn().mockReturnValueOnce(new Promise(() => undefined)).mockResolvedValue(successfulBatch);
+    const harness = createQueue(saveBatch);
+    const hung = harness.queue.enqueue(input());
+    const rejection = expect(hung.upload).rejects.toMatchObject({ retryable: false });
+
+    harness.advanceTo(harness.now() + 100);
+    const flush = harness.queue.flush();
+    await vi.waitFor(() => expect(saveBatch).toHaveBeenCalledTimes(1));
+    harness.scheduled.find((timer) => timer.delayMs === GITHUB_LOCALIZATION_UPLOAD_TIMEOUT_MS)?.callback();
+    await flush;
+    await rejection;
+
+    const next = harness.queue.enqueue(input());
+    harness.advanceTo(harness.now() + 1_000);
+    await harness.queue.flush();
+    await expect(next.upload).resolves.toBeUndefined();
+    expect(saveBatch).toHaveBeenCalledTimes(2);
+    await harness.queue.shutdown();
   });
 
   it("classifies GitHub rate limits and validation failures", () => {

@@ -152,6 +152,29 @@ describe("page localization background jobs", () => {
     expect(mocks.listMarkdownDocsTreePagesWithTitles).toHaveBeenCalledTimes(1);
   });
 
+  it("fails a job that stops making progress, so a later job can start", async () => {
+    vi.useFakeTimers();
+    try {
+      mocks.listMarkdownDocsTreePagesWithTitles.mockResolvedValue({ items: [], pages: [] });
+      mocks.translatePageLocalizations.mockReturnValueOnce(new Promise(() => undefined));
+      const input = { apiKey: "openrouter-key", config, languages: [language], localizationPath: "localizations", mode: "missing-and-outdated" as const, model: "openai/gpt-5.4-mini", origin: "https://docs.example.com", requestTimeoutMs: 60_000, siteTitle: "Vicky Docs" };
+      const hung = startPageLocalizationJob(input);
+
+      await vi.advanceTimersByTimeAsync(14 * 60_000);
+      expect(getPageLocalizationJobStatus(hung.id).job?.status).toBe("running");
+      await vi.advanceTimersByTimeAsync(2 * 60_000);
+      expect(getPageLocalizationJobStatus(hung.id).job).toMatchObject({ status: "failed", phase: "finished" });
+
+      mocks.translatePageLocalizations.mockResolvedValueOnce({ totalPages: 0, cachedPages: 0, requestedPages: 0, translatedPages: 0, uploadedPages: 0, translationFailedPages: 0, uploadFailedPages: 0, failedPages: 0, failures: [] });
+      const next = startPageLocalizationJob(input);
+      expect(next.id).not.toBe(hung.id);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(getLatestPageLocalizationJob()).toMatchObject({ id: next.id, status: "completed" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("caps retained history and status response logs", async () => {
     const sourceLoad = createDeferred<{ items: []; pages: [] }>();
     mocks.listMarkdownDocsTreePagesWithTitles.mockReturnValueOnce(sourceLoad.promise);

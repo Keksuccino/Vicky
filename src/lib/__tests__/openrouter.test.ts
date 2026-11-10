@@ -46,6 +46,18 @@ describe("requestOpenRouterChatCompletion", () => {
     await expectation;
   });
 
+  it("passes OpenRouter's retry-after on to the caller", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response(JSON.stringify({ error: { message: "Rate limit exceeded" } }), { status: 429, headers: { "content-type": "application/json", "retry-after": "17" } })),
+    );
+
+    const error = await request(60_000).catch((caught: unknown) => caught);
+
+    expect(error).toMatchObject({ status: 429 });
+    expect(new Headers((error as { headers?: HeadersInit }).headers).get("retry-after")).toBe("17");
+  });
+
   it("keeps the timeout active while reading the response body", async () => {
     vi.useFakeTimers();
 

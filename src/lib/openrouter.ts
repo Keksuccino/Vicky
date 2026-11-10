@@ -205,7 +205,9 @@ export const requestOpenRouterChatCompletion = async ({
   const parsed = rawText ? safeJsonParse(rawText) : null;
 
   if (!response.ok) {
-    throw new ApiError(response.status, extractOpenRouterErrorMessage(parsed, "OpenRouter request failed."));
+    // OpenRouter sends Retry-After on 429, 503, and some 402 responses; callers decide on retries with it.
+    const retryAfter = response.headers?.get("retry-after");
+    throw new ApiError(response.status, extractOpenRouterErrorMessage(parsed, "OpenRouter request failed."), retryAfter ? { "Retry-After": retryAfter } : undefined);
   }
 
   const record = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : {};

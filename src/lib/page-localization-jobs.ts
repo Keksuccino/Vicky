@@ -55,7 +55,12 @@ export type PageLocalizationJobLookup = {
 };
 
 type PageLocalizationJob = PageLocalizationJobSnapshot & {
+  /** Longest single step the job may wait on without reporting (one OpenRouter attempt). */
+  attemptTimeoutMs: number;
+  /** The job fails if it reports no progress by then; see `noteJobProgress`. */
+  progressDeadlineAtMs: number;
   promise: Promise<void> | null;
+  watchdog: ReturnType<typeof setInterval> | null;
 };
 
 type PageLocalizationJobState = {
@@ -78,6 +83,13 @@ type StartPageLocalizationJobInput = {
 
 const MAX_JOB_LOG_ENTRIES = 500;
 const MAX_JOB_STATUS_LOG_ENTRIES = 200;
+/**
+ * A running job that reports nothing for this long past its next expected activity (a request
+ * timeout, an upload window, a retry time) has hung, for example on a promise that never
+ * settles. It is then failed, so it can never block later jobs.
+ */
+const JOB_STALL_LIMIT_MS = 15 * 60_000;
+const JOB_WATCHDOG_INTERVAL_MS = 30_000;
 
 const emptyResult = (): PageLocalizationRequestResult => ({
   totalPages: 0,
@@ -161,11 +173,57 @@ const createJob = (input: StartPageLocalizationJobInput): PageLocalizationJob =>
     statuses: [],
     error: null,
     logs: [],
+    attemptTimeoutMs: input.requestTimeoutMs,
+    progressDeadlineAtMs: Date.now() + JOB_STALL_LIMIT_MS,
     promise: null,
+    watchdog: null,
   };
 
   state.nextJobId += 1;
   return job;
+};
+
+const noteJobProgress = (job: PageLocalizationJob, nextActivityAtMs = Date.now()): void => {
+  job.progressDeadlineAtMs = Math.max(job.progressDeadlineAtMs, (Number.isFinite(nextActivityAtMs) ? nextActivityAtMs : Date.now()) + JOB_STALL_LIMIT_MS);
+};
+
+/** Moves a running job to its final state once; later results of a job that already finished are ignored. */
+const finishJob = (
+  job: PageLocalizationJob,
+  outcome: { details?: string; error?: string; level: PageLocalizationJobLogLevel; message: string; result?: PageLocalizationRequestResult; status: Exclude<PageLocalizationJobStatus, "running"> },
+): boolean => {
+  if (job.status !== "running") {
+    return false;
+  }
+
+  if (outcome.result) {
+    job.result = outcome.result;
+  }
+  job.status = outcome.status;
+  job.phase = "finished";
+  job.error = outcome.error ?? null;
+  job.finishedAt = new Date().toISOString();
+  if (job.watchdog) {
+    clearInterval(job.watchdog);
+    job.watchdog = null;
+  }
+  addJobLog(job, outcome.level, outcome.message, outcome.details ? { details: outcome.details } : {});
+  return true;
+};
+
+const startJobWatchdog = (job: PageLocalizationJob): void => {
+  job.watchdog = setInterval(() => {
+    if (Date.now() > job.progressDeadlineAtMs) {
+      finishJob(job, {
+        details: `No progress for ${JOB_STALL_LIMIT_MS / 60_000} minutes. Start the job again; translations that were already uploaded are kept.`,
+        error: "The job stopped making progress.",
+        level: "error",
+        message: "Translation job stopped because it made no progress.",
+        status: "failed",
+      });
+    }
+  }, JOB_WATCHDOG_INTERVAL_MS);
+  job.watchdog.unref?.();
 };
 
 const formatLanguage = (language: Pick<AutoTranslateLanguage, "code" | "name">): string =>
@@ -177,7 +235,46 @@ const formatMode = (mode: PageLocalizationRequestMode): string =>
 const formatPage = (event: Extract<PageLocalizationTranslationEvent, { sourcePage: { path: string; slug: string } }>): string =>
   event.sourcePage.slug || event.sourcePage.path || "unknown page";
 
+/** When the job reports next at the latest after this event: an attempt can take its timeout, a queued upload waits for its window. */
+const nextActivityAtMs = (job: PageLocalizationJob, event: PageLocalizationTranslationEvent): number => {
+  switch (event.type) {
+    case "page-start":
+      return Date.now() + job.attemptTimeoutMs;
+    case "page-retry":
+    case "upload-retry":
+      return Date.parse(event.retryAt);
+    case "upload-queued":
+      return Date.parse(event.flushAt);
+    default:
+      return Date.now();
+  }
+};
+
 const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTranslationEvent): void => {
+  if (job.status !== "running") {
+    return;
+  }
+  noteJobProgress(job, nextActivityAtMs(job, event));
+
+  if (event.type === "translation-stopped") {
+    addJobLog(job, "error", "Stopped starting new translations.", { details: `Pages that were not translated yet count as failed. ${event.error}` });
+    return;
+  }
+
+  if (event.type === "reading-translations") {
+    // Logged at the start and at the end only; every download still counts as progress.
+    if (event.downloaded === 0 || event.downloaded === event.total) {
+      addJobLog(
+        job,
+        "info",
+        event.downloaded === 0
+          ? `Downloading ${event.total} translation${event.total === 1 ? "" : "s"} from GitHub to check ${event.total === 1 ? "its" : "their"} status.`
+          : `Downloaded ${event.total} translation${event.total === 1 ? "" : "s"}.`,
+      );
+    }
+    return;
+  }
+
   if (event.type === "prepared") {
     job.result = {
       ...job.result,
@@ -229,7 +326,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
   if (event.type === "page-retry") {
     addJobLog(job, "warning", `Retrying ${page} to ${language}.`, {
       ...pageContext,
-      details: `Attempt ${event.attempt} failed. ${event.maxAttempts - event.attempt} attempt${event.maxAttempts - event.attempt === 1 ? "" : "s"} left. ${event.error}`,
+      details: `Attempt ${event.attempt} failed. ${event.maxAttempts - event.attempt} attempt${event.maxAttempts - event.attempt === 1 ? "" : "s"} left, next at ${new Date(event.retryAt).toLocaleTimeString()}. ${event.error}`,
     });
     return;
   }
@@ -333,7 +430,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
       },
     ],
   };
-  addJobLog(job, "error", `Skipped ${page} to ${language} after ${event.attempts} failed attempts.`, {
+  addJobLog(job, "error", `Skipped ${page} to ${language} after ${event.attempts} failed attempt${event.attempts === 1 ? "" : "s"}.`, {
     ...pageContext,
     details: event.error,
   });
@@ -365,30 +462,23 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
       siteTitle: input.siteTitle,
     });
 
-    job.result = result;
-    job.status = result.failedPages > 0 ? "completed_with_failures" : "completed";
-    job.phase = "finished";
-    job.finishedAt = new Date().toISOString();
-    addJobLog(
-      job,
-      result.failedPages > 0 ? "warning" : "success",
-      `Translation job finished with ${result.translatedPages} translated, ${result.uploadedPages} uploaded, ${result.cachedPages} current, and ${result.failedPages} failed.`,
-    );
-    logAutoTranslateInfo("Page localization background job finished", {
-      jobId: job.id,
-      translatedPages: result.translatedPages,
-      failedPages: result.failedPages,
-      requestedPages: result.requestedPages,
+    const finished = finishJob(job, {
+      level: result.failedPages > 0 ? "warning" : "success",
+      message: `Translation job finished with ${result.translatedPages} translated, ${result.uploadedPages} uploaded, ${result.cachedPages} current, and ${result.failedPages} failed.`,
+      result,
+      status: result.failedPages > 0 ? "completed_with_failures" : "completed",
     });
+    if (finished) {
+      logAutoTranslateInfo("Page localization background job finished", {
+        jobId: job.id,
+        translatedPages: result.translatedPages,
+        failedPages: result.failedPages,
+        requestedPages: result.requestedPages,
+      });
+    }
   } catch (error: unknown) {
     const message = getDetailedAutoTranslateErrorMessage(error);
-    job.status = "failed";
-    job.phase = "finished";
-    job.error = message;
-    job.finishedAt = new Date().toISOString();
-    addJobLog(job, "error", "Translation job stopped before all pages could be processed.", {
-      details: message,
-    });
+    finishJob(job, { details: message, error: message, level: "error", message: "Translation job stopped before all pages could be processed.", status: "failed" });
     logAutoTranslateInfo("Page localization background job failed", {
       jobId: job.id,
       error: message,
@@ -415,6 +505,7 @@ export const startPageLocalizationJob = (input: StartPageLocalizationJobInput): 
     details: `Requested ${formatMode(input.mode)} for ${input.languages.length} target language${input.languages.length === 1 ? "" : "s"}.`,
   });
 
+  startJobWatchdog(job);
   job.promise = Promise.resolve().then(() => runPageLocalizationJob(job, input));
   return cloneJob(job);
 };

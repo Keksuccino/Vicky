@@ -1,6 +1,6 @@
 import { getHeapStatistics } from "node:v8";
 
-import { ApiError } from "@/lib/http";
+import { ApiError, parseRetryAfterMs } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
 import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
 import {
@@ -23,10 +23,26 @@ import type {
   GitHubRuntimeConfig,
 } from "@/lib/types";
 
-const TRANSLATION_CONCURRENCY = 50;
-const TRANSLATION_MAX_RETRIES = 10;
+/**
+ * Parallel OpenRouter requests of one job. Each request is one long completion (often 30–120 s
+ * and thousands of output tokens for a page), so the binding limit is the upstream provider's
+ * request and output-token quota for the account; OpenRouter sets no request cap for paid
+ * models but blocks traffic that dramatically exceeds reasonable usage. Sixteen at a time
+ * translates a site of about 1,000 page versions in roughly an hour at typical latencies while
+ * staying inside common paid-tier quotas; going wider mostly turns into 429 responses, which
+ * pause every worker of the job anyway (see `retry-after` handling below).
+ */
+const TRANSLATION_CONCURRENCY = 16;
+/** Attempts per page, the first included; retries wait with exponential backoff and jitter. */
+const TRANSLATION_MAX_ATTEMPTS = 6;
+const TRANSLATION_RETRY_BASE_DELAY_MS = 2_000;
+const TRANSLATION_RETRY_MAX_DELAY_MS = 60_000;
+/** Longest `retry-after` a job waits out; a provider asking for more stops the job's translations. */
+const TRANSLATION_MAX_RETRY_AFTER_MS = 15 * 60_000;
 const TRANSLATION_MEMORY_CRITICAL_RATIO = 0.9;
 const TRANSLATION_MEMORY_POLL_INTERVAL_MS = 1_000;
+/** Longest wait for heap headroom before the job stops starting translations. */
+const TRANSLATION_MEMORY_WAIT_LIMIT_MS = 2 * 60_000;
 
 export type PageLocalizationLanguageStatus = {
   languageCode: string;
@@ -78,6 +94,12 @@ type PageLocalizationEventSourcePage = Pick<GitHubDocPage, "path" | "slug">;
 
 export type PageLocalizationTranslationEvent =
   | {
+      /** Translations the store did not hold yet are being downloaded to check their status. */
+      type: "reading-translations";
+      downloaded: number;
+      total: number;
+    }
+  | {
       type: "prepared";
       totalPages: number;
       currentPages: number;
@@ -98,7 +120,14 @@ export type PageLocalizationTranslationEvent =
       maxAttempts: number;
       error: string;
       language: AutoTranslateLanguage;
+      /** When the next attempt starts. */
+      retryAt: string;
       sourcePage: PageLocalizationEventSourcePage;
+    }
+  | {
+      /** No further translations start: none of them could succeed. Pages not started yet count as failed. */
+      type: "translation-stopped";
+      error: string;
     }
   | {
       type: "page-success";
@@ -170,7 +199,7 @@ Only return the JSON array.`;
 
 const delay = (ms: number): Promise<void> =>
   new Promise((resolve) => {
-    setTimeout(resolve, ms);
+    setTimeout(resolve, ms).unref?.();
   });
 
 const getHeapUsageRatio = (): number => {
@@ -190,35 +219,46 @@ const getAdaptiveTranslationConcurrency = (maxConcurrency: number): number => {
   }
 
   if (ratio >= 0.78) {
-    return Math.min(maxConcurrency, 4);
+    return Math.max(1, Math.floor(maxConcurrency / 4));
   }
 
   if (ratio >= 0.7) {
-    return Math.min(maxConcurrency, 12);
-  }
-
-  if (ratio >= 0.62) {
-    return Math.min(maxConcurrency, 25);
+    return Math.max(1, Math.floor(maxConcurrency / 2));
   }
 
   return maxConcurrency;
 };
 
-const waitForTranslationMemoryHeadroom = async (): Promise<void> => {
+/** Waits until heap usage drops below the critical ratio; false when it stays above it for the whole wait limit. */
+const waitForTranslationMemoryHeadroom = async (): Promise<boolean> => {
+  const giveUpAt = Date.now() + TRANSLATION_MEMORY_WAIT_LIMIT_MS;
   while (getHeapUsageRatio() >= TRANSLATION_MEMORY_CRITICAL_RATIO) {
+    if (Date.now() >= giveUpAt) {
+      return false;
+    }
     (globalThis as typeof globalThis & { gc?: () => void }).gc?.();
     await delay(TRANSLATION_MEMORY_POLL_INTERVAL_MS);
   }
+  return true;
 };
 
+/**
+ * Runs the iteratee over the values with a concurrency that shrinks under memory pressure. Once
+ * `isStopped` reports true, values still waiting are passed through without waiting for memory,
+ * so the iteratee can settle them at once.
+ */
 const runWithAdaptiveConcurrency = async <T, R>({
+  isStopped,
   iteratee,
   maxConcurrency,
+  onMemoryExhausted,
   onResult,
   values,
 }: {
+  isStopped: () => boolean;
   iteratee: (value: T, index: number) => Promise<R>;
   maxConcurrency: number;
+  onMemoryExhausted: () => void;
   onResult: (result: R, value: T, index: number) => void;
   values: T[];
 }): Promise<void> => {
@@ -255,20 +295,13 @@ const runWithAdaptiveConcurrency = async <T, R>({
         return;
       }
 
-      try {
-        if (active === 0) {
-          await waitForTranslationMemoryHeadroom();
-        }
-      } catch (error: unknown) {
-        stopped = true;
-        reject(error);
-        return;
+      if (active === 0 && !isStopped() && !(await waitForTranslationMemoryHeadroom())) {
+        onMemoryExhausted();
       }
 
-      const allowedConcurrency = Math.max(
-        1,
-        Math.min(maxConcurrency, values.length, getAdaptiveTranslationConcurrency(maxConcurrency)),
-      );
+      const allowedConcurrency = isStopped()
+        ? maxConcurrency
+        : Math.max(1, Math.min(maxConcurrency, values.length, getAdaptiveTranslationConcurrency(maxConcurrency)));
 
       if (index < values.length && active >= allowedConcurrency) {
         schedulePump();
@@ -301,6 +334,55 @@ const runWithAdaptiveConcurrency = async <T, R>({
 
     void pump();
   });
+};
+
+export type TranslationFailureClass = {
+  /** Another attempt can succeed: rate limits, timeouts, provider and network failures, unusable model output. */
+  retryable: boolean;
+  /** No page of the job can succeed (rejected key, no credits, unknown model, upload queue closed): stop starting translations. */
+  stopsJob: boolean;
+  /** Pause the provider asked for; it applies to every request of the job. */
+  retryAfterMs?: number;
+};
+
+const errorStatus = (error: unknown): number | undefined => {
+  const status = typeof error === "object" && error !== null ? (error as { status?: unknown }).status : undefined;
+  return typeof status === "number" ? status : undefined;
+};
+
+/**
+ * Sorts a failed translation attempt by what another attempt could achieve, following
+ * OpenRouter's documented error codes: 401 (key rejected), 404 (model or resource unknown), and
+ * 402 without `retry-after` (no credits) fail every page; 408, 409, 425, 429, 402 with
+ * `retry-after` (in-flight spending limit), and 5xx are transient; any other 4xx (bad request,
+ * moderation, payload too large) fails only this page. Errors without a status are network
+ * failures or unusable model output and are retried.
+ */
+export const classifyTranslationFailure = (error: unknown): TranslationFailureClass => {
+  // Matched by name: the upload queue may come from another module graph of the same process.
+  if (error instanceof Error && error.name === "GitHubLocalizationUploadQueueClosedError") {
+    return { retryable: false, stopsJob: true };
+  }
+
+  const status = errorStatus(error);
+  if (status === undefined) {
+    return { retryable: true, stopsJob: false };
+  }
+
+  const retryAfterMs = error instanceof ApiError ? parseRetryAfterMs(new Headers(error.headers).get("retry-after")) : undefined;
+  if (status === 401 || status === 404 || (status === 402 && retryAfterMs === undefined)) {
+    return { retryable: false, stopsJob: true };
+  }
+  if (status === 402 || status === 408 || status === 409 || status === 425 || status === 429 || status >= 500) {
+    return { retryable: true, stopsJob: false, ...(retryAfterMs === undefined ? {} : { retryAfterMs }) };
+  }
+  return { retryable: false, stopsJob: false };
+};
+
+/** Exponential backoff with equal jitter, and never shorter than the pause the provider asked for. */
+export const translationRetryDelayMs = (attempt: number, retryAfterMs?: number, random: () => number = Math.random): number => {
+  const exponential = Math.min(TRANSLATION_RETRY_MAX_DELAY_MS, TRANSLATION_RETRY_BASE_DELAY_MS * 2 ** Math.max(0, attempt - 1));
+  return Math.max(Math.round(exponential / 2 + random() * (exponential / 2)), retryAfterMs ?? 0);
 };
 
 const stripJsonCodeFence = (value: string): string => {
@@ -534,7 +616,13 @@ export const translatePageLocalizations = async ({
   sourcePages: GitHubDocPage[];
 }): Promise<PageLocalizationRequestResult> => {
   const targetLanguages = languages.filter((language) => !isSourceLanguage(language));
-  const localizations = await loadGitHubLocalizationStatuses({ config, languageCodes: targetLanguages.map((language) => language.code), localizationPath, sourcePages });
+  const localizations = await loadGitHubLocalizationStatuses({
+    config,
+    languageCodes: targetLanguages.map((language) => language.code),
+    localizationPath,
+    onDownloadProgress: (downloaded, total) => onEvent?.({ type: "reading-translations", downloaded, total }),
+    sourcePages,
+  });
   const statuses = summarizePageLocalizationStatuses(languages, sourcePages, localizations);
   const currentPages = statuses.reduce((total, status) => total + (status.sourceLanguage ? 0 : status.currentPages), 0);
   const candidates: TranslationCandidate[] = targetLanguages.flatMap((language) =>
@@ -622,8 +710,19 @@ export const translatePageLocalizations = async ({
     };
   };
 
-  const translateCandidate = async (candidate: TranslationCandidate) => {
-    const maxAttempts = TRANSLATION_MAX_RETRIES + 1;
+  /** Set once no further translation can succeed; candidates not started yet fail with it. */
+  let stopReason: string | null = null;
+  /** Provider-requested pause shared by every worker: a 429 for one request applies to all. */
+  let pausedUntilMs = 0;
+  const stopTranslations = (reason: string): void => {
+    if (!stopReason) {
+      stopReason = reason;
+      onEvent?.({ type: "translation-stopped", error: reason });
+    }
+  };
+
+  const translateCandidate = async (candidate: TranslationCandidate): Promise<{ ok: true; upload?: Promise<void> } | { ok: false; error: string }> => {
+    const maxAttempts = TRANSLATION_MAX_ATTEMPTS;
     const eventSourcePage = toEventSourcePage(candidate.sourcePage);
     const uploadEventContext = {
       language: candidate.language,
@@ -631,7 +730,15 @@ export const translatePageLocalizations = async ({
       sourcePage: eventSourcePage,
     };
 
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    for (let attempt = 1; ; attempt += 1) {
+      const pauseMs = pausedUntilMs - Date.now();
+      if (pauseMs > 0 && !stopReason) {
+        await delay(pauseMs);
+      }
+      if (stopReason) {
+        return { ok: false, error: stopReason };
+      }
+
       onEvent?.({
         type: "page-start",
         attempt,
@@ -667,19 +774,30 @@ export const translatePageLocalizations = async ({
           language: candidate.language,
           sourcePage: eventSourcePage,
         });
-        return { ok: true as const, upload };
+        return { ok: true, upload };
       } catch (error: unknown) {
         const message = getDetailedAutoTranslateErrorMessage(error);
+        const failure = classifyTranslationFailure(error);
 
-        if (attempt <= TRANSLATION_MAX_RETRIES) {
+        if (failure.retryAfterMs !== undefined && failure.retryAfterMs > TRANSLATION_MAX_RETRY_AFTER_MS) {
+          stopTranslations(`OpenRouter asked to wait ${Math.ceil(failure.retryAfterMs / 60_000)} minutes before the next request. ${message}`);
+        } else if (failure.stopsJob) {
+          stopTranslations(message);
+        } else if (failure.retryable && attempt < maxAttempts) {
+          if (failure.retryAfterMs !== undefined) {
+            pausedUntilMs = Math.max(pausedUntilMs, Date.now() + failure.retryAfterMs);
+          }
+          const delayMs = translationRetryDelayMs(attempt, failure.retryAfterMs);
           onEvent?.({
             type: "page-retry",
             attempt,
             maxAttempts,
             error: message,
             language: candidate.language,
+            retryAt: new Date(Date.now() + delayMs).toISOString(),
             sourcePage: eventSourcePage,
           });
+          await delay(delayMs);
           continue;
         }
 
@@ -690,17 +808,9 @@ export const translatePageLocalizations = async ({
           language: candidate.language,
           sourcePage: eventSourcePage,
         });
-        return {
-          ok: false as const,
-          error: message,
-        };
+        return { ok: false, error: message };
       }
     }
-
-    return {
-      ok: false as const,
-      error: "Translation failed without a reported error.",
-    };
   };
 
   const failures: PageLocalizationRequestResult["failures"] = [];
@@ -710,7 +820,9 @@ export const translatePageLocalizations = async ({
   await runWithAdaptiveConcurrency({
     values: candidates,
     maxConcurrency: TRANSLATION_CONCURRENCY,
+    isStopped: () => stopReason !== null,
     iteratee: async (candidate) => translateCandidate(candidate),
+    onMemoryExhausted: () => stopTranslations(`The server stayed low on memory for ${TRANSLATION_MEMORY_WAIT_LIMIT_MS / 60_000} minutes, so no further pages were translated.`),
     onResult: (result, candidate) => {
       if (!result.ok) {
         failures.push({

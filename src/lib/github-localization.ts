@@ -176,12 +176,22 @@ const readLocalizationEvidence = async (config: GitHubRuntimeConfig, files: GitH
  * then looks up only the commit metadata the date rule still needs, in batched queries. A blob
  * that cannot be downloaded is left out, so its translation is judged by commit dates.
  */
-const downloadLocalizationEvidence = async (config: GitHubRuntimeConfig, access: GitHubCacheLease, files: GitHubLocalizedFile[], baseDir: string): Promise<LocalizationEvidence> => {
+const downloadLocalizationEvidence = async (
+  config: GitHubRuntimeConfig,
+  access: GitHubCacheLease,
+  files: GitHubLocalizedFile[],
+  baseDir: string,
+  onDownloadProgress?: (downloaded: number, total: number) => void,
+): Promise<LocalizationEvidence> => {
   const shas = Array.from(new Set(files.map((file) => file.sha)));
   const stored = await loadStoredGitHubBlobSummaries(shas, baseDir);
   const missing = shas.filter((sha) => !stored.has(sha));
   let failed = 0;
+  let downloaded = 0;
   let firstError = "";
+  if (missing.length > 0) {
+    onDownloadProgress?.(0, missing.length);
+  }
   await mapWithConcurrency(missing, LANGUAGE_LOAD_CONCURRENCY, async (sha) => {
     try {
       await loadGitHubBlobs(config, [sha], baseDir);
@@ -189,6 +199,8 @@ const downloadLocalizationEvidence = async (config: GitHubRuntimeConfig, access:
       failed += 1;
       firstError ||= error instanceof Error ? error.message : String(error);
     }
+    downloaded += 1;
+    onDownloadProgress?.(downloaded, missing.length);
   });
   assertGitHubCacheAccess(access);
   if (failed > 0) {
@@ -437,17 +449,20 @@ export const loadGitHubLocalizationStatuses = async ({
   config,
   languageCodes,
   localizationPath,
+  onDownloadProgress,
   sourcePages,
 }: {
   config: GitHubRuntimeConfig;
   languageCodes: string[];
   localizationPath: string;
+  /** Reports blob downloads (translations the store did not hold yet), first with 0 downloaded. */
+  onDownloadProgress?: (downloaded: number, total: number) => void;
   sourcePages?: readonly GitHubDocPage[];
 }): Promise<Map<string, Map<string, GitHubLocalizationStatus>>> => {
   const access = beginGitHubCacheAccess(config);
   const view = await loadGitHubDocsSourceView(config);
   const filesByLanguage = languageCodes.map((languageCode) => [languageCode, listLocalizedFiles(view, localizationLanguageRoot(localizationPath, languageCode), sourcePages)] as const);
-  const evidence = await downloadLocalizationEvidence(config, access, filesByLanguage.flatMap(([, files]) => files), getGitHubDocsCacheDir());
+  const evidence = await downloadLocalizationEvidence(config, access, filesByLanguage.flatMap(([, files]) => files), getGitHubDocsCacheDir(), onDownloadProgress);
   assertGitHubCacheAccess(access);
 
   return new Map(
