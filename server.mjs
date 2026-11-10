@@ -50,9 +50,11 @@ const SERVER_CLOSE_GRACE_MS = parsePositiveInteger(process.env.SERVER_CLOSE_GRAC
 // Node's 5 s default the server closes such a connection first, and a request the proxy sends on it
 // at that moment fails as a 502/520. This must stay above the idle timeout of every proxy in front.
 const SERVER_KEEP_ALIVE_TIMEOUT_MS = parsePositiveInteger(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS, 920_000);
-// Kept slightly above the keep-alive timeout by convention. Node bounds header receipt by the smaller
-// of this value and server.requestTimeout (300 s by default), and a whole request by the larger one.
-const SERVER_HEADERS_TIMEOUT_MS = parsePositiveInteger(process.env.SERVER_HEADERS_TIMEOUT_MS, SERVER_KEEP_ALIVE_TIMEOUT_MS + 1_000);
+// Longest time a client may take to send one request's headers, which limits slow-header clients.
+// Node measures it from the first byte of each request, so idle keep-alive time does not count and
+// it does not have to exceed the keep-alive timeout. The default is Node's own; header receipt is
+// also capped by server.requestTimeout (300 s), so larger values have no effect.
+const SERVER_HEADERS_TIMEOUT_MS = parsePositiveInteger(process.env.SERVER_HEADERS_TIMEOUT_MS, 60_000);
 const SSL_STATUS_ENDPOINT_PATH = normalizeStatusEndpointPath(
   process.env.SSL_STATUS_ENDPOINT_PATH ?? "/.well-known/vicky/ssl-status",
 );

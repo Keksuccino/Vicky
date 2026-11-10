@@ -226,7 +226,7 @@ Common optional settings:
 | `HTTP_PORT` | HTTP listen port | `3000` |
 | `HTTPS_PORT` | HTTPS listen port | `443` |
 | `SERVER_KEEP_ALIVE_TIMEOUT_MS` | Idle keep-alive timeout of the `npm run start` listeners; keep it above the idle timeout of every proxy or CDN in front of Vicky (Cloudflare: 900 s) | `920000` |
-| `SERVER_HEADERS_TIMEOUT_MS` | Header receipt timeout of the `npm run start` listeners | 1 s above `SERVER_KEEP_ALIVE_TIMEOUT_MS` |
+| `SERVER_HEADERS_TIMEOUT_MS` | Longest time a client may take to send a request's headers to the `npm run start` listeners (slow-header protection); measured per request, so it does not need to exceed `SERVER_KEEP_ALIVE_TIMEOUT_MS` | `60000` |
 | `LETS_ENCRYPT_STAGING` | Use Let's Encrypt staging CA for test runs | `false` |
 | `AUTH_TRUST_PROXY_HEADERS` | Enable one proxy-overwritten client IP from an allowlisted peer | `false` |
 | `AUTH_TRUSTED_PROXY_IPS` | Exact comma-separated proxy socket IP allowlist for client-IP forwarding | unset |
