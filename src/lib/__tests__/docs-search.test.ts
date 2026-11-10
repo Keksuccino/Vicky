@@ -84,6 +84,9 @@ describe("docs search", () => {
 
     await searchDocsCorpus(config, "paket", { translation: { language, localizationPath: "localizations" } });
     expect(mocks.loadGitHubLocalizedPages).toHaveBeenCalledTimes(1);
+    // The source and the German corpus count toward the cache's byte bound.
+    expect(docsSearchCorpusCache.size).toBe(2);
+    expect(docsSearchCorpusCache.approximateBytes).toBeGreaterThan(2 * Buffer.byteLength(translatedPage.content));
   });
 
   it("rebuilds a localized corpus per search while the language is still loading", async () => {

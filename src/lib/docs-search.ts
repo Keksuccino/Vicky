@@ -1,4 +1,4 @@
-import { docsSearchCorpusCache } from "@/lib/cache";
+import { approximateStringBytes, docsSearchCorpusCache, type SizedCacheValue } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, toRuntimeConfigCacheKey } from "@/lib/github";
 import { loadGitHubLocalizedPages } from "@/lib/github-localization";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
@@ -51,6 +51,33 @@ export type DocsSearchResult = {
 type SearchTranslationOptions = {
   language: AutoTranslateLanguage;
   localizationPath: string;
+};
+
+/** A corpus as the search corpus cache holds it, with its approximate size. */
+type CachedSearchCorpus = SizedCacheValue & {
+  docs: SearchableDoc[];
+};
+
+const approximateWordsBytes = (words: readonly string[]): number => words.reduce((bytes, word) => bytes + approximateStringBytes(word) + 8, 32);
+
+/** Approximate bytes of what a searchable doc adds to memory; `sourcePage` is shared with the docs view and not counted. */
+const approximateSearchableDocBytes = (doc: SearchableDoc): number => {
+  let bytes = 256 + approximateStringBytes(doc.slug) + approximateStringBytes(doc.path) + approximateStringBytes(doc.name) + approximateStringBytes(doc.title) + approximateStringBytes(doc.description) + approximateStringBytes(doc.contentText);
+  for (const field of Object.keys(doc.normalized) as SearchField[]) {
+    bytes += approximateStringBytes(doc.normalized[field]) + approximateWordsBytes(doc.words[field]);
+  }
+  for (const section of doc.sections) {
+    bytes += 128 + approximateStringBytes(section.headingText) + approximateStringBytes(section.headingNormalized) + approximateStringBytes(section.plainText) + approximateStringBytes(section.normalized) + approximateWordsBytes(section.headingWords) + approximateWordsBytes(section.words);
+  }
+  return bytes;
+};
+
+/** Caches a corpus; only docs it does not share with `sharedWith` (the source corpus) count toward its size. */
+const cacheSearchCorpus = (cacheKey: string, docs: SearchableDoc[], sharedWith?: readonly SearchableDoc[]): void => {
+  const shared = new Set(sharedWith);
+  const approximateBytes = docs.reduce((bytes, doc) => bytes + 8 + (shared.has(doc) ? 0 : approximateSearchableDocBytes(doc)), 64);
+  const cached: CachedSearchCorpus = { approximateBytes, docs };
+  docsSearchCorpusCache.set(cacheKey, cached);
 };
 
 const docsSearchCorpusLoads = processSingleton("docsSearch.corpusLoads", () => new Map<string, Promise<SearchableDoc[]>>());
@@ -196,9 +223,9 @@ const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<Searchable
   const access = beginGitHubCacheAccess(config);
   const cacheKey = `${toRuntimeConfigCacheKey(config)}|search-corpus`;
   const loadKey = `${cacheKey}|generation-${access.generation}`;
-  const cached = docsSearchCorpusCache.get(cacheKey);
+  const cached = docsSearchCorpusCache.get(cacheKey) as CachedSearchCorpus | undefined;
   if (cached) {
-    return cached as SearchableDoc[];
+    return cached.docs;
   }
 
   const pending = docsSearchCorpusLoads.get(loadKey);
@@ -212,14 +239,14 @@ const loadSearchCorpus = async (config: GitHubRuntimeConfig): Promise<Searchable
     .then(({ items, pages }) => {
       assertGitHubCacheAccess(access);
       if (pages.length === 0) {
-        docsSearchCorpusCache.set(cacheKey, []);
+        cacheSearchCorpus(cacheKey, []);
         return [];
       }
 
       const namesBySlug = new Map<string, GitHubDocTreeItem>(items.map((item) => [item.slug, item]));
       const corpus = pages.map((page) => toSearchableDocFromPage(page, page, namesBySlug.get(page.slug)?.name ?? page.title));
 
-      docsSearchCorpusCache.set(cacheKey, corpus);
+      cacheSearchCorpus(cacheKey, corpus);
       return corpus;
     })
     .finally(() => {
@@ -243,9 +270,9 @@ const applyLocalizedPagesToCorpus = async (
   }
 
   const cacheKey = `${toRuntimeConfigCacheKey(config)}|search-corpus|${translation.localizationPath}|${translation.language.code.toLowerCase()}`;
-  const cached = docsSearchCorpusCache.get(cacheKey);
+  const cached = docsSearchCorpusCache.get(cacheKey) as CachedSearchCorpus | undefined;
   if (cached) {
-    return cached as SearchableDoc[];
+    return cached.docs;
   }
 
   const { complete, pages } = await loadGitHubLocalizedPages({
@@ -264,7 +291,7 @@ const applyLocalizedPagesToCorpus = async (
 
   // While the language's translations are still downloading, the result is rebuilt per search.
   if (complete) {
-    docsSearchCorpusCache.set(cacheKey, localizedCorpus);
+    cacheSearchCorpus(cacheKey, localizedCorpus, corpus);
   }
   return localizedCorpus;
 };

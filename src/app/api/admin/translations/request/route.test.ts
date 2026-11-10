@@ -11,7 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock("@/lib/active-auth", () => ({ requireAdminRequest: mocks.requireAdminRequest }));
-vi.mock("@/lib/cache", () => ({ setDocsCacheTtlMs: mocks.setCacheTtl }));
+vi.mock("@/lib/cache", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/cache")>()), setDocsCacheTtlMs: mocks.setCacheTtl }));
 vi.mock("@/lib/encryption", () => ({ decryptSecret: mocks.decryptSecret }));
 vi.mock("@/lib/github", () => ({ resolveRuntimeConfig: mocks.resolveRuntimeConfig }));
 vi.mock("@/lib/page-localization-jobs", () => ({ startPageLocalizationJob: mocks.startJob }));

@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 
-import { LRUCache } from "lru-cache";
-
+import { approximateStringBytes, MemoryCache } from "@/lib/cache";
 import { getGitHubClient, gitHubErrorStatus, type GitHubRequestPriority } from "@/lib/github-client";
 import {
   blobFilePath,
@@ -22,6 +21,12 @@ const BLOB_RECORD_VERSION = 1;
 const MARKDOWN_PARSE_VERSION = 2;
 /** In-memory budget for blobs outside the published docs; page objects keep their own blobs alive. */
 const BLOB_MEMORY_BUDGET_BYTES = 32 * 1024 * 1024;
+/**
+ * Budget for blob summaries, a few hundred bytes each: about 25,000 blobs, far more than a site's
+ * pages and translations, so lists and translation status never read a blob for them. An evicted
+ * summary is read again from its stored blob.
+ */
+const SUMMARY_MEMORY_BUDGET_BYTES = 8 * 1024 * 1024;
 const CONTENT_HASH_PATTERN = /^[a-f0-9]{32}$/;
 
 /** A Git blob parsed once: its Markdown plus everything page building needs from it. */
@@ -48,18 +53,21 @@ type ContentStoreState = {
   loads: Map<string, Promise<GitHubBlobRecord>>;
   /** Blobs of indexes that are being built or saved and not persisted yet, with a use count. */
   pins: Map<string, number>;
-  records: LRUCache<string, GitHubBlobRecord>;
-  /** Summaries of every blob read or stored by this process; tiny, so they outlive evicted records. */
-  summaries: Map<string, GitHubBlobSummary>;
+  records: MemoryCache<GitHubBlobRecord>;
+  /** Summaries of blobs read or stored by this process; small, so they outlive evicted records. */
+  summaries: MemoryCache<GitHubBlobSummary>;
   sweep: { rerun: boolean; running: Promise<number> | null };
 };
 
-const storeState = processSingleton("githubContentStore.state.v2", (): ContentStoreState => ({
+const storeState = processSingleton("githubContentStore.state.v3", (): ContentStoreState => ({
   loads: new Map(),
   pins: new Map(),
-  // UTF-16 code units are two bytes; the page body shares the Markdown string, see `shareSuffix`.
-  records: new LRUCache({ maxSize: BLOB_MEMORY_BUDGET_BYTES, sizeCalculation: (record) => record.markdown.length * 2 + 256 }),
-  summaries: new Map(),
+  // The page body shares the Markdown string, see `shareSuffix`.
+  records: new MemoryCache({ maxBytes: BLOB_MEMORY_BUDGET_BYTES, sizeOf: (record) => approximateStringBytes(record.markdown) + 256 }),
+  summaries: new MemoryCache({
+    maxBytes: SUMMARY_MEMORY_BUDGET_BYTES,
+    sizeOf: (summary) => approximateStringBytes(summary.title) + approximateStringBytes(summary.contentHash) + (summary.sourceBlobSha ? approximateStringBytes(summary.sourceBlobSha) : 0) + 96,
+  }),
   sweep: { rerun: false, running: null },
 }));
 
