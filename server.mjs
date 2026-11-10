@@ -1033,6 +1033,32 @@ async function deactivateHttpsServer(reason = "automatic SSL is disabled in Doma
   log(`HTTPS server stopped because ${reason}.`);
 }
 
+function isSameDomainState(left, right) {
+  return left.customDomain === right.customDomain && left.letsEncryptEmail === right.letsEncryptEmail;
+}
+
+/**
+ * The watcher also reports events that leave the domain settings untouched, such as attribute
+ * changes and saves of unrelated settings. Refreshing for them would only log and rewrite the SSL
+ * status file, so a store change refreshes only when the stored domain settings differ from the
+ * active ones. A failed last refresh, an unreadable store, or a refresh in flight (which may have
+ * read an older store revision) always refreshes, so recovery and queued changes are never lost.
+ */
+async function refreshDomainStateForStoreChange(reason) {
+  if (shuttingDown) {
+    return;
+  }
+
+  if (!refreshPromise && sslRuntimeState.phase !== "error") {
+    const desired = await loadDomainStateFromStore().catch(() => null);
+    if (desired && !refreshPromise && isSameDomainState(desired, activeDomainState)) {
+      return;
+    }
+  }
+
+  await refreshDomainState(reason);
+}
+
 function scheduleRefreshFromStoreWatcher(eventType) {
   if (storeWatchDebounceTimer) {
     clearTimeout(storeWatchDebounceTimer);
@@ -1040,7 +1066,7 @@ function scheduleRefreshFromStoreWatcher(eventType) {
 
   storeWatchDebounceTimer = setTimeout(() => {
     storeWatchDebounceTimer = null;
-    void refreshDomainState(`store-change:${eventType}`);
+    void refreshDomainStateForStoreChange(`store-change:${eventType}`);
   }, SSL_STORE_WATCH_DEBOUNCE_MS);
   storeWatchDebounceTimer.unref?.();
 }

@@ -8,6 +8,8 @@ export const PRIVATE_DIRECTORY_MODE = 0o700;
 export const PRIVATE_FILE_MODE = 0o600;
 
 const PERMISSION_BITS = 0o777;
+// Permission bits plus setuid, setgid, and sticky: everything chmod(PRIVATE_*_MODE) replaces.
+const MODE_BITS = 0o7777;
 const SUPPORTS_POSIX_PERMISSIONS = process.platform !== "win32";
 const POSIX_SHARED_DIRECTORIES = [
   "/bin",
@@ -121,27 +123,97 @@ const verifyMode = (targetPath, expectedMode, actualMode) => {
   }
 };
 
+const PRIVATE_DIRECTORY = {
+  mode: PRIVATE_DIRECTORY_MODE,
+  hasKind: (stats) => stats.isDirectory(),
+  wrongKindMessage: "Private runtime directory path is not a directory",
+};
+
+const PRIVATE_FILE = {
+  mode: PRIVATE_FILE_MODE,
+  hasKind: (stats) => stats.isFile(),
+  wrongKindMessage: "Private runtime file path is not a regular file",
+};
+
+const assertKind = (targetPath, stats, kind) => {
+  if (!kind.hasKind(stats)) {
+    throw new Error(`${kind.wrongKindMessage}: ${targetPath}`);
+  }
+};
+
 /**
- * Creates a private runtime directory and repairs permissions when it already exists.
- * Windows does not implement POSIX mode bits; on that platform the containing volume's
- * ACL remains authoritative, while POSIX hosts fail closed when chmod cannot be verified.
+ * Whether an existing path still needs the repairing chmod. It does not when chmod would change
+ * nothing and this process could issue it: the full mode already equals the private mode and the
+ * process owns the path or runs as root. Any other path is still chmodded and then verified, so a
+ * path owned by another user keeps failing closed at chmod exactly as before. Skipping the no-op
+ * chmod matters beyond the saved syscall: chmod always updates the change time, which file
+ * watchers report as an event, and the production server watches the settings store's directory.
+ *
+ * @param {string} targetPath
+ * @param {import("node:fs").Stats} stats
+ * @param {typeof PRIVATE_DIRECTORY | typeof PRIVATE_FILE} kind
+ * @returns {boolean}
+ */
+const needsModeRepair = (targetPath, stats, kind) => {
+  assertKind(targetPath, stats, kind);
+  if (!SUPPORTS_POSIX_PERMISSIONS) {
+    return false;
+  }
+  if ((stats.mode & MODE_BITS) !== kind.mode) {
+    return true;
+  }
+  const effectiveUid = process.geteuid();
+  return effectiveUid !== 0 && stats.uid !== effectiveUid;
+};
+
+const verifyRepairedMode = (targetPath, stats, kind) => {
+  assertKind(targetPath, stats, kind);
+  verifyMode(targetPath, kind.mode, stats.mode);
+};
+
+const statIfPresent = async (targetPath) => {
+  try {
+    return await stat(targetPath);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+const statIfPresentSync = (targetPath) => {
+  try {
+    return statSync(targetPath);
+  } catch (error) {
+    if (isMissingPathError(error)) {
+      return null;
+    }
+    throw error;
+  }
+};
+
+/**
+ * Creates a private runtime directory, or verifies an existing one and repairs its permissions
+ * only when they differ. Windows does not implement POSIX mode bits; on that platform the
+ * containing volume's ACL remains authoritative, while POSIX hosts fail closed when the mode
+ * cannot be made and verified private.
  *
  * @param {string} directoryPath
  * @returns {Promise<void>}
  */
 export async function ensurePrivateDirectory(directoryPath) {
   assertDedicatedPrivateDirectory(directoryPath);
-  await mkdir(directoryPath, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-  if (!SUPPORTS_POSIX_PERMISSIONS) {
-    return;
+  let directoryStat = await statIfPresent(directoryPath);
+  if (!directoryStat) {
+    await mkdir(directoryPath, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    directoryStat = await stat(directoryPath);
   }
 
-  await chmod(directoryPath, PRIVATE_DIRECTORY_MODE);
-  const directoryStat = await stat(directoryPath);
-  if (!directoryStat.isDirectory()) {
-    throw new Error(`Private runtime directory path is not a directory: ${directoryPath}`);
+  if (needsModeRepair(directoryPath, directoryStat, PRIVATE_DIRECTORY)) {
+    await chmod(directoryPath, PRIVATE_DIRECTORY_MODE);
+    verifyRepairedMode(directoryPath, await stat(directoryPath), PRIVATE_DIRECTORY);
   }
-  verifyMode(directoryPath, PRIVATE_DIRECTORY_MODE, directoryStat.mode);
 }
 
 /**
@@ -152,22 +224,22 @@ export async function ensurePrivateDirectory(directoryPath) {
  */
 export function ensurePrivateDirectorySync(directoryPath) {
   assertDedicatedPrivateDirectory(directoryPath);
-  mkdirSync(directoryPath, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
-  if (!SUPPORTS_POSIX_PERMISSIONS) {
-    return;
+  let directoryStat = statIfPresentSync(directoryPath);
+  if (!directoryStat) {
+    mkdirSync(directoryPath, { recursive: true, mode: PRIVATE_DIRECTORY_MODE });
+    directoryStat = statSync(directoryPath);
   }
 
-  chmodSync(directoryPath, PRIVATE_DIRECTORY_MODE);
-  const directoryStat = statSync(directoryPath);
-  if (!directoryStat.isDirectory()) {
-    throw new Error(`Private runtime directory path is not a directory: ${directoryPath}`);
+  if (needsModeRepair(directoryPath, directoryStat, PRIVATE_DIRECTORY)) {
+    chmodSync(directoryPath, PRIVATE_DIRECTORY_MODE);
+    verifyRepairedMode(directoryPath, statSync(directoryPath), PRIVATE_DIRECTORY);
   }
-  verifyMode(directoryPath, PRIVATE_DIRECTORY_MODE, directoryStat.mode);
 }
 
 /**
- * Repairs and verifies a sensitive file before it is opened. Missing files are valid
- * because callers commonly use this during startup before the first persisted write.
+ * Verifies a sensitive file before it is opened and repairs its permissions only when they
+ * differ. Missing files are valid because callers commonly use this during startup before the
+ * first persisted write.
  *
  * @param {string} filePath
  * @returns {Promise<boolean>} Whether the file exists.
@@ -176,15 +248,9 @@ export async function ensurePrivateFile(filePath) {
   await ensurePrivateDirectory(path.dirname(filePath));
 
   try {
-    if (SUPPORTS_POSIX_PERMISSIONS) {
+    if (needsModeRepair(filePath, await stat(filePath), PRIVATE_FILE)) {
       await chmod(filePath, PRIVATE_FILE_MODE);
-    }
-    const fileStat = await stat(filePath);
-    if (!fileStat.isFile()) {
-      throw new Error(`Private runtime file path is not a regular file: ${filePath}`);
-    }
-    if (SUPPORTS_POSIX_PERMISSIONS) {
-      verifyMode(filePath, PRIVATE_FILE_MODE, fileStat.mode);
+      verifyRepairedMode(filePath, await stat(filePath), PRIVATE_FILE);
     }
     return true;
   } catch (error) {
@@ -205,15 +271,9 @@ export function ensurePrivateFileSync(filePath) {
   ensurePrivateDirectorySync(path.dirname(filePath));
 
   try {
-    if (SUPPORTS_POSIX_PERMISSIONS) {
+    if (needsModeRepair(filePath, statSync(filePath), PRIVATE_FILE)) {
       chmodSync(filePath, PRIVATE_FILE_MODE);
-    }
-    const fileStat = statSync(filePath);
-    if (!fileStat.isFile()) {
-      throw new Error(`Private runtime file path is not a regular file: ${filePath}`);
-    }
-    if (SUPPORTS_POSIX_PERMISSIONS) {
-      verifyMode(filePath, PRIVATE_FILE_MODE, fileStat.mode);
+      verifyRepairedMode(filePath, statSync(filePath), PRIVATE_FILE);
     }
     return true;
   } catch (error) {
@@ -226,8 +286,8 @@ export function ensurePrivateFileSync(filePath) {
 
 /**
  * Opens a newly-created private file without a window in which umask-derived permissions
- * are observable. The descriptor mode is enforced again because mode-on-create does not
- * repair an existing file and is not honored consistently by every filesystem.
+ * are observable. The descriptor mode is verified and, where needed, enforced again because
+ * mode-on-create is not honored consistently by every filesystem.
  *
  * @param {string} filePath
  * @returns {Promise<import("node:fs/promises").FileHandle>}
@@ -237,10 +297,9 @@ export async function openPrivateFileExclusive(filePath) {
   const handle = await open(filePath, "wx", PRIVATE_FILE_MODE);
 
   try {
-    if (SUPPORTS_POSIX_PERMISSIONS) {
+    if (needsModeRepair(filePath, await handle.stat(), PRIVATE_FILE)) {
       await handle.chmod(PRIVATE_FILE_MODE);
-      const handleStat = await handle.stat();
-      verifyMode(filePath, PRIVATE_FILE_MODE, handleStat.mode);
+      verifyRepairedMode(filePath, await handle.stat(), PRIVATE_FILE);
     }
     return handle;
   } catch (error) {
