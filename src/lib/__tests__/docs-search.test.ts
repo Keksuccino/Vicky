@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  loadGitHubLocalizationSnapshot: vi.fn(),
+  loadGitHubLocalizedPages: vi.fn(),
   listMarkdownDocsTreePagesWithTitles: vi.fn(),
   toRuntimeConfigCacheKey: vi.fn(),
 }));
@@ -12,7 +12,7 @@ vi.mock("@/lib/github", () => ({
 }));
 
 vi.mock("@/lib/github-localization", () => ({
-  loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
+  loadGitHubLocalizedPages: mocks.loadGitHubLocalizedPages,
 }));
 
 import { docsSearchCorpusCache } from "@/lib/cache";
@@ -52,7 +52,7 @@ const translatedPage: GitHubDocPage = {
 describe("docs search", () => {
   beforeEach(() => {
     docsSearchCorpusCache.clear();
-    mocks.loadGitHubLocalizationSnapshot.mockReset();
+    mocks.loadGitHubLocalizedPages.mockReset();
     mocks.listMarkdownDocsTreePagesWithTitles.mockReset();
     mocks.toRuntimeConfigCacheKey.mockReset();
 
@@ -65,12 +65,7 @@ describe("docs search", () => {
 
   it("uses cached translated pages for translated search when available", async () => {
     const language = { name: "German", code: "de", icon: "de", enabled: true };
-    mocks.loadGitHubLocalizationSnapshot.mockResolvedValue({
-      fetchedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      tree: [],
-      pages: [translatedPage],
-    });
+    mocks.loadGitHubLocalizedPages.mockResolvedValue({ complete: true, pages: [translatedPage] });
 
     const results = await searchDocsCorpus(config, "installiere", {
       translation: {
@@ -85,21 +80,25 @@ describe("docs search", () => {
       excerpt: "Einrichtung Installiere das Paket mit npm.",
       anchor: "einrichtung",
     });
-    expect(mocks.loadGitHubLocalizationSnapshot).toHaveBeenCalledWith({
-      config,
-      language,
-      localizationPath: "localizations",
-      sourcePages: [sourcePage],
-    });
+    expect(mocks.loadGitHubLocalizedPages).toHaveBeenCalledWith({ config, languageCode: "de", localizationPath: "localizations" });
+
+    await searchDocsCorpus(config, "paket", { translation: { language, localizationPath: "localizations" } });
+    expect(mocks.loadGitHubLocalizedPages).toHaveBeenCalledTimes(1);
+  });
+
+  it("rebuilds a localized corpus per search while the language is still loading", async () => {
+    const translation = { language: { name: "German", code: "de", icon: "de", enabled: true }, localizationPath: "localizations" };
+    mocks.loadGitHubLocalizedPages.mockResolvedValueOnce({ complete: false, pages: [] }).mockResolvedValue({ complete: true, pages: [translatedPage] });
+
+    await expect(searchDocsCorpus(config, "installiere", { translation })).resolves.toEqual([]);
+    await expect(searchDocsCorpus(config, "installiere", { translation })).resolves.toEqual([expect.objectContaining({ title: "Installationsanleitung" })]);
+    await searchDocsCorpus(config, "paket", { translation });
+
+    expect(mocks.loadGitHubLocalizedPages).toHaveBeenCalledTimes(2);
   });
 
   it("does not create translations while searching translated content", async () => {
-    mocks.loadGitHubLocalizationSnapshot.mockResolvedValue({
-      fetchedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      tree: [],
-      pages: [],
-    });
+    mocks.loadGitHubLocalizedPages.mockResolvedValue({ complete: true, pages: [] });
 
     const results = await searchDocsCorpus(config, "einrichtung", {
       translation: {
@@ -109,6 +108,6 @@ describe("docs search", () => {
     });
 
     expect(results).toEqual([]);
-    expect(mocks.loadGitHubLocalizationSnapshot).toHaveBeenCalledTimes(1);
+    expect(mocks.loadGitHubLocalizedPages).toHaveBeenCalledTimes(1);
   });
 });

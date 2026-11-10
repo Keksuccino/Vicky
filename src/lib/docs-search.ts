@@ -1,8 +1,8 @@
 import { docsSearchCorpusCache } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, toRuntimeConfigCacheKey } from "@/lib/github";
-import { loadGitHubLocalizationSnapshot } from "@/lib/github-localization";
+import { loadGitHubLocalizedPages } from "@/lib/github-localization";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
-import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
+import { isSourceLanguage } from "@/lib/page-localization-read";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
@@ -248,26 +248,24 @@ const applyLocalizedPagesToCorpus = async (
     return cached as SearchableDoc[];
   }
 
-  const sourcePages = corpus.map((doc) => doc.sourcePage);
-  const snapshot = await loadGitHubLocalizationSnapshot({
+  const { complete, pages } = await loadGitHubLocalizedPages({
     config,
-    language: translation.language,
+    languageCode: translation.language.code,
     localizationPath: translation.localizationPath,
-    sourcePages,
   });
   assertGitHubCacheAccess(access);
-  const localizedByPath = new Map(snapshot.pages.map((page) => [page.path, page]));
+  const localizedByPath = new Map(pages.map((page) => [page.path, page]));
 
+  // Pages without a current translation stay searchable in the source language.
   const localizedCorpus = corpus.map((doc) => {
     const localizedPage = localizedByPath.get(doc.sourcePage.path);
-    if (!localizedPage || isLocalizedPageOutdated(doc.sourcePage, localizedPage)) {
-      return doc;
-    }
-
-    return toSearchableDocFromPage(localizedPage, doc.sourcePage, localizedPage.title.trim() || doc.name);
+    return localizedPage ? toSearchableDocFromPage(localizedPage, doc.sourcePage, localizedPage.title.trim() || doc.name) : doc;
   });
 
-  docsSearchCorpusCache.set(cacheKey, localizedCorpus);
+  // While the language's translations are still downloading, the result is rebuilt per search.
+  if (complete) {
+    docsSearchCorpusCache.set(cacheKey, localizedCorpus);
+  }
   return localizedCorpus;
 };
 

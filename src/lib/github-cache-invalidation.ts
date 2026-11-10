@@ -1,7 +1,6 @@
 import {
   aiPlaintextDocsCache,
   docsSearchCorpusCache,
-  docsSnapshotCache,
   docsSourceCache,
   renderedMarkdownCache,
   translatedDocsPageCache,
@@ -157,7 +156,6 @@ export const prepareGitHubCacheMutation = async (config: GitHubRuntimeConfig): P
 
 const clearMemoryCachesForPrefix = (prefix: string): void => {
   docsSourceCache.deleteWhere((key) => key.startsWith(prefix));
-  docsSnapshotCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
   translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
@@ -245,7 +243,6 @@ export const invalidateAllGitHubRuntimeCaches = async (): Promise<GitHubCacheInv
 
   try {
     docsSourceCache.clear();
-    docsSnapshotCache.clear();
     docsSearchCorpusCache.clear();
     aiPlaintextDocsCache.clear();
     translatedDocsPageCache.clear();

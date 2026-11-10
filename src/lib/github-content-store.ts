@@ -21,13 +21,19 @@ const BLOB_RECORD_VERSION = 1;
 const MARKDOWN_PARSE_VERSION = 1;
 /** In-memory budget for blobs outside the published docs; page objects keep their own blobs alive. */
 const BLOB_MEMORY_BUDGET_BYTES = 32 * 1024 * 1024;
+const CONTENT_HASH_PATTERN = /^[a-f0-9]{32}$/;
 
 /** A Git blob parsed once: its Markdown plus everything page building needs from it. */
 export type GitHubBlobRecord = ParsedMarkdownDocument & {
   byteLength: number;
+  /** Fingerprint of the page body; the rendered-HTML cache key uses it (see `hashMarkdownContent`). */
+  contentHash: string;
   markdown: string;
   sha: string;
 };
+
+/** What lists of pages (sidebar titles, cache status) need from a blob, without its body. */
+export type GitHubBlobSummary = Pick<GitHubBlobRecord, "contentHash" | "title">;
 
 type PersistedBlobRecord = Omit<GitHubBlobRecord, "content"> & {
   content?: string;
@@ -42,20 +48,30 @@ type ContentStoreState = {
   /** Blobs of indexes that are being built or saved and not persisted yet, with a use count. */
   pins: Map<string, number>;
   records: LRUCache<string, GitHubBlobRecord>;
+  /** Summaries of every blob read or stored by this process; tiny, so they outlive evicted records. */
+  summaries: Map<string, GitHubBlobSummary>;
   sweep: { rerun: boolean; running: Promise<number> | null };
 };
 
-const storeState = processSingleton("githubContentStore.state", (): ContentStoreState => ({
+const storeState = processSingleton("githubContentStore.state.v2", (): ContentStoreState => ({
   loads: new Map(),
   pins: new Map(),
   // UTF-16 code units are two bytes; the page body shares the Markdown string, see `shareSuffix`.
   records: new LRUCache({ maxSize: BLOB_MEMORY_BUDGET_BYTES, sizeCalculation: (record) => record.markdown.length * 2 + 256 }),
+  summaries: new Map(),
   sweep: { rerun: false, running: null },
 }));
 
 /** Git's object ID of a blob: SHA-1 over `blob <size>\0<bytes>`. */
 export const gitBlobSha = (bytes: Uint8Array): string =>
   createHash("sha1").update(`blob ${bytes.byteLength}\0`).update(bytes).digest("hex");
+
+/**
+ * Fingerprint of a page body (Markdown without front matter). Rendered HTML is cached under it,
+ * and stored blobs keep it, so the cache status of a page is known without reading its body.
+ * Changing the function invalidates every rendered-HTML cache entry.
+ */
+export const hashMarkdownContent = (content: string): string => createHash("sha256").update(content).digest("hex").slice(0, 32);
 
 /**
  * Returns the page body as a slice of the Markdown when it is its suffix (the usual case), so
@@ -69,6 +85,7 @@ export const parseGitHubBlobRecord = (sha: string, markdown: string, byteLength 
   return {
     byteLength,
     content: shareSuffix(markdown, parsed.content),
+    contentHash: hashMarkdownContent(parsed.content),
     description: parsed.description,
     headings: parsed.headings,
     includeInPlaintextExport: parsed.includeInPlaintextExport,
@@ -84,6 +101,7 @@ const toPersistedRecord = (record: GitHubBlobRecord): PersistedBlobRecord => {
   return {
     byteLength: record.byteLength,
     ...(sharesMarkdown ? { contentStart } : { content: record.content }),
+    contentHash: record.contentHash,
     description: record.description,
     headings: record.headings,
     includeInPlaintextExport: record.includeInPlaintextExport,
@@ -108,8 +126,11 @@ const fromPersistedRecord = (value: unknown, sha: string): { record: GitHubBlobR
   }
 
   const byteLength = typeof source.byteLength === "number" ? source.byteLength : Buffer.byteLength(source.markdown, "utf8");
+  // A record that lacks any parsed field is parsed again from its Markdown and rewritten, without a download.
   const parsedFieldsValid =
     source.parseVersion === MARKDOWN_PARSE_VERSION &&
+    typeof source.contentHash === "string" &&
+    CONTENT_HASH_PATTERN.test(source.contentHash) &&
     typeof source.title === "string" &&
     typeof source.description === "string" &&
     typeof source.includeInPlaintextExport === "boolean" &&
@@ -125,6 +146,7 @@ const fromPersistedRecord = (value: unknown, sha: string): { record: GitHubBlobR
     record: {
       byteLength,
       content: typeof source.content === "string" ? source.content : source.markdown.slice(source.contentStart),
+      contentHash: source.contentHash as string,
       description: source.description as string,
       headings: source.headings as MarkdownHeading[],
       includeInPlaintextExport: source.includeInPlaintextExport as boolean,
@@ -135,8 +157,15 @@ const fromPersistedRecord = (value: unknown, sha: string): { record: GitHubBlobR
   };
 };
 
+const rememberSummary = (record: GitHubBlobRecord): void => {
+  if (!storeState.summaries.has(record.sha)) {
+    storeState.summaries.set(record.sha, { contentHash: record.contentHash, title: record.title });
+  }
+};
+
 const rememberRecord = (record: GitHubBlobRecord): GitHubBlobRecord => {
   storeState.records.set(record.sha, record);
+  rememberSummary(record);
   return record;
 };
 
@@ -173,7 +202,7 @@ const downloadBlob = async (config: GitHubRuntimeConfig, sha: string, priority: 
   return parseGitHubBlobRecord(sha, decodeUtf8(bytes), bytes.byteLength);
 };
 
-const loadBlob = (config: GitHubRuntimeConfig, sha: string, baseDir: string): Promise<GitHubBlobRecord> => {
+const loadBlob = (config: GitHubRuntimeConfig, sha: string, baseDir: string, priority: GitHubRequestPriority): Promise<GitHubBlobRecord> => {
   const pending = storeState.loads.get(sha);
   if (pending) {
     return pending;
@@ -185,7 +214,7 @@ const loadBlob = (config: GitHubRuntimeConfig, sha: string, baseDir: string): Pr
       return rememberRecord(stored);
     }
 
-    const downloaded = rememberRecord(await downloadBlob(config, sha, "bulk"));
+    const downloaded = rememberRecord(await downloadBlob(config, sha, priority));
     await writeRecord(baseDir, downloaded);
     return downloaded;
   })().finally(() => {
@@ -200,8 +229,15 @@ const loadBlob = (config: GitHubRuntimeConfig, sha: string, baseDir: string): Pr
 /**
  * Returns the parsed blobs for the given SHAs from memory, disk, or GitHub, in that order. Only
  * SHAs missing from the store cause requests, and concurrent callers share each download.
+ * `storedOnly` never contacts GitHub and never waits for a running download: blobs the store
+ * does not hold yet are left out of the result.
  */
-export const loadGitHubBlobs = async (config: GitHubRuntimeConfig, shas: Iterable<string>, baseDir: string): Promise<Map<string, GitHubBlobRecord>> => {
+export const loadGitHubBlobs = async (
+  config: GitHubRuntimeConfig,
+  shas: Iterable<string>,
+  baseDir: string,
+  options?: { priority?: GitHubRequestPriority; storedOnly?: boolean },
+): Promise<Map<string, GitHubBlobRecord>> => {
   const records = new Map<string, GitHubBlobRecord>();
   const loads: Array<Promise<void>> = [];
   for (const sha of new Set(shas)) {
@@ -210,13 +246,45 @@ export const loadGitHubBlobs = async (config: GitHubRuntimeConfig, shas: Iterabl
       records.set(sha, cached);
       continue;
     }
-    loads.push(loadBlob(config, sha, baseDir).then((record) => {
-      records.set(sha, record);
+
+    const load = options?.storedOnly
+      ? readRecordFromDisk(baseDir, sha).then((record) => (record ? rememberRecord(record) : null))
+      : loadBlob(config, sha, baseDir, options?.priority ?? "bulk");
+    loads.push(load.then((record) => {
+      if (record) {
+        records.set(sha, record);
+      }
     }));
   }
 
   await Promise.all(loads);
   return records;
+};
+
+/**
+ * Returns the summaries of the given blobs that the store holds, never contacting GitHub. Blobs
+ * read from disk for this are summarized without keeping their body in memory.
+ */
+export const loadStoredGitHubBlobSummaries = async (shas: Iterable<string>, baseDir: string): Promise<Map<string, GitHubBlobSummary>> => {
+  const summaries = new Map<string, GitHubBlobSummary>();
+  const reads: Array<Promise<void>> = [];
+  for (const sha of new Set(shas)) {
+    const known = storeState.summaries.get(sha);
+    if (known) {
+      summaries.set(sha, known);
+      continue;
+    }
+
+    reads.push(readRecordFromDisk(baseDir, sha).then((record) => {
+      if (record) {
+        rememberSummary(record);
+        summaries.set(sha, { contentHash: record.contentHash, title: record.title });
+      }
+    }));
+  }
+
+  await Promise.all(reads);
+  return summaries;
 };
 
 /** Stores content this app just committed, after verifying it hashes to the SHA GitHub reported. */
@@ -298,6 +366,7 @@ const runBlobSweep = async (baseDir: string): Promise<number> => {
   const results = await Promise.all(
     unreferenced.map(async (sha) => {
       storeState.records.delete(sha);
+      storeState.summaries.delete(sha);
       return deletePrivateFile(blobFilePath(baseDir, sha));
     }),
   );
@@ -332,4 +401,5 @@ export const sweepUnreferencedGitHubBlobs = (baseDir: string): Promise<number> =
 
 export const clearGitHubBlobMemory = (): void => {
   storeState.records.clear();
+  storeState.summaries.clear();
 };

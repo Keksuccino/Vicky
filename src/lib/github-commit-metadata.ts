@@ -266,6 +266,23 @@ export const resolveGitHubCommitMetadata = async (
   return result;
 };
 
+/** Returns the stored metadata of the given file versions (loading the store if needed) without looking anything up. */
+export const readStoredGitHubCommitMetadata = async (
+  config: GitHubRuntimeConfig,
+  files: Iterable<GitHubFileVersion>,
+  baseDir = getGitHubDocsCacheDir(),
+): Promise<Map<string, GitHubCommitMetadata>> => {
+  const state = await loadState(config, baseDir);
+  const result = new Map<string, GitHubCommitMetadata>();
+  for (const file of files) {
+    const entry = state.entries.get(file.path);
+    if (entry?.sha === file.sha) {
+      result.set(file.path, toMetadata(entry));
+    }
+  }
+  return result;
+};
+
 /** Returns stored metadata of a file version without loading or looking anything up. */
 export const knownGitHubCommitMetadata = (config: GitHubRuntimeConfig, repoPath: string, sha: string): GitHubCommitMetadata | undefined => {
   const entry = (docsSourceCache.get(stateKey(config)) as CommitMetadataState | undefined)?.entries.get(repoPath);

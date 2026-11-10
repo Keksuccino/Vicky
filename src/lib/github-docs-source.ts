@@ -447,41 +447,48 @@ export const loadGitHubDocsSourceView = async (config: GitHubRuntimeConfig, opti
   return view;
 };
 
+/** A Markdown file this app just committed, with the content it sent and the commit's author data. */
+export type CommittedGitHubFile = {
+  markdown: string;
+  metadata: GitHubCommitMetadata;
+  /** The source page built from the file; unset for files outside the docs path, such as localizations. */
+  page?: GitHubDocPage;
+  repoPath: string;
+  sha: string;
+};
+
 /**
- * Applies a committed source page to the index, the content store, the commit metadata, and the
- * published view, so the page is served immediately without asking GitHub again. Without a
+ * Applies committed files to the index, the content store, the commit metadata, and the
+ * published view, so they are served immediately without asking GitHub again. Without a
  * published view, only the persisted index (if any) is updated for the next load.
  */
-export const applyCommittedGitHubDocPage = async (
-  config: GitHubRuntimeConfig,
-  access: GitHubCacheLease,
-  committed: { metadata: GitHubCommitMetadata; page: GitHubDocPage; repoPath: string },
-): Promise<void> => {
+export const applyCommittedGitHubFiles = async (config: GitHubRuntimeConfig, access: GitHubCacheLease, committed: CommittedGitHubFile[]): Promise<void> => {
   const baseDir = getGitHubDocsCacheDir();
-  const unpin = pinGitHubBlobs([committed.page.sha]);
+  const unpin = pinGitHubBlobs(committed.map((file) => file.sha));
   try {
-    const record = await storeCommittedGitHubBlob(committed.page.sha, committed.page.markdown, baseDir);
-    await recordGitHubCommitMetadata(config, access, [{ metadata: committed.metadata, path: committed.repoPath, sha: committed.page.sha }], baseDir);
-    const committedFile = { repoPath: committed.repoPath, sha: committed.page.sha, size: record?.byteLength ?? Buffer.byteLength(committed.page.markdown, "utf8") };
+    const records = await Promise.all(committed.map((file) => storeCommittedGitHubBlob(file.sha, file.markdown, baseDir)));
+    await recordGitHubCommitMetadata(config, access, committed.map((file) => ({ metadata: file.metadata, path: file.repoPath, sha: file.sha })), baseDir);
+    const committedFiles = committed.map((file, index) => ({ repoPath: file.repoPath, sha: file.sha, size: records[index]?.byteLength ?? Buffer.byteLength(file.markdown, "utf8") }));
+    const pages = new Map(committed.flatMap((file) => (file.page ? [[file.repoPath, file.page] as const] : [])));
     assertGitHubCacheAccess(access);
 
     const previous = readPublishedGitHubDocsSourceView(config);
     if (!previous) {
       const persisted = await readPersistentGitHubRepoIndex(config, baseDir);
       if (persisted) {
-        await persistIndex(config, access, withCommittedRepoIndexFiles(persisted, [committedFile]), baseDir);
+        await persistIndex(config, access, withCommittedRepoIndexFiles(persisted, committedFiles), baseDir);
       }
       unpin();
-      await clearDerivedGitHubDocsCache(config, { changedSourceSlugs: [committed.page.slug] });
+      await clearDerivedGitHubDocsCache(config, { changedSourceSlugs: Array.from(pages.values(), (page) => page.slug) });
       return;
     }
 
-    const index = withCommittedRepoIndexFiles(previous.index, [committedFile]);
+    const index = withCommittedRepoIndexFiles(previous.index, committedFiles);
     const next = await buildSourceView(config, access, index, {
       baseDir,
       checkedAtMs: previous.checkedAtMs,
       confirmedBy: previous.confirmedBy,
-      overrides: new Map([[committed.repoPath, committed.page]]),
+      overrides: pages,
       previous,
     });
     next.retryAtMs = previous.retryAtMs;

@@ -12,11 +12,9 @@ import {
   normalizeAutoTranslateLanguageCode,
 } from "@/lib/auto-translate";
 import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-logging";
-import {
-  loadGitHubLocalizationStatusIndex,
-  saveGitHubLocalizedDoc,
-} from "@/lib/github-localization";
-import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
+import { isLocalizationOutdated, loadGitHubLocalizationStatusIndex } from "@/lib/github-localization";
+import { saveGitHubLocalizedDoc } from "@/lib/github-localization-saves";
+import { isSourceLanguage } from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
   GitHubDocPage,
@@ -544,7 +542,7 @@ export const translatePageLocalizations = async ({
         continue;
       }
 
-      if (isLocalizedPageOutdated(sourcePage, localizedPage)) {
+      if (isLocalizationOutdated(sourcePage.updatedAt, localizedPage.updatedAt)) {
         outdatedPages += 1;
         candidates.push({ language, previousStatus: "outdated", sourcePage });
       } else {

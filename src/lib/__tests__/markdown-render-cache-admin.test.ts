@@ -4,7 +4,8 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { renderedMarkdownCache } from "@/lib/cache";
+import { docsSourceCache, renderedMarkdownCache } from "@/lib/cache";
+import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import {
   clearMarkdownRenderCache,
   createMarkdownRenderCacheStatus,
@@ -13,29 +14,18 @@ import {
 import { listPersistentRenderedMarkdownCacheEntries } from "@/lib/markdown-render-cache-store";
 import type {
   DocsStore,
-  GitHubDocPage,
   GitHubRuntimeConfig,
 } from "@/lib/types";
 
-const listMarkdownDocsTreePagesWithTitlesMock = vi.fn();
-const loadGitHubLocalizationSnapshotMock = vi.fn();
-
-vi.mock("@/lib/github", () => ({
-  listMarkdownDocsTreePagesWithTitles: (...args: unknown[]) => listMarkdownDocsTreePagesWithTitlesMock(...args),
-  toRuntimeConfigCacheKey: (config: GitHubRuntimeConfig) =>
-    [config.owner, config.repo, config.branch, config.docsPath].join("|"),
-}));
-
-vi.mock("@/lib/github-localization", () => ({
-  loadGitHubLocalizationSnapshot: (...args: unknown[]) => loadGitHubLocalizationSnapshotMock(...args),
-}));
+import { createFakeGitHub } from "./fixtures/fake-github-api";
 
 const config: GitHubRuntimeConfig = {
-  owner: "Keksuccino",
-  repo: "Docs",
+  owner: "owner",
+  repo: "repo",
   branch: "main",
   docsPath: "docs",
   token: "token",
+  cacheEpoch: "markdown-cache-admin-test",
 };
 
 const store = {
@@ -54,53 +44,42 @@ const store = {
   },
 } as unknown as DocsStore;
 
-const createPage = (slug: string, content: string): GitHubDocPage => ({
-  path: `${slug}.md`,
-  slug,
-  sha: `${slug}-sha`,
-  title: slug === "home" ? "Home" : "Advanced",
-  description: "",
-  content,
-  markdown: content,
-  headings: [],
-  includeInPlaintextExport: true,
-});
-
 describe("markdown render cache admin helpers", () => {
   const previousCacheDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
+  const previousDocsCacheDir = process.env.WIKI_DOCS_CACHE_DIR;
   let cacheDir = "";
-  const pages = [createPage("home", "## Home"), createPage("advanced", "## Advanced")];
+  let docsCacheDir = "";
 
   beforeEach(async () => {
     cacheDir = await mkdtemp(path.join(os.tmpdir(), "vicky-markdown-admin-cache-"));
+    docsCacheDir = await mkdtemp(path.join(os.tmpdir(), "vicky-markdown-admin-docs-"));
     process.env.WIKI_MARKDOWN_CACHE_DIR = cacheDir;
+    process.env.WIKI_DOCS_CACHE_DIR = docsCacheDir;
     renderedMarkdownCache.clear();
-    vi.clearAllMocks();
-    listMarkdownDocsTreePagesWithTitlesMock.mockResolvedValue({ items: [], pages });
-    loadGitHubLocalizationSnapshotMock.mockResolvedValue({
-      fetchedAt: new Date().toISOString(),
-      expiresAt: new Date(Date.now() + 60_000).toISOString(),
-      tree: [],
-      pages: [
-        {
-          ...pages[0],
-          content: "## Startseite",
-          markdown: "## Startseite",
-          title: "Startseite",
-        },
-      ],
-    });
+    docsSourceCache.clear();
+    clearGitHubBlobMemory();
+    const fake = createFakeGitHub();
+    fake.setFile("docs/home.md", "---\ntitle: Home\n---\n## Home");
+    fake.setFile("docs/advanced.md", "---\ntitle: Advanced\n---\n## Advanced");
+    fake.setFile("localizations/de/home.md", "---\ntitle: Startseite\n---\n## Startseite");
+    vi.stubGlobal("fetch", fake.fetch);
   });
 
   afterEach(async () => {
-    if (previousCacheDir === undefined) {
-      delete process.env.WIKI_MARKDOWN_CACHE_DIR;
-    } else {
-      process.env.WIKI_MARKDOWN_CACHE_DIR = previousCacheDir;
+    vi.unstubAllGlobals();
+    for (const [name, value] of [["WIKI_MARKDOWN_CACHE_DIR", previousCacheDir], ["WIKI_DOCS_CACHE_DIR", previousDocsCacheDir]] as const) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
 
     renderedMarkdownCache.clear();
+    docsSourceCache.clear();
+    clearGitHubBlobMemory();
     await rm(cacheDir, { recursive: true, force: true });
+    await rm(docsCacheDir, { recursive: true, force: true });
   });
 
   it("caches only missing current source and translated HTML variants", async () => {

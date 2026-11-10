@@ -5,7 +5,21 @@ import { createHash } from "node:crypto";
  * through `fetch` so tests exercise the real client (timeouts, retries, concurrency cap).
  * Install it with `vi.stubGlobal("fetch", fake.fetch)`.
  */
-export type FakeGitHubRequestKind = "blob" | "branch" | "contents" | "graphql" | "other" | "put-contents" | "repo" | "tree";
+export type FakeGitHubRequestKind =
+  | "blob"
+  | "branch"
+  | "commit"
+  | "contents"
+  | "create-blob"
+  | "create-commit"
+  | "create-tree"
+  | "graphql"
+  | "other"
+  | "put-contents"
+  | "ref"
+  | "repo"
+  | "tree"
+  | "update-ref";
 
 export type FakeGitHubRequest = {
   kind: FakeGitHubRequestKind;
@@ -49,6 +63,9 @@ export const createFakeGitHub = (options?: { branch?: string; owner?: string; re
   const requests: FakeGitHubRequest[] = [];
   const interceptors: Interceptor[] = [];
   const treeShaPaths = new Map<string, string>();
+  /** Trees and commits created through the Git data API; a commit's files apply when the ref moves to it. */
+  const stagedTrees = new Map<string, Array<{ path: string; sha: string }>>();
+  const stagedCommits = new Map<string, { entries: Array<{ path: string; sha: string }>; commit: FakeCommit }>();
   let clock = Date.parse("2026-01-01T00:00:00Z");
   let inFlight = 0;
   let maxInFlight = 0;
@@ -134,6 +151,24 @@ export const createFakeGitHub = (options?: { branch?: string; owner?: string; re
     if (pathname.startsWith(`${repoPrefix}/branches/`)) {
       return { ...base, kind: "branch", target: decodeURIComponent(pathname.slice(`${repoPrefix}/branches/`.length)) };
     }
+    if (pathname.startsWith(`${repoPrefix}/git/ref/`)) {
+      return { ...base, kind: "ref", target: decodeURIComponent(pathname.slice(`${repoPrefix}/git/ref/`.length)) };
+    }
+    if (pathname.startsWith(`${repoPrefix}/git/refs/`) && method === "PATCH") {
+      return { ...base, kind: "update-ref", target: decodeURIComponent(pathname.slice(`${repoPrefix}/git/refs/`.length)) };
+    }
+    if (pathname.startsWith(`${repoPrefix}/git/commits/`)) {
+      return { ...base, kind: "commit", target: pathname.slice(`${repoPrefix}/git/commits/`.length) };
+    }
+    if (method === "POST" && pathname === `${repoPrefix}/git/blobs`) {
+      return { ...base, kind: "create-blob", target: "" };
+    }
+    if (method === "POST" && pathname === `${repoPrefix}/git/trees`) {
+      return { ...base, kind: "create-tree", target: "" };
+    }
+    if (method === "POST" && pathname === `${repoPrefix}/git/commits`) {
+      return { ...base, kind: "create-commit", target: "" };
+    }
     if (pathname === repoPrefix) {
       return { ...base, kind: "repo", target: "" };
     }
@@ -212,8 +247,62 @@ export const createFakeGitHub = (options?: { branch?: string; owner?: string; re
     return json(200, { data: { repository: { object } } });
   };
 
+  const latestCommitSha = (): string => commits[commits.length - 1]?.sha ?? sha1("empty");
+
+  const respondGitData = (request: FakeGitHubRequest, body: string): Response => {
+    const payload = (body ? JSON.parse(body) : {}) as Record<string, unknown>;
+    switch (request.kind) {
+      case "ref":
+        return json(200, { ref: `refs/${request.target}`, object: { sha: latestCommitSha(), type: "commit" } });
+      case "commit":
+        return json(200, { sha: request.target, tree: { sha: treeSha("") } });
+      case "create-blob": {
+        const bytes = Buffer.from(String(payload.content), payload.encoding === "base64" ? "base64" : "utf8");
+        const sha = blobSha(bytes);
+        blobs.set(sha, bytes);
+        return json(201, { sha });
+      }
+      case "create-tree": {
+        const entries = (payload.tree as Array<{ path: string; sha: string }>).map((entry) => ({ path: entry.path, sha: entry.sha }));
+        const sha = sha1(`staged-tree-${stagedTrees.size}-${JSON.stringify(entries)}`);
+        stagedTrees.set(sha, entries);
+        return json(201, { sha, tree: [] });
+      }
+      case "create-commit": {
+        clock += 60_000;
+        const entries = stagedTrees.get(String(payload.tree)) ?? [];
+        const created: FakeCommit = { author: "Translator", date: new Date(clock).toISOString().replace(".000Z", "Z"), paths: new Set(entries.map((entry) => entry.path)), sha: sha1(`staged-commit-${stagedCommits.size}-${clock}`) };
+        stagedCommits.set(created.sha, { commit: created, entries });
+        return json(201, { sha: created.sha, author: { name: created.author, date: created.date }, committer: { name: created.author, date: created.date }, tree: { sha: String(payload.tree) } });
+      }
+      case "update-ref": {
+        const staged = stagedCommits.get(String(payload.sha));
+        if (!staged) {
+          return json(422, { message: "Object does not exist" });
+        }
+        for (const entry of staged.entries) {
+          const bytes = blobs.get(entry.sha);
+          if (bytes) {
+            files.set(entry.path, bytes);
+          }
+        }
+        commits.push(staged.commit);
+        return json(200, { ref: `refs/${request.target}`, object: { sha: staged.commit.sha, type: "commit" } });
+      }
+      default:
+        return json(404, { message: "Not Found" });
+    }
+  };
+
   const respond = async (request: FakeGitHubRequest, headers: Headers, body: string): Promise<Response> => {
     switch (request.kind) {
+      case "ref":
+      case "commit":
+      case "create-blob":
+      case "create-tree":
+      case "create-commit":
+      case "update-ref":
+        return respondGitData(request, body);
       case "tree":
         return respondTree(request, headers);
       case "blob":

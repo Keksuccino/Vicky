@@ -73,7 +73,7 @@ describe("process-wide runtime state", () => {
     const routeCopy = await importModuleCopy(() => import("@/lib/cache"));
 
     expect(routeCopy.docsSourceCache).toBe(pageCopy.docsSourceCache);
-    expect(routeCopy.docsSnapshotCache).toBe(pageCopy.docsSnapshotCache);
+    expect(routeCopy.docsSearchCorpusCache).toBe(pageCopy.docsSearchCorpusCache);
     expect(routeCopy.renderedMarkdownCache).toBe(pageCopy.renderedMarkdownCache);
   });
 

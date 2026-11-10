@@ -1,7 +1,6 @@
 import {
   aiPlaintextDocsCache,
   docsSearchCorpusCache,
-  docsSnapshotCache,
   renderedMarkdownCache,
   translatedDocsPageCache,
   translatedDocsTitleCache,
@@ -30,7 +29,6 @@ const matchesLegacyNamespace = (key: string, prefix: string, namespaces: string[
 export const cleanupLegacyGitHubLogicalSourceCaches = async (config: GitHubRuntimeConfig, options?: { recordMutation?: boolean }): Promise<LegacyGitHubCacheCleanupResult> => {
   const prefix = `${legacyGitHubRuntimeCacheKey(config)}|`;
 
-  docsSnapshotCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["snapshot", "localization-snapshot"]));
   docsSearchCorpusCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["search-corpus"]));
   aiPlaintextDocsCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["plaintext-export"]));
   translatedDocsPageCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["auto-translate"]));

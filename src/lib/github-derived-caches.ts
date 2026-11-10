@@ -1,21 +1,20 @@
 import {
   aiPlaintextDocsCache,
   docsSearchCorpusCache,
-  docsSnapshotCache,
   renderedMarkdownCache,
   translatedDocsPageCache,
   translatedDocsTitleCache,
 } from "@/lib/cache";
 import { logAutoTranslateInfo } from "@/lib/auto-translate-logging";
 import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
-import { normalizeDocsPath, normalizeLocalizationRoot } from "@/lib/github-paths";
+import { normalizeDocsPath } from "@/lib/github-paths";
 import { deletePersistentRenderedMarkdownWhere, recordRenderedMarkdownCacheMutation } from "@/lib/markdown-render-cache-store";
 import { deletePersistentTranslationCacheWhere } from "@/lib/translation-cache-store";
 import type { GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig } from "@/lib/types";
 
 /**
- * Caches derived from source pages: rendered HTML, translations, the search corpus, the
- * plaintext export, and localization snapshots. They are pruned only for pages that changed.
+ * Caches derived from source pages: rendered HTML, translations, the search corpora, and the
+ * plaintext export. They are pruned only for pages that changed.
  */
 export type GitHubDocsPagesSnapshot = {
   pages: GitHubDocPage[];
@@ -178,27 +177,17 @@ const pruneTranslatedDocsCacheForSnapshotChange = async (config: GitHubRuntimeCo
   }
 };
 
-/** Drops localization snapshots (all, one root, or one language) and every search corpus of the source. */
-export const clearLocalizationCaches = (config: GitHubRuntimeConfig, localizationPath?: string, languageCode?: string): void => {
-  const sourcePrefix = `${gitHubRuntimeCacheKey(config)}|`;
-  const prefix = localizationPath
-    ? `${sourcePrefix}localization-snapshot|${normalizeLocalizationRoot(localizationPath)}|${languageCode ? languageCode.toLowerCase() : ""}`
-    : `${sourcePrefix}localization-snapshot|`;
-
-  docsSnapshotCache.deleteWhere((key) => key.startsWith(prefix));
-  docsSearchCorpusCache.deleteWhere((key) => key.startsWith(sourcePrefix));
-};
-
-/** Drops the in-memory derivations of all source pages: search corpora, plaintext export, localization snapshots. */
+/** Drops the in-memory derivations of the source's pages and localizations: search corpora and the plaintext export. */
 export const clearDerivedGitHubDocsMemory = (config: GitHubRuntimeConfig): void => {
   const prefix = `${gitHubRuntimeCacheKey(config)}|`;
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
-  clearLocalizationCaches(config);
+  docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
 };
 
 /**
  * Invalidates caches derived from source pages. With both snapshots, only pages whose content
- * changed or that disappeared are pruned; with `changedSourceSlugs`, exactly those pages.
+ * changed or that disappeared are pruned; with `changedSourceSlugs`, exactly those pages, and
+ * an empty list (only localizations changed) clears just the in-memory derivations.
  * Rendered and translated entries are keyed by source content, so pruning only reclaims space
  * and removes deleted pages; in-memory derivations of all pages are rebuilt either way.
  */
@@ -218,14 +207,16 @@ export const clearDerivedGitHubDocsCache = async (
     return;
   }
 
-  if (options.changedSourceSlugs.length > 0) {
-    await pruneTranslatedPagesForSlugs(config, options.changedSourceSlugs);
-    await pruneRenderedMarkdownCache({
-      config,
-      reason: "source-page-change",
-      targets: options.changedSourceSlugs.map((slug) => ({ slug })),
-    });
+  if (options.changedSourceSlugs.length === 0) {
+    return;
   }
+
+  await pruneTranslatedPagesForSlugs(config, options.changedSourceSlugs);
+  await pruneRenderedMarkdownCache({
+    config,
+    reason: "source-page-change",
+    targets: options.changedSourceSlugs.map((slug) => ({ slug })),
+  });
 
   const titlePrefix = translatedDocsTitleCachePrefix(config);
   translatedDocsTitleCache.deleteWhere((key) => key.startsWith(titlePrefix));

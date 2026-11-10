@@ -1,9 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  loadGitHubLocalizationSnapshot: vi.fn(),
   loadGitHubLocalizationStatusIndex: vi.fn(),
-  loadGitHubLocalizedDoc: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
   saveGitHubLocalizedDoc: vi.fn(),
   enqueueGitHubLocalizationUpload: vi.fn(),
@@ -13,10 +11,12 @@ vi.mock("@/lib/openrouter", () => ({
   requestOpenRouterChatCompletion: mocks.requestOpenRouterChatCompletion,
 }));
 
-vi.mock("@/lib/github-localization", () => ({
-  loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
+vi.mock("@/lib/github-localization", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/github-localization")>()),
   loadGitHubLocalizationStatusIndex: mocks.loadGitHubLocalizationStatusIndex,
-  loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,
+}));
+
+vi.mock("@/lib/github-localization-saves", () => ({
   saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
 }));
 
@@ -103,12 +103,6 @@ const createDeferred = <T>() => {
 describe("page localization translations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.loadGitHubLocalizationSnapshot.mockResolvedValue({
-      fetchedAt: "2026-05-04T15:37:03.000Z",
-      expiresAt: "2026-05-04T16:37:03.000Z",
-      tree: [],
-      pages: [],
-    });
     mocks.loadGitHubLocalizationStatusIndex.mockResolvedValue(new Map());
     mocks.saveGitHubLocalizedDoc.mockResolvedValue({
       localizedRepoPath: "localizations/de/home.md",

@@ -1,10 +1,5 @@
 import { isDefaultAutoTranslateLanguageCode } from "@/lib/auto-translate";
-import {
-  loadGitHubLocalizationSnapshot,
-  loadGitHubLocalizedDoc,
-  type GitHubLocalizedDocResult,
-  type GitHubLocalizationPageStatus,
-} from "@/lib/github-localization";
+import { loadGitHubLocalizedDoc, loadGitHubLocalizedTitles, type GitHubLocalizedDocResult } from "@/lib/github-localization";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig } from "@/lib/types";
 
 const sourceFallbackPage = (sourcePage: GitHubDocPage, languageCode: string, status: "missing" | "outdated"): GitHubDocPage => ({
@@ -21,49 +16,35 @@ const sourceFallbackPage = (sourcePage: GitHubDocPage, languageCode: string, sta
 export const isSourceLanguage = (language: Pick<AutoTranslateLanguage, "code">): boolean =>
   isDefaultAutoTranslateLanguageCode(language.code);
 
-export const isLocalizedPageOutdated = (
-  sourcePage: Pick<GitHubDocPage, "updatedAt">,
-  localizedPage: Pick<GitHubLocalizationPageStatus, "updatedAt">,
-): boolean => {
-  const sourceTime = sourcePage.updatedAt ? Date.parse(sourcePage.updatedAt) : Number.NaN;
-  const translationTime = localizedPage.updatedAt ? Date.parse(localizedPage.updatedAt) : Number.NaN;
-
-  return Number.isFinite(sourceTime) && Number.isFinite(translationTime) && sourceTime > translationTime;
-};
-
-export const loadCurrentLocalizedTreeItems = async ({
+/**
+ * Sidebar items of a language: source items whose page has a current translation carry the
+ * translated title. `titlesPending` reports titles the store is still downloading.
+ */
+export const loadLocalizedTreeItems = async ({
   config,
   language,
   localizationPath,
-  sourcePages,
+  sourceItems,
+  waitForPendingTitles,
 }: {
   config: GitHubRuntimeConfig;
   language: AutoTranslateLanguage;
   localizationPath: string;
-  sourcePages: GitHubDocPage[];
-}): Promise<Map<string, GitHubDocTreeItem>> => {
+  sourceItems: GitHubDocTreeItem[];
+  waitForPendingTitles?: boolean;
+}): Promise<{ items: GitHubDocTreeItem[]; titlesPending: boolean }> => {
   if (isSourceLanguage(language)) {
-    return new Map();
+    return { items: sourceItems, titlesPending: false };
   }
 
-  const snapshot = await loadGitHubLocalizationSnapshot({ config, language, localizationPath, sourcePages });
-  const sourcePageByPath = new Map(sourcePages.map((page) => [page.path, page]));
-  const output = new Map<string, GitHubDocTreeItem>();
-
-  for (const page of snapshot.pages) {
-    const sourcePage = sourcePageByPath.get(page.path);
-    if (!sourcePage || isLocalizedPageOutdated(sourcePage, page)) {
-      continue;
-    }
-
-    output.set(page.slug, {
-      path: page.path,
-      slug: page.slug,
-      name: page.title.trim() || page.slug,
-    });
-  }
-
-  return output;
+  const { pending, titles } = await loadGitHubLocalizedTitles({ config, languageCode: language.code, localizationPath, waitForPending: waitForPendingTitles });
+  return {
+    items: sourceItems.map((item) => {
+      const title = titles.get(item.slug);
+      return title ? { ...item, name: title } : item;
+    }),
+    titlesPending: pending,
+  };
 };
 
 /**

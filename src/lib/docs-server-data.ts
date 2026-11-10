@@ -8,7 +8,7 @@ import {
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
 import {
-  listMarkdownDocsTreePagesWithTitles,
+  listMarkdownDocsTree,
   loadPublicGitHubDoc,
 } from "@/lib/github";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
@@ -19,8 +19,8 @@ import {
 } from "@/lib/markdown-server-renderer";
 import {
   isSourceLanguage,
-  loadCurrentLocalizedTreeItems,
   loadLocalizedPageForSource,
+  loadLocalizedTreeItems,
   resolveServedLocalizedPage,
 } from "@/lib/page-localization-read";
 import { withPublicDocsAdmission } from "@/lib/public-docs-admission";
@@ -113,14 +113,7 @@ export const loadDocsPageForLanguage = async ({
   }
 });
 
-export const loadRenderedDocsPageForLanguage = async ({
-  config,
-  locator,
-  requestedLanguageCode,
-  request,
-  signal,
-  store,
-}: {
+export const loadRenderedDocsPageForLanguage = async (params: {
   config: GitHubRuntimeConfig;
   locator: { slug?: string; path?: string };
   requestedLanguageCode?: string;
@@ -128,17 +121,10 @@ export const loadRenderedDocsPageForLanguage = async ({
   signal?: AbortSignal;
   store: DocsStore;
 }): Promise<DocsLanguageData<RenderedDocsPageWithSourceHeadings>> => {
-  const access = beginGitHubCacheAccess(config);
-  const pageResult = await loadDocsPageForLanguage({
-    config,
-    locator,
-    requestedLanguageCode,
-    request,
-    signal,
-    store,
-  });
+  const access = beginGitHubCacheAccess(params.config);
+  const pageResult = await loadDocsPageForLanguage(params);
   const renderedPage = await renderGitHubDocPageMarkdown({
-    config,
+    config: params.config,
     languageCode: pageResult.contentLanguageCode ?? pageResult.language.code,
     page: pageResult.data,
   });
@@ -150,41 +136,39 @@ export const loadRenderedDocsPageForLanguage = async ({
   };
 };
 
-export const loadDocsTreeForLanguage = async (params: {
+/**
+ * Sidebar items of a language. Translated titles come from the localization title index, never
+ * from page bodies; while the store still downloads some, `titlesPending` is set and
+ * `waitForPendingTitles` (a client title refresh) waits a bounded time for them.
+ */
+export const loadDocsTreeForLanguage = async ({
+  config,
+  requestedLanguageCode,
+  request,
+  store,
+  waitForPendingTitles,
+}: {
   config: GitHubRuntimeConfig;
   requestedLanguageCode?: string;
   request?: ClientIpRequest;
   store: DocsStore;
-  waitForTitleIndex?: boolean;
-}): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => withPublicDocsAdmission(params.request, async () => {
-  const { config, requestedLanguageCode, store } = params;
+  waitForPendingTitles?: boolean;
+}): Promise<DocsLanguageData<GitHubDocTreeItem[]>> => withPublicDocsAdmission(request, async () => {
   const access = beginGitHubCacheAccess(config);
-  const { items: sourceItems, pages } = await listMarkdownDocsTreePagesWithTitles(config);
+  const sourceItems = await listMarkdownDocsTree(config);
   const language = resolveAutoTranslateLanguage(store.settings.autoTranslate, requestedLanguageCode);
 
-  if (isSourceLanguage(language)) {
-    return {
-      data: sourceItems,
-      language,
-      titlesPending: false,
-    };
-  }
-
   try {
-    const localizedItems = await loadCurrentLocalizedTreeItems({
+    const { items, titlesPending } = await loadLocalizedTreeItems({
       config,
       language,
       localizationPath: store.settings.autoTranslate.localizationPath,
-      sourcePages: pages,
+      sourceItems,
+      waitForPendingTitles,
     });
-    const data = sourceItems.map((item) => localizedItems.get(item.slug) ?? item);
     assertGitHubCacheAccess(access);
 
-    return {
-      data,
-      language,
-      titlesPending: false,
-    };
+    return { data: items, language, titlesPending };
   } catch (error: unknown) {
     assertGitHubCacheAccess(access);
     const message = getAutoTranslateErrorMessage(error);
@@ -193,10 +177,6 @@ export const loadDocsTreeForLanguage = async (params: {
       error: message,
     });
 
-    return {
-      data: sourceItems,
-      language,
-      titlesPending: false,
-    };
+    return { data: sourceItems, language, titlesPending: false };
   }
 });

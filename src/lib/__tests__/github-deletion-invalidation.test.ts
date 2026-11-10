@@ -8,7 +8,7 @@ import { docsSourceCache, renderedMarkdownCache, translatedDocsPageCache } from 
 import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import { loadGitHubDoc, loadPublicGitHubDoc, refreshGitHubDocsCache, saveGitHubDoc, toRuntimeConfigCacheKey } from "@/lib/github";
 import { transitionGitHubRuntimeCaches } from "@/lib/github-cache-invalidation";
-import { loadGitHubLocalizationSnapshot } from "@/lib/github-localization";
+import { loadGitHubLocalizedDoc } from "@/lib/github-localization";
 import { readPersistentGitHubRepoIndex } from "@/lib/github-repo-index";
 import { searchDocsCorpus } from "@/lib/docs-search";
 import { listPersistentRenderedMarkdownCacheEntries } from "@/lib/markdown-render-cache-store";
@@ -70,13 +70,12 @@ describe("GitHub deletion invalidation", () => {
     await refreshGitHubDocsCache(config);
     const deletedPage = await loadGitHubDoc(config, { slug: "private" });
     await renderGitHubDocPageMarkdown({ config, languageCode: "en-US", page: deletedPage });
-    const localizedSnapshot = await loadGitHubLocalizationSnapshot({
-      config,
-      language: { code: "de" },
-      localizationPath: "localizations",
-      sourcePages: [deletedPage],
-    });
-    await renderGitHubDocPageMarkdown({ config, languageCode: "de", page: localizedSnapshot.pages[0] });
+    const localized = await loadGitHubLocalizedDoc({ config, language: { code: "de" }, localizationPath: "localizations", sourcePage: deletedPage });
+    expect(localized.status).toBe("current");
+    if (!localized.page) {
+      throw new Error("Expected the stored translation.");
+    }
+    await renderGitHubDocPageMarkdown({ config, languageCode: "de", page: localized.page });
     const translationKey = `${toRuntimeConfigCacheKey(config)}|auto-translate|page|${"a".repeat(32)}|private|content`;
     await writePersistentTranslatedPage(translationKey, deletedPage);
     expect(await searchDocsCorpus(config, "secret")).toHaveLength(1);

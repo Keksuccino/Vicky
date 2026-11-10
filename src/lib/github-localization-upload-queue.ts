@@ -4,7 +4,7 @@ import {
   saveGitHubLocalizedDocsBatch,
   type GitHubLocalizedDocSourcePage,
   type SaveGitHubLocalizedDocBatchItem,
-} from "@/lib/github-localization";
+} from "@/lib/github-localization-saves";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   AutoTranslateLanguage,

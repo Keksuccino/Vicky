@@ -1,48 +1,36 @@
-import { docsSearchCorpusCache, docsSnapshotCache } from "@/lib/cache";
-import { assertGitHubCacheAccess, beginGitHubCacheAccess, prepareGitHubCacheMutation } from "@/lib/github-cache-invalidation";
-import { getGitHubClient, gitHubErrorStatus } from "@/lib/github-client";
+import { docsSourceCache } from "@/lib/cache";
+import { assertGitHubCacheAccess, beginGitHubCacheAccess, type GitHubCacheLease } from "@/lib/github-cache-invalidation";
+import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import {
-  extractCommitMetadata,
-  hydrateGitHubDocPageMetadata,
+  readStoredGitHubCommitMetadata,
   resolveGitHubCommitMetadata,
   type GitHubCommitMetadata,
+  type GitHubFileVersion,
 } from "@/lib/github-commit-metadata";
-import { fetchGitHubFile, parseGitHubBlobRecord } from "@/lib/github-content-store";
-import { clearLocalizationCaches, pruneRenderedMarkdownCache } from "@/lib/github-derived-caches";
-import {
-  ensureMarkdownPath,
-  joinRepoPath,
-  localizedRepoPathForSourcePath,
-  markdownExtensionRegex,
-  normalizeLocalizationLanguageCode,
-  normalizeLocalizationRoot,
-  normalizePathValue,
-  prettyNameFromPath,
-  relativePathToSlug,
-  stripRepoRoot,
-} from "@/lib/github-paths";
-import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
-import { createGitHubDocPage, sortTreeItems, treeItemFromPage, validateGitHubRuntimeConfig } from "@/lib/github-docs-source";
-import { badRequest } from "@/lib/http";
-import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
-import { processSingleton } from "@/lib/process-singleton.mjs";
-import type {
-  AutoTranslateLanguage,
-  GitHubDocPage,
-  GitHubDocTreeItem,
-  GitHubRuntimeConfig,
-  SaveGitHubDocInput,
-  SaveGitHubDocResult,
-} from "@/lib/types";
+import { loadGitHubBlobs, loadStoredGitHubBlobSummaries, type GitHubBlobRecord, type GitHubBlobSummary } from "@/lib/github-content-store";
+import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
+import { createGitHubDocPage, loadGitHubDocsSourceView, type GitHubDocsSourceView } from "@/lib/github-docs-source";
+import { joinRepoPath, normalizeDocsPath, normalizeLocalizationLanguageCode, normalizeLocalizationRoot } from "@/lib/github-paths";
+import { ApiError } from "@/lib/http";
+import type { AutoTranslateLanguage, GitHubDocPage, GitHubRuntimeConfig } from "@/lib/types";
 
-const FULL_DOCS_LOAD_CONCURRENCY = 6;
+/**
+ * Localization readers. Translations live at `<localizationPath>/<language>/<source page path>`;
+ * the repository index behind the source docs view lists them with their blob SHAs, so every
+ * reader works from that index, the content store, and the commit metadata store, and none makes
+ * a tree request of its own. Only translations of pages in the view are read.
+ *
+ * Bodies are never held per language: a reader loads the blobs it needs from the store and lets
+ * them go. A language's missing blobs and commit metadata are downloaded lazily, in the
+ * background, the first time a list of that language (sidebar titles, search) needs them.
+ */
 
-type GitHubLocalizationSnapshot = {
-  fetchedAt: string;
-  expiresAt: string;
-  tree: GitHubDocTreeItem[];
-  pages: GitHubDocPage[];
-};
+/** Blob downloads one language load runs at a time, so interactive requests keep free slots. */
+const LANGUAGE_LOAD_CONCURRENCY = 4;
+/** A language load that could not complete is not repeated for the same index before this pause. */
+const LANGUAGE_LOAD_RETRY_MS = 30_000;
+/** Longest time a title refresh waits for a running language load before answering. */
+const TITLE_REFRESH_WAIT_MS = 5_000;
 
 export type GitHubLocalizationPageStatus = {
   path: string;
@@ -51,12 +39,6 @@ export type GitHubLocalizationPageStatus = {
   updatedBy?: string;
 };
 
-export type GitHubLocalizedDocSourcePage = Pick<
-  GitHubDocPage,
-  "path" | "slug" | "sha" | "includeInPlaintextExport" | "updatedAt" | "updatedBy"
-> &
-  Partial<Pick<GitHubDocPage, "title" | "description" | "content">>;
-
 export type GitHubLocalizedDocResult = {
   sourcePage: GitHubDocPage;
   page: GitHubDocPage | null;
@@ -64,17 +46,32 @@ export type GitHubLocalizedDocResult = {
   localizedRepoPath: string;
 };
 
-type GitHubMarkdownTreeEntry = GitHubDocTreeItem & {
-  fullPath: string;
+/** A translation of a source page, as the repository index lists it. */
+export type GitHubLocalizedFile = {
+  repoPath: string;
   sha: string;
+  sourcePage: GitHubDocPage;
 };
 
-const localizationSnapshotLoads = processSingleton("githubLocalization.snapshotLoads", () => new Map<string, Promise<GitHubLocalizationSnapshot>>());
+export type GitHubCurrentLocalization = GitHubLocalizedFile & {
+  /** Unset while the blob is not in the store. */
+  summary?: GitHubBlobSummary;
+};
 
-const localizationSnapshotCacheKey = (config: GitHubRuntimeConfig, localizationPath: string, languageCode: string): string =>
-  `${gitHubRuntimeCacheKey(config)}|localization-snapshot|${normalizeLocalizationRoot(localizationPath)}|${languageCode.toLowerCase()}`;
+type LanguageLoad = {
+  /** Index files the load was started for; once the index changes, a new load may start at once. Weak, so an old index is not kept alive. */
+  files: WeakRef<GitHubDocsSourceView["index"]["files"]>;
+  promise: Promise<void> | null;
+  retryAtMs: number;
+};
 
-const mapWithConcurrency = async <T, R>(values: T[], concurrency: number, iteratee: (value: T, index: number) => Promise<R>): Promise<R[]> => {
+type KnownLocalizationMetadata = {
+  /** Stored commit metadata of the translations and of source pages without "last updated" data. */
+  known: Map<string, GitHubCommitMetadata>;
+  missing: GitHubFileVersion[];
+};
+
+export const mapWithConcurrency = async <T, R>(values: T[], concurrency: number, iteratee: (value: T, index: number) => Promise<R>): Promise<R[]> => {
   if (values.length === 0) {
     return [];
   }
@@ -95,72 +92,66 @@ const mapWithConcurrency = async <T, R>(values: T[], concurrency: number, iterat
   return output;
 };
 
-const listMarkdownTreeEntriesFromGitHub = async (config: GitHubRuntimeConfig, rootPath: string): Promise<GitHubMarkdownTreeEntry[]> => {
-  const client = getGitHubClient(config);
-  const docsRoot = normalizePathValue(rootPath);
-
-  const branch = await client.repos.getBranch({
-    owner: config.owner,
-    repo: config.repo,
-    branch: config.branch,
-  });
-
-  const treeResponse = await client.git.getTree({
-    owner: config.owner,
-    repo: config.repo,
-    tree_sha: branch.data.commit.commit.tree.sha,
-    recursive: "1",
-  });
-
-  const treeItems: GitHubMarkdownTreeEntry[] = [];
-
-  for (const node of treeResponse.data.tree) {
-    if (node.type !== "blob" || !node.path || !node.sha) {
-      continue;
-    }
-
-    const repoPath = normalizePathValue(node.path);
-    if (!markdownExtensionRegex.test(repoPath)) {
-      continue;
-    }
-
-    const relativePath = stripRepoRoot(docsRoot, repoPath);
-
-    if (relativePath === null || !relativePath) {
-      continue;
-    }
-
-    const markdownPath = ensureMarkdownPath(relativePath);
-    treeItems.push({
-      fullPath: repoPath,
-      path: markdownPath,
-      sha: node.sha,
-      slug: relativePathToSlug(markdownPath),
-      name: prettyNameFromPath(markdownPath),
-    });
-  }
-
-  treeItems.sort((left, right) => left.path.localeCompare(right.path));
-  return treeItems;
-};
-
-const languageRootPath = (localizationPath: string, languageCode: string): string =>
+export const localizationLanguageRoot = (localizationPath: string, languageCode: string): string =>
   joinRepoPath(normalizeLocalizationRoot(localizationPath), normalizeLocalizationLanguageCode(languageCode));
 
-const createLocalizedDocPage = ({
-  commitMeta,
-  file,
+/**
+ * The single "outdated" rule: a translation is outdated when its source page was committed after
+ * it. Both dates come from the commit metadata store; when either is unknown, it counts as current.
+ */
+export const isLocalizationOutdated = (sourceUpdatedAt: string | undefined, translationUpdatedAt: string | undefined): boolean => {
+  const sourceTime = sourceUpdatedAt ? Date.parse(sourceUpdatedAt) : Number.NaN;
+  const translationTime = translationUpdatedAt ? Date.parse(translationUpdatedAt) : Number.NaN;
+
+  return Number.isFinite(sourceTime) && Number.isFinite(translationTime) && sourceTime > translationTime;
+};
+
+/** Lists the translations the index holds for the given source pages (all pages of the view by default). */
+const listLocalizedFiles = (view: GitHubDocsSourceView, languageRoot: string, sourcePages: readonly GitHubDocPage[] = view.pages): GitHubLocalizedFile[] => {
+  const files: GitHubLocalizedFile[] = [];
+  for (const sourcePage of sourcePages) {
+    const repoPath = joinRepoPath(languageRoot, sourcePage.path);
+    const file = view.index.files.get(repoPath);
+    if (file) {
+      files.push({ repoPath, sha: file.sha, sourcePage });
+    }
+  }
+  return files;
+};
+
+const sourceRepoPath = (config: GitHubRuntimeConfig, page: Pick<GitHubDocPage, "path">): string => joinRepoPath(normalizeDocsPath(config.docsPath), page.path);
+
+const readKnownLocalizationMetadata = async (config: GitHubRuntimeConfig, files: GitHubLocalizedFile[], baseDir: string): Promise<KnownLocalizationMetadata> => {
+  const versions = new Map<string, GitHubFileVersion>();
+  for (const file of files) {
+    versions.set(file.repoPath, { path: file.repoPath, sha: file.sha });
+    if (!file.sourcePage.updatedAt) {
+      const path = sourceRepoPath(config, file.sourcePage);
+      versions.set(path, { path, sha: file.sourcePage.sha });
+    }
+  }
+
+  const known = await readStoredGitHubCommitMetadata(config, versions.values(), baseDir);
+  return { known, missing: Array.from(versions.values()).filter((version) => !known.has(version.path)) };
+};
+
+const isCurrentLocalization = (config: GitHubRuntimeConfig, file: GitHubLocalizedFile, known: Map<string, GitHubCommitMetadata>): boolean =>
+  !isLocalizationOutdated(file.sourcePage.updatedAt ?? known.get(sourceRepoPath(config, file.sourcePage))?.updatedAt, known.get(file.repoPath)?.updatedAt);
+
+export const createLocalizedDocPage = ({
   languageCode,
   localizedRepoPath,
+  metadata,
+  record,
   sourcePage,
 }: {
-  commitMeta: GitHubCommitMetadata;
-  file: { sha: string; markdown: string };
   languageCode: string;
   localizedRepoPath: string;
-  sourcePage: Pick<GitHubDocPage, "path" | "slug" | "updatedAt"> & Partial<Pick<GitHubDocPage, "title">>;
+  metadata: GitHubCommitMetadata;
+  record: GitHubBlobRecord;
+  sourcePage: Pick<GitHubDocPage, "path" | "slug" | "updatedAt">;
 }): GitHubDocPage => {
-  const page = createGitHubDocPage(sourcePage, parseGitHubBlobRecord(file.sha, file.markdown), commitMeta);
+  const page = createGitHubDocPage(sourcePage, record, metadata);
 
   return {
     ...page,
@@ -174,15 +165,70 @@ const createLocalizedDocPage = ({
   };
 };
 
-const isTranslationOutdated = (sourcePage: GitHubDocPage, translatedPage: GitHubDocPage): boolean => {
-  const sourceTime = sourcePage.updatedAt ? Date.parse(sourcePage.updatedAt) : Number.NaN;
-  const translationTime = translatedPage.updatedAt ? Date.parse(translatedPage.updatedAt) : Number.NaN;
+const isStaleSourceError = (error: unknown): boolean => error instanceof ApiError && error.status === 409;
 
-  return Number.isFinite(sourceTime) && Number.isFinite(translationTime) && sourceTime > translationTime;
+/**
+ * Starts the background download of what the store lacks to list one language (its translation
+ * blobs and the commit metadata needed for the outdated rule) and returns the running load, or
+ * null when none is needed or the last one for the same index could not complete just now.
+ * Downloads run at bulk priority with a small concurrency; results are content- or
+ * version-addressed, so a load outliving a refresh or save stays valid.
+ */
+const ensureLanguageLoad = (
+  config: GitHubRuntimeConfig,
+  access: GitHubCacheLease,
+  view: GitHubDocsSourceView,
+  languageRoot: string,
+  missing: { shas: string[]; versions: GitHubFileVersion[] },
+  baseDir: string,
+): Promise<void> | null => {
+  const key = `${gitHubRuntimeCacheKey(config)}|localization-load|${languageRoot}`;
+  const previous = docsSourceCache.get(key) as LanguageLoad | undefined;
+  if (previous?.promise) {
+    return previous.promise;
+  }
+  if ((missing.shas.length === 0 && missing.versions.length === 0) || (previous?.files.deref() === view.index.files && Date.now() < previous.retryAtMs)) {
+    return null;
+  }
+
+  const load: LanguageLoad = { files: new WeakRef(view.index.files), promise: null, retryAtMs: 0 };
+  const promise = (async () => {
+    await mapWithConcurrency(missing.shas, LANGUAGE_LOAD_CONCURRENCY, (sha) => loadGitHubBlobs(config, [sha], baseDir));
+    assertGitHubCacheAccess(access);
+    await resolveGitHubCommitMetadata(config, access, missing.versions, baseDir);
+  })()
+    .catch((error: unknown) => {
+      if (!isStaleSourceError(error)) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[docs] Failed to load the translations in ${languageRoot}; serving source pages for them meanwhile: ${message}`);
+      }
+    })
+    .finally(() => {
+      load.retryAtMs = Date.now() + LANGUAGE_LOAD_RETRY_MS;
+      load.promise = null;
+    });
+  load.promise = promise;
+  docsSourceCache.set(key, load);
+  return promise;
 };
 
-const isNotFoundError = (error: unknown): boolean => gitHubErrorStatus(error) === 404;
+/** Resolves to whether the promise settled within `ms`. */
+const settlesWithin = (promise: Promise<void>, ms: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(false), ms);
+    timer.unref?.();
+    void promise.finally(() => {
+      clearTimeout(timer);
+      resolve(true);
+    });
+  });
 
+/**
+ * Loads one translated page for a source page of the published view. Never makes an index
+ * request: a translation the index does not list is missing. A stored blob costs no request;
+ * otherwise this downloads that one blob, at interactive priority. Commit metadata comes from
+ * the store, or one batched lookup for both files.
+ */
 export const loadGitHubLocalizedDoc = async ({
   config,
   language,
@@ -195,129 +241,127 @@ export const loadGitHubLocalizedDoc = async ({
   sourcePage: GitHubDocPage;
 }): Promise<GitHubLocalizedDocResult> => {
   const access = beginGitHubCacheAccess(config);
-  const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, sourcePage);
-  const localizedRepoPath = localizedRepoPathForSourcePath(localizationPath, language.code, resolvedSourcePage.path);
+  const view = await loadGitHubDocsSourceView(config);
+  const localizedRepoPath = joinRepoPath(localizationLanguageRoot(localizationPath, language.code), sourcePage.path);
+  const file = view.index.files.get(localizedRepoPath);
+  const sourcePath = sourceRepoPath(config, sourcePage);
+  const versions: GitHubFileVersion[] = [...(file ? [{ path: localizedRepoPath, sha: file.sha }] : []), ...(sourcePage.updatedAt ? [] : [{ path: sourcePath, sha: sourcePage.sha }])];
 
-  try {
-    const file = await fetchGitHubFile(config, localizedRepoPath);
-    const commitMeta = (await resolveGitHubCommitMetadata(config, access, [{ path: localizedRepoPath, sha: file.sha }])).get(localizedRepoPath) ?? {};
-    assertGitHubCacheAccess(access);
-    const page = createLocalizedDocPage({
-      commitMeta,
-      file,
-      languageCode: language.code,
-      localizedRepoPath,
-      sourcePage: resolvedSourcePage,
-    });
-    const outdated = isTranslationOutdated(resolvedSourcePage, page);
+  const [records, metadata] = await Promise.all([
+    file ? loadGitHubBlobs(config, [file.sha], getGitHubDocsCacheDir(), { priority: "interactive" }) : null,
+    versions.length > 0 ? resolveGitHubCommitMetadata(config, access, versions) : null,
+  ]);
+  assertGitHubCacheAccess(access);
 
-    return {
-      sourcePage: resolvedSourcePage,
-      page: {
-        ...page,
-        translationStale: outdated,
-        localizationStatus: outdated ? "outdated" : "current",
-      },
-      status: outdated ? "outdated" : "current",
-      localizedRepoPath,
-    };
-  } catch (error: unknown) {
-    if (!isNotFoundError(error)) {
-      throw error;
-    }
-
-    return {
-      sourcePage: resolvedSourcePage,
-      page: null,
-      status: "missing",
-      localizedRepoPath,
-    };
+  const sourceMetadata = metadata?.get(sourcePath);
+  const resolvedSourcePage = sourceMetadata?.updatedAt ? { ...sourcePage, updatedAt: sourceMetadata.updatedAt, updatedBy: sourceMetadata.updatedBy } : sourcePage;
+  const record = file ? records?.get(file.sha) : undefined;
+  if (!record) {
+    return { sourcePage: resolvedSourcePage, page: null, status: "missing", localizedRepoPath };
   }
+
+  const page = createLocalizedDocPage({
+    languageCode: language.code,
+    localizedRepoPath,
+    metadata: metadata?.get(localizedRepoPath) ?? {},
+    record,
+    sourcePage: resolvedSourcePage,
+  });
+  const outdated = isLocalizationOutdated(resolvedSourcePage.updatedAt, page.updatedAt);
+
+  return {
+    sourcePage: resolvedSourcePage,
+    page: { ...page, translationStale: outdated, localizationStatus: outdated ? "outdated" : "current" },
+    status: outdated ? "outdated" : "current",
+    localizedRepoPath,
+  };
 };
 
-export const loadGitHubLocalizationSnapshot = async ({
+/**
+ * Translated titles of a language's current translations, by source page slug, for the sidebar.
+ * Built from blob summaries, never from page bodies. Titles the store cannot provide yet start a
+ * background language load and are reported as pending; `waitForPending` waits a bounded time
+ * for that load (title refreshes), the first answer never waits.
+ */
+export const loadGitHubLocalizedTitles = async ({
   config,
-  language,
+  languageCode,
   localizationPath,
-  sourcePages,
+  waitForPending,
 }: {
   config: GitHubRuntimeConfig;
-  language: Pick<AutoTranslateLanguage, "code">;
+  languageCode: string;
   localizationPath: string;
-  sourcePages: GitHubDocPage[];
-}): Promise<GitHubLocalizationSnapshot> => {
+  waitForPending?: boolean;
+}): Promise<{ pending: boolean; titles: Map<string, string> }> => {
   const access = beginGitHubCacheAccess(config);
-  const cacheKey = localizationSnapshotCacheKey(config, localizationPath, language.code);
-  const loadKey = `${cacheKey}|generation-${access.generation}`;
-  const previousSnapshot = docsSnapshotCache.peek(cacheKey) as GitHubLocalizationSnapshot | undefined;
-  const cached = docsSnapshotCache.get(cacheKey);
-  if (cached) {
-    return cached as GitHubLocalizationSnapshot;
+  const baseDir = getGitHubDocsCacheDir();
+  const view = await loadGitHubDocsSourceView(config);
+  const languageRoot = localizationLanguageRoot(localizationPath, languageCode);
+  const files = listLocalizedFiles(view, languageRoot);
+  const read = () => Promise.all([loadStoredGitHubBlobSummaries(files.map((file) => file.sha), baseDir), readKnownLocalizationMetadata(config, files, baseDir)]);
+
+  let [summaries, metadata] = await read();
+  let load = ensureLanguageLoad(config, access, view, languageRoot, { shas: files.filter((file) => !summaries.has(file.sha)).map((file) => file.sha), versions: metadata.missing }, baseDir);
+  if (load && waitForPending && (await settlesWithin(load, TITLE_REFRESH_WAIT_MS))) {
+    [summaries, metadata] = await read();
+    load = null;
   }
+  assertGitHubCacheAccess(access);
 
-  const pending = localizationSnapshotLoads.get(loadKey);
-  if (pending) {
-    const snapshot = await pending;
-    assertGitHubCacheAccess(access);
-    return snapshot;
+  const titles = new Map<string, string>();
+  for (const file of files) {
+    const title = summaries.get(file.sha)?.title.trim();
+    if (title && isCurrentLocalization(config, file, metadata.known)) {
+      titles.set(file.sourcePage.slug, title);
+    }
   }
-
-  const loadPromise = (async () => {
-    const sourcePageByPath = new Map(sourcePages.map((page) => [page.path, page]));
-    const entries = (await listMarkdownTreeEntriesFromGitHub(config, languageRootPath(localizationPath, language.code))).filter((item) =>
-      sourcePageByPath.has(item.path),
-    );
-    const commitMetadata = await resolveGitHubCommitMetadata(config, access, entries.map((item) => ({ path: item.fullPath, sha: item.sha })));
-    const pages = await mapWithConcurrency(entries, FULL_DOCS_LOAD_CONCURRENCY, async (item): Promise<GitHubDocPage | null> => {
-      const sourcePage = sourcePageByPath.get(item.path);
-      if (!sourcePage) {
-        return null;
-      }
-
-      const file = await fetchGitHubFile(config, item.fullPath);
-      return createLocalizedDocPage({
-        commitMeta: file.sha === item.sha ? commitMetadata.get(item.fullPath) ?? {} : {},
-        file,
-        languageCode: language.code,
-        localizedRepoPath: item.fullPath,
-        sourcePage,
-      });
-    });
-    const filteredPages = pages.filter((page): page is GitHubDocPage => Boolean(page));
-    const fetchedAtMs = Date.now();
-    const snapshot = {
-      fetchedAt: new Date(fetchedAtMs).toISOString(),
-      expiresAt: new Date(fetchedAtMs + docsSnapshotCache.getTtlMs()).toISOString(),
-      tree: sortTreeItems(filteredPages.map((page) => treeItemFromPage(page))),
-      pages: filteredPages,
-    };
-
-    if (previousSnapshot) {
-      const nextPagesBySlug = new Map(snapshot.pages.map((page) => [page.slug, page]));
-      const changedSlugs = previousSnapshot.pages.filter((page) => nextPagesBySlug.get(page.slug)?.content !== page.content).map((page) => page.slug);
-      if (changedSlugs.length > 0) {
-        await pruneRenderedMarkdownCache({
-          config,
-          reason: "localization-snapshot-change",
-          targets: changedSlugs.map((slug) => ({ languageCode: language.code, slug })),
-        });
-      }
-      docsSearchCorpusCache.deleteWhere((key) => key.startsWith(`${gitHubRuntimeCacheKey(config)}|search-corpus|`));
-    }
-
-    assertGitHubCacheAccess(access);
-    docsSnapshotCache.set(cacheKey, snapshot);
-    return snapshot;
-  })().finally(() => {
-    if (localizationSnapshotLoads.get(loadKey) === loadPromise) {
-      localizationSnapshotLoads.delete(loadKey);
-    }
-  });
-
-  localizationSnapshotLoads.set(loadKey, loadPromise);
-  return loadPromise;
+  return { pending: Boolean(load), titles };
 };
 
+/**
+ * Current translated pages of a language that the store holds, for search. `complete` is false
+ * while blobs are still missing (a background language load then fetches them), so callers can
+ * avoid caching a partial result. The pages reference stored blobs and are meant to be dropped
+ * after use.
+ */
+export const loadGitHubLocalizedPages = async ({
+  config,
+  languageCode,
+  localizationPath,
+}: {
+  config: GitHubRuntimeConfig;
+  languageCode: string;
+  localizationPath: string;
+}): Promise<{ complete: boolean; pages: GitHubDocPage[] }> => {
+  const access = beginGitHubCacheAccess(config);
+  const baseDir = getGitHubDocsCacheDir();
+  const view = await loadGitHubDocsSourceView(config);
+  const languageRoot = localizationLanguageRoot(localizationPath, languageCode);
+  const files = listLocalizedFiles(view, languageRoot);
+  const [records, metadata] = await Promise.all([
+    loadGitHubBlobs(config, files.map((file) => file.sha), baseDir, { storedOnly: true }),
+    readKnownLocalizationMetadata(config, files, baseDir),
+  ]);
+  const missingShas = files.filter((file) => !records.has(file.sha)).map((file) => file.sha);
+  const load = ensureLanguageLoad(config, access, view, languageRoot, { shas: missingShas, versions: metadata.missing }, baseDir);
+  assertGitHubCacheAccess(access);
+
+  const pages = files.flatMap((file) => {
+    const record = records.get(file.sha);
+    if (!record || !isCurrentLocalization(config, file, metadata.known)) {
+      return [];
+    }
+    return [createLocalizedDocPage({ languageCode, localizedRepoPath: file.repoPath, metadata: metadata.known.get(file.repoPath) ?? {}, record, sourcePage: file.sourcePage })];
+  });
+  return { complete: !load && missingShas.length === 0, pages };
+};
+
+/**
+ * "Last updated" data of a language's translations, by source page path, for the translation
+ * job's status. Needs only the index and the commit metadata store; versions without stored
+ * metadata are looked up in batched queries.
+ */
 export const loadGitHubLocalizationStatusIndex = async ({
   config,
   language,
@@ -330,307 +374,51 @@ export const loadGitHubLocalizationStatusIndex = async ({
   sourcePages: GitHubDocPage[];
 }): Promise<Map<string, GitHubLocalizationPageStatus>> => {
   const access = beginGitHubCacheAccess(config);
-  const sourcePaths = new Set(sourcePages.map((page) => page.path));
-  const entries = (await listMarkdownTreeEntriesFromGitHub(config, languageRootPath(localizationPath, language.code))).filter((item) => sourcePaths.has(item.path));
-  const commitMetadata = await resolveGitHubCommitMetadata(config, access, entries.map((item) => ({ path: item.fullPath, sha: item.sha })));
+  const view = await loadGitHubDocsSourceView(config);
+  const files = listLocalizedFiles(view, localizationLanguageRoot(localizationPath, language.code), sourcePages);
+  const metadata = await resolveGitHubCommitMetadata(config, access, files.map((file) => ({ path: file.repoPath, sha: file.sha })));
   assertGitHubCacheAccess(access);
 
   return new Map(
-    entries.map((item) => {
-      const metadata = commitMetadata.get(item.fullPath);
-      return [item.path, { path: item.path, slug: item.slug, updatedAt: metadata?.updatedAt, updatedBy: metadata?.updatedBy }];
+    files.map((file) => {
+      const fileMetadata = metadata.get(file.repoPath);
+      return [file.sourcePage.path, { path: file.sourcePage.path, slug: file.sourcePage.slug, updatedAt: fileMetadata?.updatedAt, updatedBy: fileMetadata?.updatedBy }];
     }),
   );
 };
 
-export const saveGitHubLocalizedDoc = async ({
+/**
+ * Current translations of the given languages, by language code and then source page path, with
+ * the summaries the store holds. Outdated translations are left out using stored commit
+ * metadata only. Never contacts GitHub and never reads page bodies into memory.
+ */
+export const listCurrentGitHubLocalizations = async ({
   config,
-  input,
-  language,
+  languageCodes,
   localizationPath,
-  sourcePage,
+  view,
 }: {
   config: GitHubRuntimeConfig;
-  input: Omit<SaveGitHubDocInput, "path" | "slug">;
-  language: Pick<AutoTranslateLanguage, "code">;
+  languageCodes: string[];
   localizationPath: string;
-  sourcePage: GitHubDocPage;
-}): Promise<SaveGitHubDocResult> => {
-  const access = beginGitHubCacheAccess(config);
-  const validation = validateGitHubRuntimeConfig(config);
+  view: GitHubDocsSourceView;
+}): Promise<Map<string, Map<string, GitHubCurrentLocalization>>> => {
+  const baseDir = getGitHubDocsCacheDir();
+  const filesByLanguage = languageCodes.map((languageCode) => [languageCode, listLocalizedFiles(view, localizationLanguageRoot(localizationPath, languageCode))] as const);
+  const allFiles = filesByLanguage.flatMap(([, files]) => files);
+  const [summaries, metadata] = await Promise.all([
+    loadStoredGitHubBlobSummaries(allFiles.map((file) => file.sha), baseDir),
+    readKnownLocalizationMetadata(config, allFiles, baseDir),
+  ]);
 
-  if (!validation.valid) {
-    throw badRequest(validation.errors.join(" "));
-  }
-
-  const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, sourcePage);
-  const fullPath = localizedRepoPathForSourcePath(localizationPath, language.code, resolvedSourcePage.path);
-
-  let existingSha: string | undefined;
-  let existingMarkdown = "";
-
-  try {
-    const existing = await fetchGitHubFile(config, fullPath);
-    existingSha = existing.sha;
-    existingMarkdown = existing.markdown;
-  } catch (error: unknown) {
-    if (!isNotFoundError(error)) {
-      throw error;
-    }
-  }
-
-  let baseTitle = resolvedSourcePage.title;
-  let baseDescription = resolvedSourcePage.description;
-  let baseContent = resolvedSourcePage.content;
-  let baseIncludeInPlaintextExport = resolvedSourcePage.includeInPlaintextExport;
-
-  if (input.markdown !== undefined) {
-    const parsedIncoming = parseMarkdownDocument(input.markdown);
-    baseTitle = parsedIncoming.title;
-    baseDescription = parsedIncoming.description;
-    baseContent = parsedIncoming.content;
-    baseIncludeInPlaintextExport = parsedIncoming.includeInPlaintextExport;
-  } else if (existingMarkdown) {
-    const parsedExisting = parseMarkdownDocument(existingMarkdown);
-    baseTitle = parsedExisting.title;
-    baseDescription = parsedExisting.description;
-    baseContent = parsedExisting.content;
-    baseIncludeInPlaintextExport = parsedExisting.includeInPlaintextExport;
-  }
-
-  const markdown = serializeMarkdownDocument({
-    title: input.title ?? baseTitle,
-    description: input.description ?? baseDescription,
-    content: input.content ?? baseContent,
-    includeInPlaintextExport: input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
-  });
-
-  const parsedOutput = parseMarkdownDocument(markdown);
-  if (!parsedOutput.content.trim()) {
-    throw badRequest("Localized document content cannot be empty.");
-  }
-
-  const commitMessage = input.commitMessage?.trim() || `docs: update ${language.code} localization for ${resolvedSourcePage.path}`;
-
-  const writeResult = await getGitHubClient(config).repos.createOrUpdateFileContents({
-    owner: config.owner,
-    repo: config.repo,
-    path: fullPath,
-    message: commitMessage,
-    content: Buffer.from(markdown, "utf8").toString("base64"),
-    branch: config.branch,
-    sha: existingSha,
-  });
-  assertGitHubCacheAccess(access);
-
-  const commitSha = writeResult.data.commit?.sha;
-  if (!commitSha) {
-    throw new Error("GitHub response did not include a commit SHA.");
-  }
-
-  const commitMeta = extractCommitMetadata(writeResult.data.commit);
-  const page = createLocalizedDocPage({
-    commitMeta: {
-      updatedAt: commitMeta.updatedAt ?? new Date().toISOString(),
-      updatedBy: commitMeta.updatedBy,
-    },
-    file: {
-      sha: writeResult.data.content?.sha ?? existingSha ?? commitSha,
-      markdown,
-    },
-    languageCode: language.code,
-    localizedRepoPath: fullPath,
-    sourcePage: resolvedSourcePage,
-  });
-
-  const mutationAccess = await prepareGitHubCacheMutation(config);
-  clearLocalizationCaches(config, localizationPath, language.code);
-  await pruneRenderedMarkdownCache({
-    config,
-    reason: "localized-page-save",
-    targets: [{ languageCode: language.code, slug: page.slug }],
-  });
-  assertGitHubCacheAccess(mutationAccess);
-
-  return {
-    path: page.path,
-    slug: page.slug,
-    commitSha,
-    page: {
-      ...page,
-      translationStale: false,
-      localizationStatus: "current",
-    },
-  };
-};
-
-export type SaveGitHubLocalizedDocBatchItem = {
-  input: Omit<SaveGitHubDocInput, "path" | "slug">;
-  language: Pick<AutoTranslateLanguage, "code">;
-  localizationPath: string;
-  sourcePage: GitHubLocalizedDocSourcePage;
-};
-
-export type SaveGitHubLocalizedDocsBatchResult = {
-  commitSha: string;
-  results: SaveGitHubDocResult[];
-};
-
-export const saveGitHubLocalizedDocsBatch = async ({
-  commitMessage,
-  config,
-  includePages = true,
-  items,
-}: {
-  commitMessage?: string;
-  config: GitHubRuntimeConfig;
-  includePages?: boolean;
-  items: SaveGitHubLocalizedDocBatchItem[];
-}): Promise<SaveGitHubLocalizedDocsBatchResult> => {
-  const access = beginGitHubCacheAccess(config);
-  const validation = validateGitHubRuntimeConfig(config);
-
-  if (!validation.valid) {
-    throw badRequest(validation.errors.join(" "));
-  }
-
-  if (items.length === 0) {
-    throw badRequest("At least one localized document is required.");
-  }
-
-  const client = getGitHubClient(config);
-  const refName = `heads/${config.branch}`;
-  const ref = await client.git.getRef({
-    owner: config.owner,
-    repo: config.repo,
-    ref: refName,
-  });
-  const baseCommitSha = ref.data.object.sha;
-  const baseCommit = await client.git.getCommit({
-    owner: config.owner,
-    repo: config.repo,
-    commit_sha: baseCommitSha,
-  });
-  const baseTreeSha = baseCommit.data.tree.sha;
-  const preparedItems = await mapWithConcurrency(items, FULL_DOCS_LOAD_CONCURRENCY, async (item) => {
-    const resolvedSourcePage = await hydrateGitHubDocPageMetadata(config, item.sourcePage);
-    const fullPath = localizedRepoPathForSourcePath(item.localizationPath, item.language.code, resolvedSourcePage.path);
-    let baseTitle = resolvedSourcePage.title ?? "";
-    let baseDescription = resolvedSourcePage.description ?? "";
-    let baseContent = resolvedSourcePage.content ?? "";
-    let baseIncludeInPlaintextExport = resolvedSourcePage.includeInPlaintextExport;
-
-    if (item.input.markdown !== undefined) {
-      const parsedIncoming = parseMarkdownDocument(item.input.markdown);
-      baseTitle = parsedIncoming.title;
-      baseDescription = parsedIncoming.description;
-      baseContent = parsedIncoming.content;
-      baseIncludeInPlaintextExport = parsedIncoming.includeInPlaintextExport;
-    }
-
-    const markdown = serializeMarkdownDocument({
-      title: item.input.title ?? baseTitle,
-      description: item.input.description ?? baseDescription,
-      content: item.input.content ?? baseContent,
-      includeInPlaintextExport: item.input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
-    });
-    const parsedOutput = parseMarkdownDocument(markdown);
-    if (!parsedOutput.content.trim()) {
-      throw badRequest("Localized document content cannot be empty.");
-    }
-
-    const blob = await client.git.createBlob({
-      owner: config.owner,
-      repo: config.repo,
-      content: markdown,
-      encoding: "utf-8",
-    });
-
-    return {
-      fullPath,
-      item,
-      markdown: includePages ? markdown : undefined,
-      resolvedSourcePage,
-      blobSha: blob.data.sha,
-    };
-  });
-  const tree = await client.git.createTree({
-    owner: config.owner,
-    repo: config.repo,
-    base_tree: baseTreeSha,
-    tree: preparedItems.map((item) => ({
-      path: item.fullPath,
-      mode: "100644" as const,
-      type: "blob" as const,
-      sha: item.blobSha,
-    })),
-  });
-  const commit = await client.git.createCommit({
-    owner: config.owner,
-    repo: config.repo,
-    message: commitMessage?.trim() || `docs: update ${preparedItems.length} localization${preparedItems.length === 1 ? "" : "s"}`,
-    tree: tree.data.sha,
-    parents: [baseCommitSha],
-  });
-  await client.git.updateRef({
-    owner: config.owner,
-    repo: config.repo,
-    ref: refName,
-    sha: commit.data.sha,
-  });
-  assertGitHubCacheAccess(access);
-
-  const commitMeta = extractCommitMetadata(commit.data);
-  const updatedAt = commitMeta.updatedAt ?? new Date().toISOString();
-  const mutationAccess = await prepareGitHubCacheMutation(config);
-  for (const item of preparedItems) {
-    clearLocalizationCaches(config, item.item.localizationPath, item.item.language.code);
-  }
-  await pruneRenderedMarkdownCache({
-    config,
-    reason: "localized-page-batch-save",
-    targets: preparedItems.map((item) => ({
-      languageCode: item.item.language.code,
-      slug: item.resolvedSourcePage.slug,
-    })),
-  });
-  assertGitHubCacheAccess(mutationAccess);
-
-  const results = includePages
-    ? preparedItems.map((item): SaveGitHubDocResult => {
-        if (item.markdown === undefined) {
-          throw new Error("Localized document page output was not retained.");
-        }
-
-        const page = createLocalizedDocPage({
-          commitMeta: {
-            updatedAt,
-            updatedBy: commitMeta.updatedBy,
-          },
-          file: {
-            sha: item.blobSha,
-            markdown: item.markdown,
-          },
-          languageCode: item.item.language.code,
-          localizedRepoPath: item.fullPath,
-          sourcePage: item.resolvedSourcePage,
-        });
-
-        return {
-          path: page.path,
-          slug: page.slug,
-          commitSha: commit.data.sha,
-          page: {
-            ...page,
-            translationStale: false,
-            localizationStatus: "current",
-          },
-        };
-      })
-    : [];
-
-  return {
-    commitSha: commit.data.sha,
-    results,
-  };
+  return new Map(
+    filesByLanguage.map(([languageCode, files]) => [
+      languageCode,
+      new Map(
+        files
+          .filter((file) => isCurrentLocalization(config, file, metadata.known))
+          .map((file) => [file.sourcePage.path, { ...file, summary: summaries.get(file.sha) }] as const),
+      ),
+    ]),
+  );
 };

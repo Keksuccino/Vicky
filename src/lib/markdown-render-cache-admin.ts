@@ -9,9 +9,11 @@ import {
   normalizeAutoTranslateLanguages,
 } from "@/lib/auto-translate";
 import { renderedMarkdownCache } from "@/lib/cache";
-import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
-import { loadGitHubLocalizationSnapshot } from "@/lib/github-localization";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess, trackGitHubCacheWrite } from "@/lib/github-cache-invalidation";
+import { hashMarkdownContent, loadGitHubBlobs, loadStoredGitHubBlobSummaries } from "@/lib/github-content-store";
+import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
+import { loadGitHubDocsSourceView } from "@/lib/github-docs-source";
+import { listCurrentGitHubLocalizations, mapWithConcurrency } from "@/lib/github-localization";
 import { badRequest } from "@/lib/http";
 import {
   deletePersistentRenderedMarkdownWhere,
@@ -29,7 +31,6 @@ import {
   markdownRenderCachePrefix,
   renderMarkdownToHtml,
 } from "@/lib/markdown-server-renderer";
-import { isLocalizedPageOutdated } from "@/lib/page-localization-read";
 import type { AutoTranslateLanguage, DocsStore, GitHubDocPage, GitHubRuntimeConfig } from "@/lib/types";
 
 const MARKDOWN_CACHE_RENDER_CONCURRENCY = 4;
@@ -98,10 +99,15 @@ export type MarkdownRenderCacheClearResult = {
   slug?: string;
 };
 
+/** One rendered-HTML variant: a source page in the source language or one of its current translations. */
 type MarkdownRenderCacheVariant = {
-  content: string;
+  /** Unset while a translation's blob is not in the store yet; such a variant cannot have been rendered. */
+  contentHash?: string;
   language: AutoTranslateLanguage;
+  /** The source page; translations are cached under its slug. */
   page: GitHubDocPage;
+  /** Blob of the variant's content. */
+  sha: string;
   sourceLanguage: boolean;
 };
 
@@ -165,42 +171,14 @@ const markdownRenderCacheKeyMatchesSlug = (
   return parts.length >= 4 && parts[1] === slug;
 };
 
-const markdownRenderCacheVariantKey = (
-  config: GitHubRuntimeConfig,
-  variant: MarkdownRenderCacheVariant,
-): { cacheKey: string; contentHash: string } =>
-  markdownRenderCacheKey({
-    config,
-    content: variant.content,
-    languageCode: variant.language.code,
-    slug: variant.page.slug,
-  });
+const variantCacheKey = (config: GitHubRuntimeConfig, variant: MarkdownRenderCacheVariant, contentHash: string): string =>
+  markdownRenderCacheKey({ config, contentHash, languageCode: variant.language.code, slug: variant.page.slug });
 
-const mapWithConcurrency = async <T, R>(
-  values: T[],
-  concurrency: number,
-  iteratee: (value: T, index: number) => Promise<R>,
-): Promise<R[]> => {
-  if (values.length === 0) {
-    return [];
-  }
-
-  const workerCount = Math.max(1, Math.min(concurrency, values.length));
-  const output = new Array<R>(values.length);
-  let index = 0;
-
-  const workers = Array.from({ length: workerCount }, async () => {
-    while (index < values.length) {
-      const currentIndex = index;
-      index += 1;
-      output[currentIndex] = await iteratee(values[currentIndex], currentIndex);
-    }
-  });
-
-  await Promise.all(workers);
-  return output;
-};
-
+/**
+ * Lists the variants of every source page from the docs view, the blob summaries, and the
+ * stored commit metadata. Reads no page body and makes no GitHub request beyond what loading
+ * the docs view itself needs (none while it is current).
+ */
 const buildMarkdownRenderCacheVariants = async ({
   config,
   store,
@@ -209,50 +187,42 @@ const buildMarkdownRenderCacheVariants = async ({
   store: DocsStore;
 }): Promise<{ pages: GitHubDocPage[]; variants: MarkdownRenderCacheVariant[] }> => {
   const access = beginGitHubCacheAccess(config);
-  const { pages } = await listMarkdownDocsTreePagesWithTitles(config);
+  const view = await loadGitHubDocsSourceView(config);
   const languages = uniqueLanguagesByCode(normalizeAutoTranslateLanguages(store.settings.autoTranslate.languages));
   const defaultLanguage = languages.find((language) => isDefaultAutoTranslateLanguageCode(language.code)) ?? sourceLanguage();
   const translatedLanguages = languages.filter((language) => !isDefaultAutoTranslateLanguageCode(language.code));
-  const variants: MarkdownRenderCacheVariant[] = [];
-  const localizedPagesByLanguage = new Map<string, Map<string, GitHubDocPage>>();
-
-  for (const language of translatedLanguages) {
-    const snapshot = await loadGitHubLocalizationSnapshot({
+  const [sourceSummaries, localizations] = await Promise.all([
+    loadStoredGitHubBlobSummaries(view.pages.map((page) => page.sha), getGitHubDocsCacheDir()),
+    listCurrentGitHubLocalizations({
       config,
-      language,
+      languageCodes: translatedLanguages.map((language) => language.code),
       localizationPath: store.settings.autoTranslate.localizationPath,
-      sourcePages: pages,
-    });
-    localizedPagesByLanguage.set(language.code.toLowerCase(), new Map(snapshot.pages.map((page) => [page.path, page])));
-  }
+      view,
+    }),
+  ]);
+  const variants: MarkdownRenderCacheVariant[] = [];
 
-  for (const page of pages) {
+  for (const page of view.pages) {
     variants.push({
-      content: page.content,
+      contentHash: sourceSummaries.get(page.sha)?.contentHash ?? hashMarkdownContent(page.content),
       language: defaultLanguage,
       page,
+      sha: page.sha,
       sourceLanguage: true,
     });
 
     for (const language of translatedLanguages) {
-      const localizedPage = localizedPagesByLanguage.get(language.code.toLowerCase())?.get(page.path) ?? null;
-      if (!localizedPage || isLocalizedPageOutdated(page, localizedPage)) {
-        continue;
+      const localization = localizations.get(language.code)?.get(page.path);
+      if (localization) {
+        variants.push({ contentHash: localization.summary?.contentHash, language, page, sha: localization.sha, sourceLanguage: false });
       }
-
-      variants.push({
-        content: localizedPage.content,
-        language,
-        page: localizedPage,
-        sourceLanguage: false,
-      });
     }
   }
 
   assertGitHubCacheAccess(access);
 
   return {
-    pages,
+    pages: view.pages,
     variants,
   };
 };
@@ -281,10 +251,12 @@ export const createMarkdownRenderCacheStatus = async ({
   let totalHtmlBytes = 0;
 
   for (const variant of variantData.variants) {
-    const { cacheKey, contentHash } = markdownRenderCacheVariantKey(config, variant);
-    const persisted = cacheEntriesByKey.get(cacheKey) ?? null;
+    const cacheKey = variant.contentHash ? variantCacheKey(config, variant, variant.contentHash) : null;
+    const persisted = cacheKey ? cacheEntriesByKey.get(cacheKey) ?? null : null;
     const cached = Boolean(persisted);
-    expectedKeys.add(cacheKey);
+    if (cacheKey) {
+      expectedKeys.add(cacheKey);
+    }
 
     if (cached) {
       cachedVariants += 1;
@@ -302,7 +274,7 @@ export const createMarkdownRenderCacheStatus = async ({
     const statuses = variantsBySlug.get(variant.page.slug) ?? [];
     statuses.push({
       cached,
-      contentHash,
+      contentHash: variant.contentHash ?? "",
       headingCount: persisted?.headingCount ?? 0,
       htmlBytes: persisted?.htmlBytes ?? 0,
       languageCode: variant.language.code,
@@ -365,36 +337,50 @@ export const warmMarkdownRenderCache = async ({
   store: DocsStore;
 }): Promise<MarkdownRenderCacheWarmResult> => {
   const access = beginGitHubCacheAccess(config);
+  const baseDir = getGitHubDocsCacheDir();
   const { pages, variants } = await buildMarkdownRenderCacheVariants({ config, store });
-  const missingVariants: Array<MarkdownRenderCacheVariant & { cacheKey: string }> = [];
-
-  for (const variant of variants) {
-    const { cacheKey } = markdownRenderCacheVariantKey(config, variant);
+  const isCachedOnDisk = async (cacheKey: string): Promise<boolean> => {
     const persisted = await readPersistentRenderedMarkdownMetadata(cacheKey);
     assertGitHubCacheAccess(access);
-    if (!persisted) {
-      missingVariants.push({
-        ...variant,
-        cacheKey,
-      });
+    return Boolean(persisted);
+  };
+  const missingVariants: MarkdownRenderCacheVariant[] = [];
+
+  for (const variant of variants) {
+    if (!variant.contentHash || !(await isCachedOnDisk(variantCacheKey(config, variant, variant.contentHash)))) {
+      missingVariants.push(variant);
     }
   }
 
+  // Bodies are loaded one variant at a time and dropped after rendering; translations the store
+  // lacks are downloaded here, the only place the cache card fetches page content.
   const results = await mapWithConcurrency(
     missingVariants,
     MARKDOWN_CACHE_RENDER_CONCURRENCY,
     async (variant) => {
       try {
-        const fromMemory = renderedMarkdownCache.get(variant.cacheKey);
+        const record = variant.sourceLanguage ? null : (await loadGitHubBlobs(config, [variant.sha], baseDir)).get(variant.sha);
+        const content = variant.sourceLanguage ? variant.page.content : record?.content;
+        const contentHash = variant.contentHash ?? record?.contentHash;
+        if (content === undefined || !contentHash) {
+          throw new Error(`Blob ${variant.sha} is missing from the content store.`);
+        }
+
+        const cacheKey = variantCacheKey(config, variant, contentHash);
+        if (!variant.contentHash && (await isCachedOnDisk(cacheKey))) {
+          return { ok: true as const, rendered: false, variant };
+        }
+
+        const fromMemory = renderedMarkdownCache.get(cacheKey);
         const rendered =
           fromMemory && typeof fromMemory === "object" && fromMemory !== null && "html" in fromMemory && "headings" in fromMemory
             ? (fromMemory as Awaited<ReturnType<typeof renderMarkdownToHtml>>)
-            : await renderMarkdownToHtml(variant.content, variant.language.code);
+            : await renderMarkdownToHtml(content, variant.language.code);
 
         assertGitHubCacheAccess(access);
-        renderedMarkdownCache.set(variant.cacheKey, rendered);
+        renderedMarkdownCache.set(cacheKey, rendered);
 
-        const persisted = await trackGitHubCacheWrite(access, writePersistentRenderedMarkdown(variant.cacheKey, rendered));
+        const persisted = await trackGitHubCacheWrite(access, writePersistentRenderedMarkdown(cacheKey, rendered));
         assertGitHubCacheAccess(access);
         if (!persisted) {
           throw new Error("Failed to write rendered Markdown HTML cache.");
@@ -402,6 +388,7 @@ export const warmMarkdownRenderCache = async ({
 
         return {
           ok: true as const,
+          rendered: true,
           variant,
         };
       } catch (error: unknown) {
@@ -421,14 +408,16 @@ export const warmMarkdownRenderCache = async ({
       languageCode: result.variant.language.code,
       slug: result.variant.page.slug,
     }));
+  const renderedVariants = results.filter((result) => result.ok && result.rendered).length;
+  const skippedVariants = variants.length - failures.length - renderedVariants;
   assertGitHubCacheAccess(access);
 
   return {
-    cachedVariants: variants.length - missingVariants.length,
+    cachedVariants: skippedVariants,
     failedVariants: failures.length,
     failures,
-    renderedVariants: missingVariants.length - failures.length,
-    skippedVariants: variants.length - missingVariants.length,
+    renderedVariants,
+    skippedVariants,
     totalPages: pages.length,
     totalVariants: variants.length,
   };

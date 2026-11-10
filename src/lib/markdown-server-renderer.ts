@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeHighlight from "rehype-highlight";
 import rehypeRaw from "rehype-raw";
@@ -25,6 +23,7 @@ import {
   beginGitHubCacheAccess,
   trackGitHubCacheWrite,
 } from "@/lib/github-cache-invalidation";
+import { hashMarkdownContent } from "@/lib/github-content-store";
 import {
   isSafeMarkdownHref,
   MARKDOWN_RENDER_VERSION,
@@ -72,38 +71,25 @@ const renderQueueState = processSingleton("markdownRender.queueState", (): Markd
   renders: new Map(),
 }));
 
-const hashValue = (value: string): string => createHash("sha256").update(value).digest("hex").slice(0, 32);
-
 const normalizeMarkdownLanguageCode = (value: string | undefined): string =>
   normalizeAutoTranslateLanguageCode(value) || DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE;
 
 export const markdownRenderCachePrefix = (config: GitHubRuntimeConfig): string =>
   `${toRuntimeConfigCacheKey(config)}|markdown-render|`;
 
+/** Cache key of one rendered page variant; `contentHash` is `hashMarkdownContent` of the page body. */
 export const markdownRenderCacheKey = ({
   config,
-  content,
+  contentHash,
   languageCode,
   slug,
 }: {
   config: GitHubRuntimeConfig;
-  content: string;
+  contentHash: string;
   languageCode?: string;
   slug: string;
-}): { cacheKey: string; contentHash: string } => {
-  const contentHash = hashValue(content);
-  const cacheKey = `${markdownRenderCachePrefix(config)}${[
-    MARKDOWN_RENDER_VERSION,
-    slug,
-    normalizeMarkdownLanguageCode(languageCode).toLowerCase(),
-    contentHash,
-  ].join("|")}`;
-
-  return {
-    cacheKey,
-    contentHash,
-  };
-};
+}): string =>
+  `${markdownRenderCachePrefix(config)}${[MARKDOWN_RENDER_VERSION, slug, normalizeMarkdownLanguageCode(languageCode).toLowerCase(), contentHash].join("|")}`;
 
 const isElement = (node: unknown): node is HastNode & { tagName: string } =>
   typeof node === "object" &&
@@ -348,12 +334,8 @@ export const renderMarkdownToHtmlCached = async ({
 }): Promise<RenderedMarkdownDocument> => {
   const access = beginGitHubCacheAccess(config);
   const normalizedContent = content ?? "";
-  const { cacheKey, contentHash } = markdownRenderCacheKey({
-    config,
-    content: normalizedContent,
-    languageCode,
-    slug,
-  });
+  const contentHash = hashMarkdownContent(normalizedContent);
+  const cacheKey = markdownRenderCacheKey({ config, contentHash, languageCode, slug });
 
   const fromMemory = renderedMarkdownCache.get(cacheKey) as PersistedRenderedMarkdown | undefined;
   if (fromMemory) {

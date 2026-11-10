@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   decryptSecret: vi.fn(),
-  listMarkdownDocsTreePagesWithTitles: vi.fn(),
+  listMarkdownDocsTree: vi.fn(),
   loadPublicGitHubDoc: vi.fn(),
-  loadGitHubLocalizationSnapshot: vi.fn(),
   loadGitHubLocalizedDoc: vi.fn(),
+  loadGitHubLocalizedTitles: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
   saveGitHubLocalizedDoc: vi.fn(),
 }));
@@ -15,13 +15,16 @@ vi.mock("@/lib/encryption", () => ({
 }));
 
 vi.mock("@/lib/github", () => ({
-  listMarkdownDocsTreePagesWithTitles: mocks.listMarkdownDocsTreePagesWithTitles,
+  listMarkdownDocsTree: mocks.listMarkdownDocsTree,
   loadPublicGitHubDoc: mocks.loadPublicGitHubDoc,
 }));
 
 vi.mock("@/lib/github-localization", () => ({
-  loadGitHubLocalizationSnapshot: mocks.loadGitHubLocalizationSnapshot,
   loadGitHubLocalizedDoc: mocks.loadGitHubLocalizedDoc,
+  loadGitHubLocalizedTitles: mocks.loadGitHubLocalizedTitles,
+}));
+
+vi.mock("@/lib/github-localization-saves", () => ({
   saveGitHubLocalizedDoc: mocks.saveGitHubLocalizedDoc,
 }));
 
@@ -34,7 +37,7 @@ vi.mock("@/lib/markdown-server-renderer", () => ({
 }));
 
 import { DEFAULT_STORE } from "../defaults";
-import { loadDocsPageForLanguage } from "../docs-server-data";
+import { loadDocsPageForLanguage, loadDocsTreeForLanguage } from "../docs-server-data";
 import type { GitHubDocPage, GitHubRuntimeConfig } from "../types";
 
 const config: GitHubRuntimeConfig = {
@@ -103,5 +106,23 @@ describe("public docs localization delivery", () => {
     expect(mocks.decryptSecret).not.toHaveBeenCalled();
     expect(mocks.requestOpenRouterChatCompletion).not.toHaveBeenCalled();
     expect(mocks.saveGitHubLocalizedDoc).not.toHaveBeenCalled();
+  });
+
+  it("shows translated sidebar titles from the title index and reports titles still loading", async () => {
+    const store = DEFAULT_STORE();
+    mocks.listMarkdownDocsTree.mockResolvedValue([
+      { path: "home.md", slug: "home", name: "Home" },
+      { path: "guide.md", slug: "guide", name: "Guide" },
+    ]);
+    mocks.loadGitHubLocalizedTitles.mockResolvedValue({ pending: true, titles: new Map([["home", "Startseite"]]) });
+
+    const result = await loadDocsTreeForLanguage({ config, requestedLanguageCode: "de", store, waitForPendingTitles: true });
+
+    expect(result.data).toEqual([
+      { path: "home.md", slug: "home", name: "Startseite" },
+      { path: "guide.md", slug: "guide", name: "Guide" },
+    ]);
+    expect(result.titlesPending).toBe(true);
+    expect(mocks.loadGitHubLocalizedTitles).toHaveBeenCalledWith({ config, languageCode: "de", localizationPath: store.settings.autoTranslate.localizationPath, waitForPending: true });
   });
 });
