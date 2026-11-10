@@ -1,58 +1,51 @@
-import { getClientIp, type ClientIpRequest } from "@/lib/client-ip-policy";
-import { processSingleton } from "@/lib/process-singleton.mjs";
+import { getClientIp } from "./client-ip-policy.mjs";
+import { processSingleton } from "./process-singleton.mjs";
 
 /**
  * Per-client and global admission control: a sliding request window and a concurrency cap, each
  * per client and for the whole process. Public docs reads and page-view ingestion each own one
- * limiter with their own limits (see public-docs-admission.ts and visitor-ingestion-rate-limit.ts).
+ * limiter with their own limits (see public-docs-admission.mjs and visitor-ingestion-rate-limit.ts).
+ * Plain JavaScript, so the included server can admit docs page requests before Next renders them.
  *
  * Clients come from the strict client-IP policy. Without a trustworthy address (`unknown`), only
  * the global limits apply, so visitors are never collapsed into one per-client bucket.
  */
 
-export type AdmissionLimits = {
-  clientMaxRequests: number;
-  clientMaxConcurrency: number;
-  globalMaxRequests: number;
-  globalMaxConcurrency: number;
-  rateWindowMs: number;
-};
-
-export type AdmissionPermit = { allowed: true; release: () => void } | { allowed: false; retryAfterSeconds: number };
-
-export type AdmissionLimiter = {
-  acquire: (request: ClientIpRequest | undefined, now?: number) => AdmissionPermit;
-  /** Forgets every client and request; for tests that need a fresh limiter in the same process. */
-  reset: () => void;
-};
-
-/** Start times of the requests that may still be in the window, oldest first from `head`. */
-type RequestTimes = { head: number; times: number[] };
-
-type ClientState = { activeRequests: number; lastSeenAt: number; requests: RequestTimes };
-
-type LimiterState = {
-  /** In order of the last request, least recent first, so eviction finds an idle client at once. */
-  clients: Map<string, ClientState>;
-  globalActiveRequests: number;
-  globalRequests: RequestTimes;
-  lastClientPruneAt: number;
-};
+/**
+ * @typedef {{ clientMaxRequests: number, clientMaxConcurrency: number, globalMaxRequests: number, globalMaxConcurrency: number, rateWindowMs: number }} AdmissionLimits
+ * @typedef {{ allowed: true, release: () => void } | { allowed: false, retryAfterSeconds: number }} AdmissionPermit
+ * @typedef {{ headers: { get: (name: string) => string | null }, ip?: string }} AdmissionRequest
+ * @typedef {{ acquire: (request: AdmissionRequest | undefined, now?: number) => AdmissionPermit, reset: () => void }} AdmissionLimiter
+ * @typedef {{ head: number, times: number[] }} RequestTimes Start times of the requests that may still be in the window, oldest first from `head`.
+ * @typedef {{ activeRequests: number, lastSeenAt: number, requests: RequestTimes }} ClientState
+ */
 
 const MAX_TRACKED_CLIENTS = 10_000;
 
-/** A positive integer from the environment, capped at `maximum`; anything else gives `fallback`. */
-export const parseBoundedPositiveInteger = (value: string | undefined, fallback: number, maximum: number): number => {
+/**
+ * A positive integer from the environment, capped at `maximum`; anything else gives `fallback`.
+ *
+ * @param {string | undefined} value
+ * @param {number} fallback
+ * @param {number} maximum
+ * @returns {number}
+ */
+export function parseBoundedPositiveInteger(value, fallback, maximum) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) && parsed > 0 ? Math.min(parsed, maximum) : fallback;
-};
+}
 
 /**
  * Drops the times that left the window and returns how many remain. Times are appended as the
  * clock advances, so only the oldest few are ever inspected; the dropped prefix is compacted once
  * it is the larger part. (A clock stepped backwards only makes the count conservative for one window.)
+ *
+ * @param {RequestTimes} requests
+ * @param {number} now
+ * @param {number} windowMs
+ * @returns {number}
  */
-const countInWindow = (requests: RequestTimes, now: number, windowMs: number): number => {
+const countInWindow = (requests, now, windowMs) => {
   const { times } = requests;
   while (requests.head < times.length && now - times[requests.head] >= windowMs) {
     requests.head += 1;
@@ -64,21 +57,42 @@ const countInWindow = (requests: RequestTimes, now: number, windowMs: number): n
   return times.length - requests.head;
 };
 
-const retryAfterSeconds = (requests: RequestTimes, now: number, windowMs: number): number => {
+/**
+ * @param {RequestTimes} requests
+ * @param {number} now
+ * @param {number} windowMs
+ * @returns {number}
+ */
+const retryAfterSeconds = (requests, now, windowMs) => {
   const oldest = requests.times[requests.head];
   return oldest === undefined ? 1 : Math.max(1, Math.ceil((oldest + windowMs - now) / 1_000));
 };
 
-const createState = (): LimiterState => ({ clients: new Map(), globalActiveRequests: 0, globalRequests: { head: 0, times: [] }, lastClientPruneAt: Number.NEGATIVE_INFINITY });
+const createState = () => ({
+  /** @type {Map<string, ClientState>} In order of the last request, least recent first, so eviction finds an idle client at once. */
+  clients: new Map(),
+  globalActiveRequests: 0,
+  /** @type {RequestTimes} */
+  globalRequests: { head: 0, times: [] },
+  lastClientPruneAt: Number.NEGATIVE_INFINITY,
+});
 
-/** `name` keys the process-wide state (see process-singleton.mjs), so every module copy shares one limiter. */
-export const createAdmissionLimiter = (name: string, limits: AdmissionLimits): AdmissionLimiter => {
+/**
+ * `name` keys the process-wide state (see process-singleton.mjs), so every module copy, the
+ * included server's included, shares one limiter.
+ *
+ * @param {string} name
+ * @param {AdmissionLimits} limits
+ * @returns {AdmissionLimiter}
+ */
+export function createAdmissionLimiter(name, limits) {
   const state = processSingleton(name, createState);
   const windowMs = limits.rateWindowMs;
   const clientStateTtlMs = windowMs * 2;
   const clientPruneIntervalMs = Math.min(windowMs, 30_000);
 
-  const pruneClients = (now: number): void => {
+  /** @param {number} now */
+  const pruneClients = (now) => {
     if (now - state.lastClientPruneAt < clientPruneIntervalMs) {
       return;
     }
@@ -90,7 +104,7 @@ export const createAdmissionLimiter = (name: string, limits: AdmissionLimits): A
     }
   };
 
-  const evictLeastRecentIdleClient = (): boolean => {
+  const evictLeastRecentIdleClient = () => {
     for (const [clientId, client] of state.clients) {
       if (client.activeRequests === 0) {
         return state.clients.delete(clientId);
@@ -99,7 +113,12 @@ export const createAdmissionLimiter = (name: string, limits: AdmissionLimits): A
     return false;
   };
 
-  const touchClient = (clientId: string, now: number): ClientState | null => {
+  /**
+   * @param {string} clientId
+   * @param {number} now
+   * @returns {ClientState | null}
+   */
+  const touchClient = (clientId, now) => {
     const existing = state.clients.get(clientId);
     if (existing) {
       existing.lastSeenAt = now;
@@ -111,12 +130,18 @@ export const createAdmissionLimiter = (name: string, limits: AdmissionLimits): A
     if (state.clients.size >= MAX_TRACKED_CLIENTS && !evictLeastRecentIdleClient()) {
       return null;
     }
-    const created: ClientState = { activeRequests: 0, lastSeenAt: now, requests: { head: 0, times: [] } };
+    /** @type {ClientState} */
+    const created = { activeRequests: 0, lastSeenAt: now, requests: { head: 0, times: [] } };
     state.clients.set(clientId, created);
     return created;
   };
 
-  const admit = (now: number, client?: ClientState): AdmissionPermit => {
+  /**
+   * @param {number} now
+   * @param {ClientState} [client]
+   * @returns {AdmissionPermit}
+   */
+  const admit = (now, client) => {
     state.globalRequests.times.push(now);
     state.globalActiveRequests += 1;
     if (client) {
@@ -172,4 +197,4 @@ export const createAdmissionLimiter = (name: string, limits: AdmissionLimits): A
       Object.assign(state, createState());
     },
   };
-};
+}

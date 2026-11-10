@@ -79,6 +79,45 @@ describe("public docs request admission", () => {
     expect(acquirePublicDocsAdmissionPermit(requestForTrustedProxyClient("198.51.100.20"), 3_000).allowed).toBe(false);
   });
 
+  it("admits docs page requests in the included server and lets their render run under that permit", async () => {
+    vi.stubEnv("PUBLIC_DOCS_CLIENT_MAX_REQUESTS", "2");
+    vi.stubEnv("PUBLIC_DOCS_GLOBAL_MAX_REQUESTS", "100");
+    vi.stubEnv("VICKY_INTERNAL_REQUEST_CONTEXT_TOKEN", "docs-test-token");
+    vi.resetModules();
+    const { PUBLIC_DOCS_ADMITTED_HEADER, admitPublicDocsPageRequest } = await import("@/lib/public-docs-limiter.mjs");
+    const { resetPublicDocsAdmissionForTests, withPublicDocsAdmission } = await import("@/lib/public-docs-admission");
+    resetPublicDocsAdmissionForTests();
+    const serverRequest = (method: string, extra: Record<string, string> = {}) => ({
+      method,
+      headers: { [INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER]: "docs-test-token", [INTERNAL_CLIENT_IP_HEADER]: "203.0.113.30", [PUBLIC_DOCS_ADMITTED_HEADER]: "1", ...extra } as Record<string, string>,
+    });
+
+    // Client-supplied marks are removed from every request; only docs page reads are admitted here.
+    for (const [method, pathname] of [["GET", "/api/docs/page"], ["POST", "/docs/home"], ["GET", "/documents"]]) {
+      const request = serverRequest(method);
+      expect(admitPublicDocsPageRequest(request, pathname)).toBeNull();
+      expect(request.headers[PUBLIC_DOCS_ADMITTED_HEADER]).toBeUndefined();
+    }
+
+    const admitted = serverRequest("GET");
+    const permit = admitPublicDocsPageRequest(admitted, "/docs/en-US/home");
+    expect(permit?.allowed).toBe(true);
+    expect(admitted.headers[PUBLIC_DOCS_ADMITTED_HEADER]).toBe("1");
+
+    // The render of the admitted request takes no second permit...
+    const work = vi.fn(async () => "rendered");
+    await expect(withPublicDocsAdmission({ headers: new Headers(admitted.headers) }, work)).resolves.toBe("rendered");
+    // ...and a mark without the server's token counts for nothing.
+    await withPublicDocsAdmission({ headers: new Headers({ ...admitted.headers, [INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER]: "forged" }), ip: "203.0.113.30" }, work);
+
+    const throttled = serverRequest("HEAD");
+    expect(admitPublicDocsPageRequest(throttled, "/docs")).toMatchObject({ allowed: false });
+    expect(throttled.headers[PUBLIC_DOCS_ADMITTED_HEADER]).toBeUndefined();
+    if (permit?.allowed) {
+      permit.release();
+    }
+  });
+
   it("applies only the global admission bucket when no trustworthy client IP exists", async () => {
     vi.stubEnv("PUBLIC_DOCS_CLIENT_MAX_REQUESTS", "1");
     vi.stubEnv("PUBLIC_DOCS_GLOBAL_MAX_REQUESTS", "3");

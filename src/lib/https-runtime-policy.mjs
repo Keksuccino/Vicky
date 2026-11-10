@@ -125,6 +125,30 @@ export function routeRuntimeHttpRequest(input) {
 }
 
 /**
+ * Writes a static plaintext answer that the included server sends without Next (maintenance,
+ * throttling): never cached, never rendered as a document, and with a `Retry-After`.
+ *
+ * @param {{ end: Function, writeHead: Function }} response
+ * @param {number} statusCode
+ * @param {string} body
+ * @param {number} retryAfterSeconds
+ * @returns {void}
+ */
+export function writeStaticRetryResponse(response, statusCode, body, retryAfterSeconds) {
+  response.writeHead(statusCode, {
+    "Cache-Control": "no-store",
+    "Content-Length": Buffer.byteLength(body),
+    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
+    "Content-Type": "text/plain; charset=utf-8",
+    "Referrer-Policy": "no-referrer",
+    "Retry-After": String(retryAfterSeconds),
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+  });
+  response.end(body);
+}
+
+/**
  * Writes the deliberately static plaintext response used while secure custom-domain
  * service is unavailable. It contains no application data or provider diagnostics.
  *
@@ -132,17 +156,5 @@ export function routeRuntimeHttpRequest(input) {
  * @returns {void}
  */
 export function writeHttpsMaintenanceResponse(response) {
-  const body = "Secure service is temporarily unavailable while HTTPS is being restored. Please try again later.\n";
-  const headers = {
-    "Cache-Control": "no-store",
-    "Content-Length": Buffer.byteLength(body),
-    "Content-Security-Policy": "default-src 'none'; frame-ancestors 'none'",
-    "Content-Type": "text/plain; charset=utf-8",
-    "Referrer-Policy": "no-referrer",
-    "Retry-After": "300",
-    "X-Content-Type-Options": "nosniff",
-    "X-Frame-Options": "DENY",
-  };
-  response.writeHead(503, headers);
-  response.end(body);
+  writeStaticRetryResponse(response, 503, "Secure service is temporarily unavailable while HTTPS is being restored. Please try again later.\n", 300);
 }

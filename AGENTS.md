@@ -77,6 +77,8 @@
 - Auth + rate limiting:
   - `src/lib/auth.ts`
   - `src/lib/login-rate-limit.ts`
+  - `src/lib/request-admission.mjs` (per-client and global admission limiter shared by public docs reads and page-view ingestion)
+  - `src/lib/public-docs-limiter.mjs` (public docs limiter; `server.mjs` admits docs page requests with it before Next renders them, so throttled pages get a real 429)
 - AI and translation:
   - `src/lib/ai-chat.ts`
   - `src/lib/openrouter.ts`

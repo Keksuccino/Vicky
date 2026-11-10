@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAdmissionLimiter, type AdmissionPermit } from "@/lib/request-admission";
+import { createAdmissionLimiter, type AdmissionPermit } from "@/lib/request-admission.mjs";
 
 const requestFrom = (ip: string) => ({ headers: new Headers(), ip });
 const LIMITS = { clientMaxRequests: 1, clientMaxConcurrency: 1, globalMaxRequests: 100_000, globalMaxConcurrency: 100_000, rateWindowMs: 60_000 };

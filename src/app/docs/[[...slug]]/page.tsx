@@ -59,5 +59,8 @@ export default async function DocsPage({ params, searchParams }: DocsPageProps) 
   // A page can only set its HTTP status by interrupting the render: notFound() answers 404 and
   // a thrown error answers 500. Both boundaries render inside the docs layout's shell. The
   // message is for server logs only; the layout already supplies the visitor-facing text.
+  // Throttling rarely gets here: the included server answers a throttled docs page request with
+  // 429 and Retry-After before rendering (see public-docs-limiter.mjs); only plain `next start`
+  // and `next dev` decide admission during the render and answer a throttled page with 500.
   throw new Error(`Docs page could not be served (status ${pageErrorStatus ?? 500}).`);
 }

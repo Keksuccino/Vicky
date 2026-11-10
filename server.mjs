@@ -12,8 +12,9 @@ import * as acme from "acme-client";
 
 import { INTERNAL_CLIENT_IP_HEADER, isTrustedProxyClientIpPeer, normalizeClientIp, resolveTrustedForwardedClientIp } from "./src/lib/client-ip-policy.mjs";
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
-import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse } from "./src/lib/https-runtime-policy.mjs";
+import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse, writeStaticRetryResponse } from "./src/lib/https-runtime-policy.mjs";
 import { peekProcessSingleton } from "./src/lib/process-singleton.mjs";
+import { admitPublicDocsPageRequest, publicDocsThrottledMessage } from "./src/lib/public-docs-limiter.mjs";
 import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER, INTERNAL_REQUEST_HOST_HEADER, INTERNAL_REQUEST_PROTOCOL_HEADER, isProxyOriginHeaderTrustEnabled, normalizeHttpAuthority, normalizeHttpProtocol } from "./src/lib/request-origin-policy.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
 import { validateRuntimeSecretsOrExit } from "./src/lib/runtime-secret-startup.mjs";
@@ -1255,6 +1256,16 @@ async function handleRequest(request, response) {
     applyProxyClientIpHeaderPolicy(request);
     setInternalRequestContextHeaders(request);
     setInternalClientIpHeader(request);
+    // A docs page render cannot answer 429 itself (only 404 or 500), so its admission is decided
+    // here, before Next renders it; the render runs under this permit until the response closes.
+    const docsPermit = admitPublicDocsPageRequest(request, getRequestPath(request));
+    if (docsPermit && !docsPermit.allowed) {
+      writeStaticRetryResponse(response, 429, `${publicDocsThrottledMessage(docsPermit.retryAfterSeconds)}\n`, docsPermit.retryAfterSeconds);
+      return;
+    }
+    if (docsPermit) {
+      response.once("close", docsPermit.release);
+    }
     await requestHandler(request, response);
   } catch (error) {
     warn("Next.js request handler failed.", error);
