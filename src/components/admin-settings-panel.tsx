@@ -746,17 +746,7 @@ function MarkdownCacheCard({
   onRefresh,
   onWarmAll,
 }: MarkdownCacheCardProps) {
-  const hasUncachedVariants = Boolean(status && status.uncachedVariants > 0);
-  const cacheRatio = status ? `${formatVisitorCount(status.cachedVariants)}/${formatVisitorCount(status.totalVariants)}` : "...";
-  const pageRatio = status ? `${formatVisitorCount(status.sourcePagesCached)}/${formatVisitorCount(status.totalPages)}` : "...";
-  const translatedVariantLabel = status ? formatVisitorCount(status.translatedVariants) : "...";
-  const staleEntryLabel = status ? formatVisitorCount(status.staleEntries) : "...";
-  const globalEntryLabel = status ? formatVisitorCount(status.globalEntries) : "...";
-  const storageLabel = status ? formatByteSize(status.totalHtmlBytes) : "...";
-  const globalStorageLabel = status ? formatByteSize(status.globalHtmlBytes) : "...";
-  const lastMutationLabel = status?.lastMutation
-    ? `${formatVisitorCount(status.lastMutation.deletedEntries)} removed ${formatStatusTimestamp(status.lastMutation.at)}`
-    : "No clear recorded";
+  const busy = loading || warming || clearingAll || Boolean(clearingSlug);
 
   return (
     <section className="panel-card panel-card-markdown-cache">
@@ -765,22 +755,77 @@ function MarkdownCacheCard({
           <h2>Markdown HTML Cache</h2>
           <p className="panel-description">Persistent server-rendered HTML for current docs content.</p>
         </div>
-        <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}>
-          <button
-            type="button"
-            className="btn btn-icon visitor-refresh-button"
-            disabled={loading || warming || clearingAll || Boolean(clearingSlug)}
-            aria-label={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}
-            onClick={onRefresh}
-          >
-            <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
-          </button>
-        </span>
+        {status ? (
+          <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}>
+            <button
+              type="button"
+              className="btn btn-icon visitor-refresh-button"
+              disabled={busy}
+              aria-label={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}
+              onClick={onRefresh}
+            >
+              <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
+            </button>
+          </span>
+        ) : null}
       </div>
 
       {error ? <p className="error-text">{error}</p> : null}
       {actionMessage ? <p className={`${actionMessage.tone}-text`}>{actionMessage.text}</p> : null}
 
+      {status ? (
+        <MarkdownCacheStatusDetails
+          busy={busy}
+          clearingAll={clearingAll}
+          clearingSlug={clearingSlug}
+          status={status}
+          warming={warming}
+          onClearAll={onClearAll}
+          onClearPage={onClearPage}
+          onWarmAll={onWarmAll}
+        />
+      ) : (
+        <div className="markdown-cache-idle">
+          <div className="markdown-cache-idle-text">
+            <strong>Cache status loads on request</strong>
+            <span>Check which pages and translations already have rendered HTML. It only loads when you ask, so the admin panel opens faster.</span>
+          </div>
+          <button type="button" className="btn btn-primary" disabled={busy} onClick={onRefresh}>
+            <MaterialIcon name={loading ? "hourglass_top" : "query_stats"} />
+            <span>{loading ? "Loading..." : "Show cache status"}</span>
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+type MarkdownCacheStatusDetailsProps = Pick<
+  MarkdownCacheCardProps,
+  "clearingAll" | "clearingSlug" | "warming" | "onClearAll" | "onClearPage" | "onWarmAll"
+> & {
+  busy: boolean;
+  status: AdminMarkdownCacheStatus;
+};
+
+function MarkdownCacheStatusDetails({
+  busy,
+  clearingAll,
+  clearingSlug,
+  status,
+  warming,
+  onClearAll,
+  onClearPage,
+  onWarmAll,
+}: MarkdownCacheStatusDetailsProps) {
+  const cacheRatio = `${formatVisitorCount(status.cachedVariants)}/${formatVisitorCount(status.totalVariants)}`;
+  const pageRatio = `${formatVisitorCount(status.sourcePagesCached)}/${formatVisitorCount(status.totalPages)}`;
+  const lastMutationLabel = status.lastMutation
+    ? `${formatVisitorCount(status.lastMutation.deletedEntries)} removed ${formatStatusTimestamp(status.lastMutation.at)}`
+    : "No clear recorded";
+
+  return (
+    <>
       <div className="markdown-cache-summary-grid">
         <div className="markdown-cache-summary-item">
           <strong>{cacheRatio}</strong>
@@ -791,54 +836,42 @@ function MarkdownCacheCard({
           <span>Source pages</span>
         </div>
         <div className="markdown-cache-summary-item">
-          <strong>{translatedVariantLabel}</strong>
+          <strong>{formatVisitorCount(status.translatedVariants)}</strong>
           <span>Translations</span>
         </div>
         <div className="markdown-cache-summary-item">
-          <strong>{storageLabel}</strong>
+          <strong>{formatByteSize(status.totalHtmlBytes)}</strong>
           <span>Storage</span>
         </div>
       </div>
 
       <div className="markdown-cache-meta-row">
-        <span>Renderer v{status?.rendererVersion || "..."}</span>
-        <span>{staleEntryLabel} unused entr{status?.staleEntries === 1 ? "y" : "ies"}</span>
-        <span>{globalEntryLabel} files globally</span>
-        <span>{globalStorageLabel} globally</span>
-        <span>PID {status?.processId || "..."}</span>
-        <span>{status ? `Updated ${formatStatusTimestamp(status.updatedAt)}` : "Loading cache status..."}</span>
+        <span>Renderer v{status.rendererVersion}</span>
+        <span>{formatVisitorCount(status.staleEntries)} unused entr{status.staleEntries === 1 ? "y" : "ies"}</span>
+        <span>{formatVisitorCount(status.globalEntries)} files globally</span>
+        <span>{formatByteSize(status.globalHtmlBytes)} globally</span>
+        <span>PID {status.processId}</span>
+        <span>Updated {formatStatusTimestamp(status.updatedAt)}</span>
       </div>
       <div className="markdown-cache-meta-row markdown-cache-cache-path-row">
-        <span className="markdown-cache-cache-path">{status?.cacheDirectory || "..."}</span>
+        <span className="markdown-cache-cache-path">{status.cacheDirectory}</span>
         <span>{lastMutationLabel}</span>
       </div>
 
       <div className="action-row">
-        <button
-          type="button"
-          className="btn btn-primary"
-          disabled={!status || !hasUncachedVariants || loading || warming || clearingAll || Boolean(clearingSlug)}
-          onClick={onWarmAll}
-        >
+        <button type="button" className="btn btn-primary" disabled={status.uncachedVariants === 0 || busy} onClick={onWarmAll}>
           <MaterialIcon name={warming ? "hourglass_top" : "cached"} />
           <span>{warming ? "Caching..." : "Cache missing HTML"}</span>
         </button>
 
-        <button
-          type="button"
-          className="btn danger"
-          disabled={!status || loading || warming || clearingAll || Boolean(clearingSlug)}
-          onClick={onClearAll}
-        >
+        <button type="button" className="btn danger" disabled={busy} onClick={onClearAll}>
           <MaterialIcon name={clearingAll ? "hourglass_top" : "delete_sweep"} />
           <span>{clearingAll ? "Clearing..." : "Clear all"}</span>
         </button>
       </div>
 
       <div className="markdown-cache-page-list">
-        {!status ? (
-          <p className="muted-caption">{loading ? "Loading Markdown cache..." : "No Markdown cache data available."}</p>
-        ) : status.pages.length === 0 ? (
+        {status.pages.length === 0 ? (
           <p className="muted-caption">No docs pages found.</p>
         ) : (
           status.pages.map((page) => {
@@ -877,7 +910,7 @@ function MarkdownCacheCard({
                     type="button"
                     className="btn btn-icon danger markdown-cache-page-clear"
                     aria-label={`Clear rendered Markdown cache for ${page.title}`}
-                    disabled={loading || warming || clearingAll || Boolean(clearingSlug)}
+                    disabled={busy}
                     onClick={() => onClearPage(page)}
                   >
                     <MaterialIcon name={isClearing ? "hourglass_top" : "delete"} />
@@ -888,7 +921,7 @@ function MarkdownCacheCard({
           })
         )}
       </div>
-    </section>
+    </>
   );
 }
 
@@ -1553,7 +1586,7 @@ export function AdminSettingsPanel() {
   const [translationCacheStatusError, setTranslationCacheStatusError] = useState<string | null>(null);
 
   const [markdownCacheStatus, setMarkdownCacheStatus] = useState<AdminMarkdownCacheStatus | null>(null);
-  const [markdownCacheStatusLoading, setMarkdownCacheStatusLoading] = useState(true);
+  const [markdownCacheStatusLoading, setMarkdownCacheStatusLoading] = useState(false);
   const [markdownCacheStatusError, setMarkdownCacheStatusError] = useState<string | null>(null);
   const [markdownCacheActionMessage, setMarkdownCacheActionMessage] = useState<{
     tone: "success" | "warning" | "error";
@@ -1599,6 +1632,8 @@ export function AdminSettingsPanel() {
   const translationLogRef = useRef<HTMLDivElement | null>(null);
   const lastTranslationJobStatusRef = useRef<AdminTranslationJobSnapshot["status"] | null>(null);
   const markdownCacheStatusRequestRef = useRef(0);
+  /** Set once the admin asks for the Markdown cache status; it is never loaded before that. */
+  const markdownCacheStatusRequestedRef = useRef(false);
   const performanceStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
@@ -1998,6 +2033,7 @@ export function AdminSettingsPanel() {
   }, [trackTranslationJob]);
 
   const refreshMarkdownCacheStatus = useCallback(async () => {
+    markdownCacheStatusRequestedRef.current = true;
     const requestId = markdownCacheStatusRequestRef.current + 1;
     markdownCacheStatusRequestRef.current = requestId;
     setMarkdownCacheStatusLoading(true);
@@ -2008,10 +2044,18 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    setMarkdownCacheStatus(result.status);
+    // A failed refresh keeps the last status on screen next to the error.
+    setMarkdownCacheStatus((current) => result.status ?? current);
     setMarkdownCacheStatusError(result.error);
     setMarkdownCacheStatusLoading(false);
   }, []);
+
+  /** Keeps a Markdown cache status the admin has opened up to date after changes that affect it. */
+  const refreshRequestedMarkdownCacheStatus = useCallback(() => {
+    if (markdownCacheStatusRequestedRef.current) {
+      void refreshMarkdownCacheStatus();
+    }
+  }, [refreshMarkdownCacheStatus]);
 
   useEffect(() => {
     const nextStatus = translationJob?.status ?? null;
@@ -2019,9 +2063,9 @@ export function AdminSettingsPanel() {
     lastTranslationJobStatusRef.current = nextStatus;
 
     if (previousStatus === "running" && nextStatus && nextStatus !== "running") {
-      void refreshMarkdownCacheStatus();
+      refreshRequestedMarkdownCacheStatus();
     }
-  }, [refreshMarkdownCacheStatus, translationJob?.status]);
+  }, [refreshRequestedMarkdownCacheStatus, translationJob?.status]);
 
   useEffect(() => {
     const logElement = translationLogRef.current;
@@ -2149,13 +2193,13 @@ export function AdminSettingsPanel() {
         `Fetched ${formatVisitorCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
       );
       void refreshTranslationCacheStatuses();
-      void refreshMarkdownCacheStatus();
+      refreshRequestedMarkdownCacheStatus();
     } catch (error) {
       setDocsRefreshError(formatApiError(error));
     } finally {
       setRefreshingDocs(false);
     }
-  }, [persistLatestSettings, refreshMarkdownCacheStatus, refreshTranslationCacheStatuses]);
+  }, [persistLatestSettings, refreshRequestedMarkdownCacheStatus, refreshTranslationCacheStatuses]);
 
   const requestLanguageTranslations = useCallback(
     async (language: AutoTranslateLanguage) => {
@@ -2299,14 +2343,6 @@ export function AdminSettingsPanel() {
   }, [loadError, loading, refreshTranslationCacheStatuses, translationJob?.id, translationJob?.status]);
 
   useEffect(() => {
-    if (loading || loadError || !autoSaveReadyRef.current) {
-      return;
-    }
-
-    void refreshMarkdownCacheStatus();
-  }, [loadError, loading, refreshMarkdownCacheStatus]);
-
-  useEffect(() => {
     if (loading || loadError) {
       return;
     }
@@ -2338,8 +2374,6 @@ export function AdminSettingsPanel() {
       setPerformanceStatsError(null);
       setVisitorStatsLoading(true);
       setVisitorStatsError(null);
-      setMarkdownCacheStatusLoading(true);
-      setMarkdownCacheStatusError(null);
 
       try {
         const currentUser = await getCurrentUser();
@@ -2384,7 +2418,6 @@ export function AdminSettingsPanel() {
           setLoadError(formatApiError(error));
           setPerformanceStatsLoading(false);
           setVisitorStatsLoading(false);
-          setMarkdownCacheStatusLoading(false);
         }
       } finally {
         if (isActive) {

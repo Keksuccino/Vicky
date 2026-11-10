@@ -3072,6 +3072,36 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
   gap: 0.48rem;
 }
 
+.markdown-cache-idle {
+  border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-surface-soft) 62%, var(--surface-muted));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.72rem 1rem;
+  padding: 0.82rem 0.9rem;
+}
+
+.markdown-cache-idle-text {
+  flex: 1 1 18rem;
+  min-width: 0;
+  display: grid;
+  gap: 0.22rem;
+}
+
+.markdown-cache-idle-text strong {
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.markdown-cache-idle-text span {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
 .markdown-cache-summary-item {
   min-width: 0;
   border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
