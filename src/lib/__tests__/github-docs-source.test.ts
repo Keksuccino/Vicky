@@ -12,7 +12,9 @@ import {
   loadGitHubDoc,
   loadGitHubRepoIndex,
   loadPublicGitHubDoc,
+  loadPublicGitHubDocMetadata,
   refreshGitHubDocsCache,
+  saveGitHubDoc,
 } from "@/lib/github";
 import { loadGitHubLocalizationStatusIndex } from "@/lib/github-localization";
 import type { GitHubRuntimeConfig } from "@/lib/types";
@@ -219,6 +221,22 @@ describe("GitHub docs source loading", () => {
     const treeRequests = fake.requests.filter((request) => request.kind === "tree");
     expect(treeRequests.filter((request) => request.recursive)).toHaveLength(4);
     expect(treeRequests.filter((request) => !request.recursive)).toHaveLength(2);
+  });
+
+  it("shows a saved page immediately and needs no download for it on the next refresh", async () => {
+    const config = createConfig();
+    await refreshGitHubDocsCache(config);
+    fake.resetRequests();
+
+    const saved = await saveGitHubDoc(config, { path: "home.md", title: "Home", content: "Saved in the editor" });
+
+    expect(fake.requests.map((request) => request.kind)).toEqual(["contents", "put-contents"]);
+    await expect(loadPublicGitHubDoc(config, { slug: "home" })).resolves.toMatchObject({ content: "Saved in the editor\n", sha: saved.page.sha, updatedBy: "Editor" });
+    await expect(loadPublicGitHubDocMetadata(config, { slug: "home" })).resolves.toMatchObject({ updatedBy: "Editor" });
+    expect(fake.count()).toBe(2);
+
+    await refreshGitHubDocsCache(config);
+    expect(fake.requests.slice(2).map((request) => request.kind)).toEqual(["tree"]);
   });
 
   it("keeps every loader within the global request cap", async () => {

@@ -90,15 +90,15 @@ describe("public GitHub document reads", () => {
     await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toThrow(/not found/i);
   });
 
-  it("serves a page created by an authenticated save, despite an earlier public miss", async () => {
+  it("serves a page created by an authenticated save right away, despite an earlier public miss", async () => {
     const config = createConfig("save-invalidates-public-miss");
     await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).rejects.toThrow(/not found/i);
     expect(fake.count("contents")).toBe(0);
 
     await saveGitHubDoc(config, { slug: "new-page", content: "Newly created content" });
     await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).resolves.toMatchObject({ slug: "new-page", sha: gitBlobShaOf("Newly created content") });
-    expect(fake.count("tree")).toBe(2);
-    expect(fake.count("blob")).toBe(2);
+    expect(fake.count("tree")).toBe(1);
+    expect(fake.count("blob")).toBe(1);
     expect(fake.requests.filter((request) => request.kind === "contents").map((request) => request.target)).toEqual(["docs/new-page.md"]);
   });
 

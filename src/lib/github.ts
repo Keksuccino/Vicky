@@ -14,11 +14,11 @@ import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { getGitHubClient, gitHubErrorStatus } from "@/lib/github-client";
 import { extractCommitMetadata, hydrateGitHubDocPageMetadata, knownGitHubCommitMetadata, type GitHubCommitMetadata } from "@/lib/github-commit-metadata";
 import { fetchGitHubFile, parseGitHubBlobRecord } from "@/lib/github-content-store";
-import { clearDerivedGitHubDocsCache, docsSourceLogContext } from "@/lib/github-derived-caches";
+import { docsSourceLogContext } from "@/lib/github-derived-caches";
 import {
+  applyCommittedGitHubDocPage,
   assertValidGitHubRuntimeConfig,
   createGitHubDocPage,
-  forgetGitHubDocsSourceView,
   loadGitHubDocsSourceView,
   readPublishedGitHubDocsSourceView,
   validateGitHubRuntimeConfig,
@@ -438,8 +438,7 @@ export const saveGitHubDoc = async (config: GitHubRuntimeConfig, input: SaveGitH
   // The barrier is deliberately after GitHub confirms the commit. Failed remote
   // writes preserve the still-valid cache; successful writes invalidate old readers.
   const mutationAccess = await prepareGitHubCacheMutation(config);
-  await forgetGitHubDocsSourceView(config, mutationAccess);
-  await clearDerivedGitHubDocsCache(config, { changedSourceSlugs: [page.slug] });
+  await applyCommittedGitHubDocPage(config, mutationAccess, { metadata, page, repoPath: target.fullPath });
 
   return {
     path: target.relativePath,

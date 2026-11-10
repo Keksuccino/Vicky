@@ -6,12 +6,29 @@ import {
   type GitHubCacheLease,
 } from "@/lib/github-cache-invalidation";
 import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
-import { resolveGitHubCommitMetadata, retainGitHubCommitMetadata, type GitHubCommitMetadata } from "@/lib/github-commit-metadata";
-import { loadGitHubBlobs, pinGitHubBlobs, sweepUnreferencedGitHubBlobs, type GitHubBlobRecord } from "@/lib/github-content-store";
+import {
+  recordGitHubCommitMetadata,
+  resolveGitHubCommitMetadata,
+  retainGitHubCommitMetadata,
+  type GitHubCommitMetadata,
+} from "@/lib/github-commit-metadata";
+import {
+  loadGitHubBlobs,
+  pinGitHubBlobs,
+  storeCommittedGitHubBlob,
+  sweepUnreferencedGitHubBlobs,
+  type GitHubBlobRecord,
+} from "@/lib/github-content-store";
 import { clearDerivedGitHubDocsCache, clearDerivedGitHubDocsMemory, type GitHubDocsPagesSnapshot } from "@/lib/github-derived-caches";
-import { deletePrivateFile, getGitHubDocsCacheDir, removeLegacyDocsSnapshots, sourceCacheFilePath } from "@/lib/github-docs-cache-files";
+import { getGitHubDocsCacheDir, removeLegacyDocsSnapshots } from "@/lib/github-docs-cache-files";
 import { ensureMarkdownPath, normalizeDocsPath, normalizePathValue, prettyNameFromPath, relativePathToSlug, stripRepoRoot } from "@/lib/github-paths";
-import { fetchGitHubRepoIndex, readPersistentGitHubRepoIndex, writePersistentGitHubRepoIndex, type GitHubRepoIndex } from "@/lib/github-repo-index";
+import {
+  fetchGitHubRepoIndex,
+  readPersistentGitHubRepoIndex,
+  withCommittedRepoIndexFiles,
+  writePersistentGitHubRepoIndex,
+  type GitHubRepoIndex,
+} from "@/lib/github-repo-index";
 import { ApiError, badRequest } from "@/lib/http";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type { GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, GitHubValidationResult } from "@/lib/types";
@@ -431,11 +448,48 @@ export const loadGitHubDocsSourceView = async (config: GitHubRuntimeConfig, opti
 };
 
 /**
- * Forgets the published view and the persisted index of a source after this app committed to
- * it, so the next read lists the repository again and picks the commit up.
+ * Applies a committed source page to the index, the content store, the commit metadata, and the
+ * published view, so the page is served immediately without asking GitHub again. Without a
+ * published view, only the persisted index (if any) is updated for the next load.
  */
-export const forgetGitHubDocsSourceView = async (config: GitHubRuntimeConfig, access: GitHubCacheLease): Promise<void> => {
-  assertGitHubCacheAccess(access);
-  docsSourceCache.delete(sourceViewKey(config));
-  await trackGitHubCacheWrite(access, deletePrivateFile(sourceCacheFilePath(getGitHubDocsCacheDir(), gitHubRuntimeCacheKey(config), "repo-index")));
+export const applyCommittedGitHubDocPage = async (
+  config: GitHubRuntimeConfig,
+  access: GitHubCacheLease,
+  committed: { metadata: GitHubCommitMetadata; page: GitHubDocPage; repoPath: string },
+): Promise<void> => {
+  const baseDir = getGitHubDocsCacheDir();
+  const unpin = pinGitHubBlobs([committed.page.sha]);
+  try {
+    const record = await storeCommittedGitHubBlob(committed.page.sha, committed.page.markdown, baseDir);
+    await recordGitHubCommitMetadata(config, access, [{ metadata: committed.metadata, path: committed.repoPath, sha: committed.page.sha }], baseDir);
+    const committedFile = { repoPath: committed.repoPath, sha: committed.page.sha, size: record?.byteLength ?? Buffer.byteLength(committed.page.markdown, "utf8") };
+    assertGitHubCacheAccess(access);
+
+    const previous = readPublishedGitHubDocsSourceView(config);
+    if (!previous) {
+      const persisted = await readPersistentGitHubRepoIndex(config, baseDir);
+      if (persisted) {
+        await persistIndex(config, access, withCommittedRepoIndexFiles(persisted, [committedFile]), baseDir);
+      }
+      unpin();
+      await clearDerivedGitHubDocsCache(config, { changedSourceSlugs: [committed.page.slug] });
+      return;
+    }
+
+    const index = withCommittedRepoIndexFiles(previous.index, [committedFile]);
+    const next = await buildSourceView(config, access, index, {
+      baseDir,
+      checkedAtMs: previous.checkedAtMs,
+      confirmedBy: previous.confirmedBy,
+      overrides: new Map([[committed.repoPath, committed.page]]),
+      previous,
+    });
+    next.retryAtMs = previous.retryAtMs;
+    await persistIndex(config, access, index, baseDir);
+    publishView(config, access, next);
+    unpin();
+    await finishSourceChange(config, access, previous, next, baseDir);
+  } finally {
+    unpin();
+  }
 };
