@@ -7,17 +7,11 @@ import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { createGitHubCacheEpoch } from "@/lib/github-cache-identity";
 import { DEFAULT_START_PAGE } from "@/lib/start-page";
 import { DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
-import type { AppSettings, DocsStore, VisitorStatsStore } from "@/lib/types";
+import type { AppSettings, DocsStore } from "@/lib/types";
 
 export const STORE_VERSION = 13 as const;
 
 const now = (): string => new Date().toISOString();
-
-export const DEFAULT_VISITOR_STATS = (): VisitorStatsStore => ({
-  salt: randomUUID(),
-  updatedAt: now(),
-  visits: [],
-});
 
 export const DEFAULT_SETTINGS = (): AppSettings => ({
   siteTitle: "Vicky Docs",

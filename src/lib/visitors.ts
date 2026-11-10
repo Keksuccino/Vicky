@@ -6,22 +6,27 @@ import { getClientIp } from "@/lib/client-ip-policy";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   GitHubDocPage,
+  VisitorAnalyticsSummaryData,
+  VisitorEventInput,
   VisitorPageIdentity,
   VisitorStatsPageSummary,
   VisitorStatsPeriodSummary,
+  VisitorStatsResponse,
   VisitorStatsScopeSummary,
-  VisitorStatsStore,
   VisitorStatsSummary,
-  VisitorStatsVisit,
 } from "@/lib/types";
+import type { VisitorAnalyticsSnapshot } from "@/lib/visitor-storage";
 
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const MS_PER_HOUR = 60 * 60 * 1000;
+const MS_PER_DAY = 24 * MS_PER_HOUR;
 const ALL_TIME_CHART_PERIOD_LIMIT = 150;
 const MAX_VISIT_RECORD_ATTEMPTS = 3;
 const VISIT_EVENT_ID_MAX_LENGTH = 64;
 const DEFAULT_VISIT_QUEUE_CAPACITY = 1_000;
 const DEFAULT_VISIT_RETRY_BASE_MS = 1_000;
 const DEFAULT_VISIT_RETRY_MAX_MS = 30_000;
+/** Visits written in one storage transaction at most. */
+const VISIT_BATCH_SIZE = 500;
 const RECENT_EVENT_ID_TTL_MS = 10 * 60 * 1_000;
 const RECENT_EVENT_ID_PRUNE_INTERVAL_MS = 30_000;
 const MAX_RECENT_EVENT_IDS = 10_000;
@@ -37,13 +42,8 @@ const VISIT_RETRY_MAX_MS = Math.max(VISIT_RETRY_BASE_MS, parseBoundedPositiveInt
 
 type VisitorStorageBackend = {
   getVisitorAnalyticsSalt: () => Promise<string>;
-  loadVisitorStatsSummary: (now?: Date, knownPages?: VisitorPageIdentity[]) => Promise<VisitorStatsSummary>;
-  recordVisitorEvent: (event: {
-    eventId?: string | null;
-    page: VisitorPageIdentity;
-    visitedAt?: Date;
-    visitorId: string;
-  }) => Promise<boolean>;
+  loadVisitorAnalytics: (options?: { refresh?: boolean }) => Promise<VisitorAnalyticsSnapshot>;
+  recordVisitorEvents: (events: VisitorEventInput[]) => Promise<unknown>;
 };
 
 type VisitorStorageLoader = () => Promise<VisitorStorageBackend>;
@@ -58,6 +58,7 @@ type QueuedDocPageVisit = {
   eventId: string | null;
   page: VisitorPageIdentity;
   queueId: string;
+  visitedAt: number;
 };
 
 export type EnqueueDocPageVisitResult =
@@ -101,11 +102,7 @@ export const setVisitorStorageLoaderForTests = (loader: VisitorStorageLoader | n
 
 const loadVisitorStorage = async (): Promise<VisitorStorageBackend> => visitQueue.storageLoader();
 
-const createEmptyVisitorStatsStore = (updatedAt: Date): VisitorStatsStore => ({
-  salt: "",
-  updatedAt: updatedAt.toISOString(),
-  visits: [],
-});
+const errorMessage = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const normalizeStatsSlug = (value: string): string =>
   value
@@ -146,211 +143,17 @@ const formatDayKey = (date: Date): string => date.toISOString().slice(0, 10);
 
 const formatHourKey = (date: Date): string => date.toISOString().slice(0, 13);
 
-const getPeriodKeys = (date: Date) => ({
-  hourly: formatHourKey(date),
-  daily: formatDayKey(date),
-});
+// Creating an Intl formatter costs tens of microseconds; a summary labels about 550 days.
+const dayLabelFormatter = new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" });
 
 const labelDay = (key: string): string => {
   const parsed = new Date(`${key}T00:00:00.000Z`);
-  return Number.isNaN(parsed.valueOf())
-    ? key
-    : new Intl.DateTimeFormat("en", { month: "short", day: "numeric", timeZone: "UTC" }).format(parsed);
+  return Number.isNaN(parsed.valueOf()) ? key : dayLabelFormatter.format(parsed);
 };
 
 const labelHour = (key: string): string => {
   const match = /^\d{4}-\d{2}-\d{2}T(\d{2})$/.exec(key);
   return match ? `${match[1]}:00` : key;
-};
-
-type VisitorStatsAggregatePage = VisitorPageIdentity & {
-  visits: number;
-  visitorIds: Set<string>;
-  updatedAt: string;
-};
-
-type VisitorStatsAggregateBucket = {
-  visits: number;
-  visitorIds: Set<string>;
-  pages: Map<string, VisitorStatsAggregatePage>;
-};
-
-type VisitorStatsAggregateBuckets = Map<string, VisitorStatsAggregateBucket>;
-
-const createAggregateBucket = (): VisitorStatsAggregateBucket => ({
-  visits: 0,
-  visitorIds: new Set(),
-  pages: new Map(),
-});
-
-const bucketVisitCount = (bucket: VisitorStatsAggregateBucket | undefined): number => bucket?.visits ?? 0;
-
-const bucketVisitorCount = (bucket: VisitorStatsAggregateBucket | undefined): number => bucket?.visitorIds.size ?? 0;
-
-const addVisitToBucket = (bucket: VisitorStatsAggregateBucket, visit: VisitorStatsVisit): void => {
-  bucket.visits += 1;
-  bucket.visitorIds.add(visit.visitorId);
-
-  const existingPage = bucket.pages.get(visit.slug);
-  if (!existingPage) {
-    bucket.pages.set(visit.slug, {
-      path: visit.path,
-      slug: visit.slug,
-      title: visit.title,
-      visits: 1,
-      visitorIds: new Set([visit.visitorId]),
-      updatedAt: visit.visitedAt,
-    });
-    return;
-  }
-
-  existingPage.visits += 1;
-  existingPage.visitorIds.add(visit.visitorId);
-
-  if (visit.visitedAt >= existingPage.updatedAt) {
-    existingPage.path = visit.path;
-    existingPage.title = visit.title;
-    existingPage.updatedAt = visit.visitedAt;
-  }
-};
-
-const mergeBucketInto = (
-  target: VisitorStatsAggregateBucket,
-  source: VisitorStatsAggregateBucket | undefined,
-): void => {
-  if (!source) {
-    return;
-  }
-
-  target.visits += source.visits;
-  for (const visitorId of source.visitorIds) {
-    target.visitorIds.add(visitorId);
-  }
-
-  for (const page of source.pages.values()) {
-    const existingPage = target.pages.get(page.slug);
-    if (!existingPage) {
-      target.pages.set(page.slug, {
-        path: page.path,
-        slug: page.slug,
-        title: page.title,
-        visits: page.visits,
-        visitorIds: new Set(page.visitorIds),
-        updatedAt: page.updatedAt,
-      });
-      continue;
-    }
-
-    existingPage.visits += page.visits;
-    for (const visitorId of page.visitorIds) {
-      existingPage.visitorIds.add(visitorId);
-    }
-
-    if (page.updatedAt >= existingPage.updatedAt) {
-      existingPage.path = page.path;
-      existingPage.title = page.title;
-      existingPage.updatedAt = page.updatedAt;
-    }
-  }
-};
-
-const aggregateVisits = (
-  visits: VisitorStatsVisit[],
-  keyForVisit: (visit: VisitorStatsVisit) => string,
-): VisitorStatsAggregateBuckets => {
-  const buckets: VisitorStatsAggregateBuckets = new Map();
-
-  for (const visit of visits) {
-    const key = keyForVisit(visit);
-    const bucket = buckets.get(key) ?? createAggregateBucket();
-    buckets.set(key, bucket);
-    addVisitToBucket(bucket, visit);
-  }
-
-  return buckets;
-};
-
-const aggregateAllVisits = (visits: VisitorStatsVisit[]): VisitorStatsAggregateBucket => {
-  const bucket = createAggregateBucket();
-
-  for (const visit of visits) {
-    addVisitToBucket(bucket, visit);
-  }
-
-  return bucket;
-};
-
-const mergeBucketsForKeys = (
-  buckets: VisitorStatsAggregateBuckets,
-  keys: string[],
-): VisitorStatsAggregateBucket => {
-  const bucket = createAggregateBucket();
-
-  for (const key of keys) {
-    mergeBucketInto(bucket, buckets.get(key));
-  }
-
-  return bucket;
-};
-
-const getVisitDate = (visit: VisitorStatsVisit): Date => new Date(visit.visitedAt);
-
-const getUtcHourStart = (date: Date): Date =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate(), date.getUTCHours()));
-
-const getUtcDayStart = (date: Date): Date =>
-  new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
-
-const getRecentHourKeys = (now: Date, count: number): string[] => {
-  const currentHourStart = getUtcHourStart(now).getTime();
-
-  return Array.from({ length: count }, (_, index) => {
-    const offset = count - index - 1;
-    return formatHourKey(new Date(currentHourStart - offset * 60 * 60 * 1000));
-  });
-};
-
-const getRecentDayKeys = (now: Date, count: number): string[] => {
-  const currentDayStart = getUtcDayStart(now).getTime();
-
-  return Array.from({ length: count }, (_, index) => {
-    const offset = count - index - 1;
-    return formatDayKey(new Date(currentDayStart - offset * MS_PER_DAY));
-  });
-};
-
-const normalizeVisitPage = (page: VisitorPageIdentity): VisitorPageIdentity => {
-  const slug = normalizeStatsSlug(page.slug || page.path);
-
-  return {
-    path: statsPathFromSlug(slug),
-    slug,
-    title: page.title.trim() || prettyTitleFromSlug(slug),
-  };
-};
-
-export const recordVisitorInStats = (
-  stats: VisitorStatsStore,
-  page: VisitorPageIdentity,
-  visitorId: string,
-  visitedAt = new Date(),
-): boolean => {
-  const normalizedPage = normalizeVisitPage(page);
-  const normalizedVisitorId = visitorId.trim();
-  if (!normalizedPage.slug || !normalizedVisitorId) {
-    return false;
-  }
-
-  const timestamp = visitedAt.toISOString();
-  stats.visits.push({
-    id: randomUUID(),
-    ...normalizedPage,
-    visitorId: normalizedVisitorId,
-    visitedAt: timestamp,
-  });
-  stats.updatedAt = timestamp;
-
-  return true;
 };
 
 const normalizeVisitEventId = (eventId: string | null | undefined): string | null => {
@@ -395,10 +198,15 @@ const rememberRecentEventId = (dedupKey: string, now: number): void => {
   }
 };
 
-const recordPageIdentityVisitForClient = async (clientIdentity: string, page: VisitorPageIdentity, eventId?: string | null): Promise<void> => {
+const recordQueuedVisits = async (visits: QueuedDocPageVisit[]): Promise<void> => {
   const storage = await loadVisitorStorage();
-  const visitorId = hashVisitorIp(clientIdentity, await storage.getVisitorAnalyticsSalt());
-  await storage.recordVisitorEvent({ eventId: normalizeVisitEventId(eventId), page, visitorId });
+  const salt = await storage.getVisitorAnalyticsSalt();
+  await storage.recordVisitorEvents(visits.map((visit) => ({
+    eventId: visit.eventId,
+    page: visit.page,
+    visitedAt: visit.visitedAt,
+    visitorId: hashVisitorIp(visit.clientIdentity, salt),
+  })));
 };
 
 const clearVisitQueueWakeTimer = (): void => {
@@ -421,13 +229,16 @@ const promoteReadyRetries = (now: number): void => {
   }
 };
 
-const takeNextReadyVisit = (): QueuedDocPageVisit | null => {
-  const entry = readyVisitQueue.entries().next().value as [string, QueuedDocPageVisit] | undefined;
-  if (!entry) {
-    return null;
+const takeReadyBatch = (): QueuedDocPageVisit[] => {
+  const batch: QueuedDocPageVisit[] = [];
+  for (const [queueId, visit] of readyVisitQueue) {
+    readyVisitQueue.delete(queueId);
+    batch.push(visit);
+    if (batch.length >= VISIT_BATCH_SIZE) {
+      break;
+    }
   }
-  readyVisitQueue.delete(entry[0]);
-  return entry[1];
+  return batch;
 };
 
 const scheduleVisitQueueWake = (wakeAt: number): void => {
@@ -477,6 +288,22 @@ const completeQueuedVisit = (visit: QueuedDocPageVisit, remember: boolean): void
   }
 };
 
+const retryOrDropVisits = (batch: QueuedDocPageVisit[], error: unknown): void => {
+  let dropped = 0;
+  for (const visit of batch) {
+    const nextAttempts = visit.attempts + 1;
+    if (nextAttempts < MAX_VISIT_RECORD_ATTEMPTS) {
+      delayedVisitQueue.set(visit.queueId, { ...visit, attempts: nextAttempts, availableAt: Date.now() + nextVisitRetryDelayMs(nextAttempts) });
+    } else {
+      completeQueuedVisit(visit, false);
+      dropped += 1;
+    }
+  }
+  const droppedNote = dropped > 0 ? `; dropped ${dropped} after ${MAX_VISIT_RECORD_ATTEMPTS} attempts` : "";
+  console.warn(`[visitors] Failed to record ${batch.length} docs page visit${batch.length === 1 ? "" : "s"}${droppedNote}: ${errorMessage(error)}`);
+};
+
+/** Writes every ready visit, up to `VISIT_BATCH_SIZE` per storage transaction. */
 const flushQueuedVisits = async (): Promise<void> => {
   if (visitQueue.flushing) {
     return;
@@ -487,29 +314,23 @@ const flushQueuedVisits = async (): Promise<void> => {
 
   try {
     promoteReadyRetries(Date.now());
-    let visit = takeNextReadyVisit();
-    while (visit) {
-      visitQueue.activeQueuedVisitCount += 1;
+    let batch = takeReadyBatch();
+    while (batch.length > 0) {
+      visitQueue.activeQueuedVisitCount += batch.length;
 
       try {
-        await recordPageIdentityVisitForClient(visit.clientIdentity, visit.page, visit.eventId);
-        completeQueuedVisit(visit, true);
-      } catch (error: unknown) {
-        const nextAttempts = visit.attempts + 1;
-        const message = error instanceof Error ? error.message : String(error);
-        console.warn(`[visitors] Failed to record docs page visit for ${visit.page.slug} (attempt ${nextAttempts}/${MAX_VISIT_RECORD_ATTEMPTS}): ${message}`);
-
-        if (nextAttempts < MAX_VISIT_RECORD_ATTEMPTS) {
-          delayedVisitQueue.set(visit.queueId, { ...visit, attempts: nextAttempts, availableAt: Date.now() + nextVisitRetryDelayMs(nextAttempts) });
-        } else {
-          completeQueuedVisit(visit, false);
+        await recordQueuedVisits(batch);
+        for (const visit of batch) {
+          completeQueuedVisit(visit, true);
         }
+      } catch (error: unknown) {
+        retryOrDropVisits(batch, error);
       } finally {
-        visitQueue.activeQueuedVisitCount = Math.max(0, visitQueue.activeQueuedVisitCount - 1);
+        visitQueue.activeQueuedVisitCount = Math.max(0, visitQueue.activeQueuedVisitCount - batch.length);
       }
 
       promoteReadyRetries(Date.now());
-      visit = takeNextReadyVisit();
+      batch = takeReadyBatch();
     }
   } finally {
     visitQueue.flushing = false;
@@ -517,12 +338,8 @@ const flushQueuedVisits = async (): Promise<void> => {
   }
 };
 
-export const recordDocPageVisit = async (request: NextRequest, page: GitHubDocPage): Promise<void> => {
-  await recordPageIdentityVisitForClient(createVisitorClientIdentity(getRequestIpAddress(request)), normalizeVisitorPageIdentity(page));
-};
-
 export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdentity, eventId?: string | null): EnqueueDocPageVisitResult => {
-  const normalizedPage = normalizeVisitPage(page);
+  const normalizedPage = normalizeVisitorPageIdentity(page);
   if (!normalizedPage.slug) {
     return { status: "duplicate" };
   }
@@ -558,6 +375,7 @@ export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdent
     eventId: normalizedEventId,
     page: normalizedPage,
     queueId,
+    visitedAt: now,
   });
   void flushQueuedVisits();
 
@@ -575,172 +393,143 @@ export const resetVisitorVisitQueueForTests = (): void => {
   visitQueue.flushing = false;
 };
 
+type PeriodCounts = { visits: number; visitors: number };
+
 const summarizePages = (
-  bucket: VisitorStatsAggregateBucket | undefined,
-  knownPages: VisitorPageIdentity[] = [],
+  identities: Map<number, VisitorPageIdentity>,
+  pageVisits: Iterable<[pageId: number, visits: number]>,
+  pageVisitors: Map<number, number>,
+  knownPages: VisitorPageIdentity[],
 ): VisitorStatsPageSummary[] => {
   const pages = new Map<string, VisitorStatsPageSummary>();
 
   for (const page of knownPages) {
-    const slug = normalizeStatsSlug(page.slug || page.path);
-    if (!slug || pages.has(slug)) {
-      continue;
+    const normalizedPage = normalizeVisitorPageIdentity(page);
+    if (normalizedPage.slug && !pages.has(normalizedPage.slug)) {
+      pages.set(normalizedPage.slug, { ...normalizedPage, visits: 0, visitors: 0 });
     }
-
-    pages.set(slug, {
-      path: statsPathFromSlug(slug),
-      slug,
-      title: page.title.trim() || prettyTitleFromSlug(slug),
-      visits: 0,
-      visitors: 0,
-    });
   }
 
-  for (const page of bucket?.pages.values() ?? []) {
-    pages.set(page.slug, {
-      path: page.path,
-      slug: page.slug,
-      title: page.title,
-      visits: page.visits,
-      visitors: page.visitorIds.size,
-    });
+  for (const [pageId, visits] of pageVisits) {
+    const identity = identities.get(pageId);
+    if (identity && visits > 0) {
+      pages.set(identity.slug, { ...identity, visits, visitors: pageVisitors.get(pageId) ?? 0 });
+    }
   }
 
-  return [...pages.values()]
-    .sort((left, right) => right.visits - left.visits || right.visitors - left.visitors || left.title.localeCompare(right.title));
+  return [...pages.values()].sort(
+    (left, right) => right.visits - left.visits || right.visitors - left.visitors || left.title.localeCompare(right.title),
+  );
 };
 
-const summarizePeriods = (
-  buckets: VisitorStatsAggregateBuckets,
+const summarizeFixedPeriods = (
+  periodKeys: string[],
+  counts: Map<string, PeriodCounts>,
   currentKey: string,
   labelForKey: (key: string) => string,
-): VisitorStatsPeriodSummary[] => {
-  const periodKeys = new Set([...buckets.keys(), currentKey]);
+): VisitorStatsPeriodSummary[] =>
+  periodKeys.map((key) => ({
+    key,
+    label: labelForKey(key),
+    visits: counts.get(key)?.visits ?? 0,
+    visitors: counts.get(key)?.visitors ?? 0,
+    current: key === currentKey,
+  }));
 
-  return [...periodKeys]
-    .sort((left, right) => left.localeCompare(right))
-    .map((key) => ({
-      key,
-      label: labelForKey(key),
-      visits: bucketVisitCount(buckets.get(key)),
-      visitors: bucketVisitorCount(buckets.get(key)),
-      current: key === currentKey,
-    }));
-};
-
-const downsamplePeriods = (
-  periods: VisitorStatsPeriodSummary[],
-  maxPoints: number,
-): VisitorStatsPeriodSummary[] => {
+const downsamplePeriods = (periods: VisitorStatsPeriodSummary[], maxPoints: number): VisitorStatsPeriodSummary[] => {
   if (periods.length <= maxPoints) {
     return periods;
   }
 
   const lastIndex = periods.length - 1;
-
-  return Array.from({ length: maxPoints }, (_, index) => {
-    const periodIndex = Math.round((index / (maxPoints - 1)) * lastIndex);
-    return periods[periodIndex];
-  });
+  return Array.from({ length: maxPoints }, (_, index) => periods[Math.round((index / (maxPoints - 1)) * lastIndex)]);
 };
 
-const summarizeFixedPeriods = (
-  buckets: VisitorStatsAggregateBuckets,
-  periodKeys: string[],
-  currentKey: string,
-  labelForKey: (key: string) => string,
-): VisitorStatsPeriodSummary[] => {
-  return periodKeys.map((key) => ({
-    key,
-    label: labelForKey(key),
-    visits: bucketVisitCount(buckets.get(key)),
-    visitors: bucketVisitorCount(buckets.get(key)),
-    current: key === currentKey,
-  }));
-};
+const recentKeys = (lastStart: number, count: number, step: number, format: (date: Date) => string): string[] =>
+  Array.from({ length: count }, (_, index) => format(new Date(lastStart - (count - index - 1) * step)));
 
-const summarizeRecentHoursScope = (
-  hourlyBuckets: VisitorStatsAggregateBuckets,
-  now: Date,
-  knownPages: VisitorPageIdentity[],
-): VisitorStatsScopeSummary => {
-  const periodKeys = getRecentHourKeys(now, 24);
-  const currentKey = formatHourKey(now);
-  const currentBucket = mergeBucketsForKeys(hourlyBuckets, periodKeys);
+const sumVisits = (keys: string[], counts: Map<string, PeriodCounts>): number => keys.reduce((total, key) => total + (counts.get(key)?.visits ?? 0), 0);
 
-  return {
-    totalVisits: bucketVisitCount(currentBucket),
-    totalVisitors: bucketVisitorCount(currentBucket),
+/**
+ * Shapes the aggregate numbers of the analytics worker into the summary the admin card shows.
+ * Every window ends at `computedAt`, the moment the numbers were read.
+ */
+export const createVisitorStatsSummary = (data: VisitorAnalyticsSummaryData, knownPages: VisitorPageIdentity[] = []): VisitorStatsSummary => {
+  const now = new Date(data.computedAt);
+  const currentHourStart = Math.floor(data.computedAt / MS_PER_HOUR) * MS_PER_HOUR;
+  const currentDayStart = Math.floor(data.computedAt / MS_PER_DAY) * MS_PER_DAY;
+  const currentDayKey = formatDayKey(now);
+  const identities = new Map(data.pages.map(([pageId, slug, path, title]) => [pageId, { path, slug, title }]));
+  const dayCounts = new Map(data.allTime.days.map(([day, visits, visitors]) => [formatDayKey(new Date(day * MS_PER_DAY)), { visits, visitors }]));
+  const hourCounts = new Map(data.last24Hours.hours.map(([hour, visits, visitors]) => [formatHourKey(new Date(hour * MS_PER_HOUR)), { visits, visitors }]));
+
+  // The worker returns the days up to today in ascending order, so only today may be missing.
+  const allTimeKeys = [...dayCounts.keys()];
+  if (!dayCounts.has(currentDayKey)) {
+    allTimeKeys.push(currentDayKey);
+  }
+  const allTime: VisitorStatsScopeSummary = {
+    totalVisits: sumVisits(allTimeKeys, dayCounts),
+    totalVisitors: data.allTime.visitors,
+    currentPeriodKey: "all-time",
+    currentPeriodLabel: "All time",
+    periods: downsamplePeriods(summarizeFixedPeriods(allTimeKeys, dayCounts, currentDayKey, labelDay), ALL_TIME_CHART_PERIOD_LIMIT),
+    pages: summarizePages(
+      identities,
+      data.allTime.pages.map(([pageId, visits]) => [pageId, visits]),
+      new Map(data.allTime.pages.map(([pageId, , visitors]) => [pageId, visitors])),
+      knownPages,
+    ),
+  };
+
+  const hourKeys = recentKeys(currentHourStart, 24, MS_PER_HOUR, formatHourKey);
+  const daily: VisitorStatsScopeSummary = {
+    totalVisits: sumVisits(hourKeys, hourCounts),
+    totalVisitors: data.last24Hours.visitors,
     currentPeriodKey: "last-24-hours",
     currentPeriodLabel: "Last 24 hours",
-    periods: summarizeFixedPeriods(hourlyBuckets, periodKeys, currentKey, labelHour),
-    pages: summarizePages(currentBucket, knownPages),
+    periods: summarizeFixedPeriods(hourKeys, hourCounts, formatHourKey(now), labelHour),
+    pages: summarizePages(identities, data.last24Hours.pageVisits, new Map(data.last24Hours.pageVisitors), knownPages),
   };
-};
 
-const summarizeRecentDaysScope = (
-  dailyBuckets: VisitorStatsAggregateBuckets,
-  now: Date,
-  dayCount: number,
-  currentPeriodKey: string,
-  currentPeriodLabel: string,
-  knownPages: VisitorPageIdentity[],
-): VisitorStatsScopeSummary => {
-  const periodKeys = getRecentDayKeys(now, dayCount);
-  const currentKey = formatDayKey(now);
-  const currentBucket = mergeBucketsForKeys(dailyBuckets, periodKeys);
+  const recentDaysScope = (dayCount: number, currentPeriodKey: string, currentPeriodLabel: string): VisitorStatsScopeSummary => {
+    const window = data.recentDays.find((entry) => entry.dayCount === dayCount);
+    const keys = recentKeys(currentDayStart, dayCount, MS_PER_DAY, formatDayKey);
+    return {
+      totalVisits: sumVisits(keys, dayCounts),
+      totalVisitors: window?.visitors ?? 0,
+      currentPeriodKey,
+      currentPeriodLabel,
+      periods: summarizeFixedPeriods(keys, dayCounts, currentDayKey, labelDay),
+      pages: summarizePages(identities, window?.pageVisits ?? [], new Map(window?.pageVisitors ?? []), knownPages),
+    };
+  };
 
   return {
-    totalVisits: bucketVisitCount(currentBucket),
-    totalVisitors: bucketVisitorCount(currentBucket),
-    currentPeriodKey,
-    currentPeriodLabel,
-    periods: summarizeFixedPeriods(dailyBuckets, periodKeys, currentKey, labelDay),
-    pages: summarizePages(currentBucket, knownPages),
-  };
-};
-
-export const createVisitorStatsSummary = (
-  stats: VisitorStatsStore,
-  now = new Date(),
-  knownPages: VisitorPageIdentity[] = [],
-): VisitorStatsSummary => {
-  const keys = getPeriodKeys(now);
-  const allTimeBucket = aggregateAllVisits(stats.visits);
-  const hourlyBuckets = aggregateVisits(stats.visits, (visit) => formatHourKey(getVisitDate(visit)));
-  const dailyBuckets = aggregateVisits(stats.visits, (visit) => formatDayKey(getVisitDate(visit)));
-  const allTimePeriods = downsamplePeriods(
-    summarizePeriods(dailyBuckets, keys.daily, labelDay),
-    ALL_TIME_CHART_PERIOD_LIMIT,
-  );
-
-  return {
-    updatedAt: stats.updatedAt,
+    updatedAt: new Date(data.lastVisitAt ?? data.computedAt).toISOString(),
+    computedAt: now.toISOString(),
     scopes: {
-      allTime: {
-        totalVisits: bucketVisitCount(allTimeBucket),
-        totalVisitors: bucketVisitorCount(allTimeBucket),
-        currentPeriodKey: "all-time",
-        currentPeriodLabel: "All time",
-        periods: allTimePeriods,
-        pages: summarizePages(allTimeBucket, knownPages),
-      },
-      daily: summarizeRecentHoursScope(hourlyBuckets, now, knownPages),
-      weekly: summarizeRecentDaysScope(dailyBuckets, now, 7, "last-7-days", "Last 7 days", knownPages),
-      monthly: summarizeRecentDaysScope(dailyBuckets, now, 30, "last-30-days", "Last 30 days", knownPages),
-      yearly: summarizeRecentDaysScope(dailyBuckets, now, 365, "last-365-days", "Last 365 days", knownPages),
+      allTime,
+      daily,
+      weekly: recentDaysScope(7, "last-7-days", "Last 7 days"),
+      monthly: recentDaysScope(30, "last-30-days", "Last 30 days"),
+      yearly: recentDaysScope(365, "last-365-days", "Last 365 days"),
     },
   };
 };
 
-export const loadVisitorStatsSummary = (
-  now = new Date(),
-  knownPages: VisitorPageIdentity[] = [],
-): Promise<VisitorStatsSummary> =>
-  loadVisitorStorage()
-    .then((storage) => storage.loadVisitorStatsSummary(now, knownPages))
-    .catch((error: unknown) => {
-      const message = error instanceof Error ? error.message : String(error);
-      console.warn(`[visitors] SQLite analytics storage unavailable; returning empty analytics summary: ${message}`);
-      return createVisitorStatsSummary(createEmptyVisitorStatsStore(now), now, knownPages);
-    });
+/** The admin analytics answer: numbers (when available) plus catch-up progress and errors. */
+export const loadVisitorStats = async (knownPages: VisitorPageIdentity[], options: { refresh?: boolean } = {}): Promise<VisitorStatsResponse> => {
+  try {
+    const storage = await loadVisitorStorage();
+    const analytics = await storage.loadVisitorAnalytics(options);
+    return {
+      stats: analytics.summary ? createVisitorStatsSummary(analytics.summary, knownPages) : null,
+      status: { catchingUp: analytics.progress, error: analytics.error, refreshing: analytics.refreshing },
+    };
+  } catch (error: unknown) {
+    const message = errorMessage(error);
+    console.warn(`[visitors] Visitor analytics storage unavailable: ${message}`);
+    return { stats: null, status: { catchingUp: null, error: `Visitor analytics are unavailable: ${message}`, refreshing: false } };
+  }
+};

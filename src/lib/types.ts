@@ -72,19 +72,55 @@ export interface ModeratorAccount {
 
 export type VisitorStatsScope = "allTime" | "daily" | "weekly" | "monthly" | "yearly";
 
-export interface VisitorStatsVisit {
-  id: string;
-  path: string;
-  slug: string;
-  title: string;
+/** A visit handed to analytics storage; `visitorId` is the salted hash of the client address. */
+export interface VisitorEventInput {
+  eventId: string | null;
+  page: VisitorPageIdentity;
+  visitedAt: number;
   visitorId: string;
-  visitedAt: string;
 }
 
-export interface VisitorStatsStore {
-  salt: string;
-  updatedAt: string;
-  visits: VisitorStatsVisit[];
+/** Progress of folding stored visits that are not part of the numbers yet. */
+export interface VisitorAnalyticsProgress {
+  processed: number;
+  total: number;
+  etaSeconds: number | null;
+}
+
+type VisitorAnalyticsPageCounts = Array<[pageId: number, count: number]>;
+
+/** Aggregate numbers read by the analytics worker; `visitor-analytics-store.mjs` documents their meaning. */
+export interface VisitorAnalyticsSummaryData {
+  computedAt: number;
+  lastVisitAt: number | null;
+  /** False while stored visits still wait to be folded into the aggregates. */
+  complete: boolean;
+  pages: Array<[pageId: number, slug: string, path: string, title: string]>;
+  allTime: {
+    visitors: number;
+    days: Array<[day: number, visits: number, visitors: number]>;
+    pages: Array<[pageId: number, visits: number, visitors: number]>;
+  };
+  last24Hours: {
+    visitors: number;
+    hours: Array<[hour: number, visits: number, visitors: number]>;
+    pageVisits: VisitorAnalyticsPageCounts;
+    pageVisitors: VisitorAnalyticsPageCounts;
+  };
+  recentDays: Array<{
+    dayCount: number;
+    visitors: number;
+    pageVisits: VisitorAnalyticsPageCounts;
+    pageVisitors: VisitorAnalyticsPageCounts;
+  }>;
+}
+
+export interface VisitorAnalyticsStatus {
+  /** Set while stored visits are still being folded; the numbers are incomplete until then. */
+  catchingUp: VisitorAnalyticsProgress | null;
+  /** Whether newer numbers are being computed than the ones returned. */
+  refreshing: boolean;
+  error: string | null;
 }
 
 export interface VisitorStatsPeriodSummary {
@@ -115,8 +151,16 @@ export interface VisitorStatsScopeSummary {
 export type VisitorStatsScopeSummaries = Record<VisitorStatsScope, VisitorStatsScopeSummary>;
 
 export interface VisitorStatsSummary {
+  /** Time of the latest recorded visit, or `computedAt` when there is none. */
   updatedAt: string;
+  /** When the numbers were read from the aggregates. */
+  computedAt: string;
   scopes: VisitorStatsScopeSummaries;
+}
+
+export interface VisitorStatsResponse {
+  stats: VisitorStatsSummary | null;
+  status: VisitorAnalyticsStatus;
 }
 
 export interface VisitorPageIdentity {
