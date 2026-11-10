@@ -224,7 +224,7 @@ const removeObsoleteTranslationCache = async (directoryPath) => {
   try {
     assertDedicatedPrivateDirectory(directoryPath);
     for (const subdirectory of OBSOLETE_TRANSLATION_CACHE_SUBDIRECTORIES) {
-      const subdirectoryPath = path.join(directoryPath, subdirectory);
+      const subdirectoryPath = path.join(/*turbopackIgnore: true*/ directoryPath, subdirectory);
       let fileNames;
       try {
         fileNames = await readdir(/*turbopackIgnore: true*/ subdirectoryPath);
@@ -236,7 +236,7 @@ const removeObsoleteTranslationCache = async (directoryPath) => {
       }
       for (const fileName of fileNames) {
         if (OBSOLETE_TRANSLATION_CACHE_FILE_PATTERN.test(fileName)) {
-          await unlink(path.join(subdirectoryPath, fileName)).catch((error) => {
+          await unlink(path.join(/*turbopackIgnore: true*/ subdirectoryPath, fileName)).catch((error) => {
             if (!isMissingPathError(error)) {
               throw error;
             }
