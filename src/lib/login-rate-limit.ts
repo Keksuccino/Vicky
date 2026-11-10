@@ -2,6 +2,7 @@ import path from "node:path";
 
 import { getClientIp } from "@/lib/client-ip-policy";
 import { createLoginRateLimitStorage } from "@/lib/login-rate-limit-storage.mjs";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import type { NextRequest } from "next/server";
 
 type LoginAttemptState = {
@@ -31,9 +32,16 @@ type LoginRateLimitStorage = {
   close: () => void;
 };
 
-type GlobalStorageState = {
+type DurableStorageState = {
   signature: string;
   storage: LoginRateLimitStorage;
+};
+
+type LoginRateLimitProcessState = {
+  durable: DurableStorageState | null;
+  fallbackAttempts: Map<string, LoginAttemptState>;
+  fallbackMutationsUntilPrune: number;
+  lastPersistenceWarningAt: number;
 };
 
 export type LoginRateLimitStatus = {
@@ -60,7 +68,6 @@ const PRUNE_INTERVAL = 64;
 const WARNING_INTERVAL_MS = 60_000;
 const WARNING_MESSAGE_LIMIT = 300;
 const GLOBAL_SAFETY_IDENTITY = "__global__";
-const STORAGE_STATE_KEY = Symbol.for("vicky.login-rate-limit.sqlite");
 const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "login-rate-limit.sqlite");
 const DEFAULT_LEGACY_STORE_PATH = path.join(process.cwd(), "data", "login-rate-limit.json");
 
@@ -85,25 +92,17 @@ const derivedDbPath = configuredLegacyPath.toLowerCase().endsWith(".json") ? con
 const DB_PATH = process.env.AUTH_LOGIN_DB_PATH?.trim() || (process.env.AUTH_LOGIN_STORE_FILE_PATH ? derivedDbPath : DEFAULT_DB_PATH);
 const STORAGE_SIGNATURE = JSON.stringify({ DB_PATH, configuredLegacyPath, MAX_FAILED_ATTEMPTS, WINDOW_MS, BLOCK_MS, MAX_IDENTITIES, BUSY_TIMEOUT_MS });
 
-const fallbackAttempts = new Map<string, LoginAttemptState>();
-let fallbackMutationsUntilPrune = PRUNE_INTERVAL;
-let lastPersistenceWarningAt = 0;
+const limiterState = processSingleton("loginRateLimit.state", (): LoginRateLimitProcessState => ({
+  durable: null,
+  fallbackAttempts: new Map(),
+  fallbackMutationsUntilPrune: PRUNE_INTERVAL,
+  lastPersistenceWarningAt: 0,
+}));
+const { fallbackAttempts } = limiterState;
 
-const getGlobalState = (): GlobalStorageState | null => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, GlobalStorageState | undefined>;
-  return globalState[STORAGE_STATE_KEY] ?? null;
-};
-
-const setGlobalState = (state: GlobalStorageState): void => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, GlobalStorageState | undefined>;
-  globalState[STORAGE_STATE_KEY] = state;
-};
-
-const clearGlobalState = (): void => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, GlobalStorageState | undefined>;
-  const existing = globalState[STORAGE_STATE_KEY];
-  existing?.storage.close();
-  delete globalState[STORAGE_STATE_KEY];
+const closeDurableStorage = (): void => {
+  limiterState.durable?.storage.close();
+  limiterState.durable = null;
 };
 
 const boundedMessage = (error: unknown): string => {
@@ -113,11 +112,12 @@ const boundedMessage = (error: unknown): string => {
 
 const warnPersistenceFailure = (action: string, error: unknown): void => {
   const now = Date.now();
+  const { lastPersistenceWarningAt } = limiterState;
   if (lastPersistenceWarningAt > 0 && now >= lastPersistenceWarningAt && now - lastPersistenceWarningAt < WARNING_INTERVAL_MS) {
     return;
   }
 
-  lastPersistenceWarningAt = now;
+  limiterState.lastPersistenceWarningAt = now;
   console.warn(`[auth] Failed to ${action} durable login rate-limit state; using the bounded in-memory fallback: ${boundedMessage(error)}`);
 };
 
@@ -141,22 +141,18 @@ const createStorage = (): LoginRateLimitStorage => {
 };
 
 const getStorage = (): LoginRateLimitStorage => {
-  const existing = getGlobalState();
+  const existing = limiterState.durable;
   if (existing?.signature === STORAGE_SIGNATURE) {
     existing.storage.verifyPrivateFiles();
     return existing.storage;
   }
   if (existing) {
-    clearGlobalState();
+    closeDurableStorage();
   }
 
   const storage = createStorage();
-  setGlobalState({ signature: STORAGE_SIGNATURE, storage });
+  limiterState.durable = { signature: STORAGE_SIGNATURE, storage };
   return storage;
-};
-
-const discardStorage = (): void => {
-  clearGlobalState();
 };
 
 const pruneFallback = (now: number): void => {
@@ -218,10 +214,10 @@ const fallbackRegister = (requestedIdentity: string, now: number): DurableFailed
     return { ...safetyStatus, attemptsLeft: 0 };
   }
 
-  fallbackMutationsUntilPrune -= 1;
-  if (fallbackMutationsUntilPrune <= 0) {
+  limiterState.fallbackMutationsUntilPrune -= 1;
+  if (limiterState.fallbackMutationsUntilPrune <= 0) {
     pruneFallback(now);
-    fallbackMutationsUntilPrune = PRUNE_INTERVAL;
+    limiterState.fallbackMutationsUntilPrune = PRUNE_INTERVAL;
   }
 
   const identity = fallbackIdentity(requestedIdentity, now);
@@ -288,7 +284,7 @@ export const getLoginRateLimitStatus = async (request: NextRequest): Promise<Log
     }
     return publicStatus(status);
   } catch (error) {
-    discardStorage();
+    closeDurableStorage();
     warnPersistenceFailure("read", error);
     return publicStatus(fallback);
   }
@@ -310,7 +306,7 @@ export const registerFailedLoginAttempt = async (request: NextRequest): Promise<
     mirrorDurableStatus(status, now, status.attemptsLeft);
     return publicFailedStatus(status);
   } catch (error) {
-    discardStorage();
+    closeDurableStorage();
     markFallbackUndurable(fallback.identity);
     warnPersistenceFailure("update", error);
     return publicFailedStatus(fallback);
@@ -325,15 +321,15 @@ export const clearFailedLoginAttempts = async (request: NextRequest): Promise<vo
     fallbackAttempts.delete(clearedIdentity);
     fallbackAttempts.delete(fallbackIdentity(identity, now));
   } catch (error) {
-    discardStorage();
+    closeDurableStorage();
     warnPersistenceFailure("clear", error);
     fallbackAttempts.delete(fallbackIdentity(identity, now));
   }
 };
 
 export const resetLoginRateLimitStorageForTests = (): void => {
-  clearGlobalState();
+  closeDurableStorage();
   fallbackAttempts.clear();
-  fallbackMutationsUntilPrune = PRUNE_INTERVAL;
-  lastPersistenceWarningAt = 0;
+  limiterState.fallbackMutationsUntilPrune = PRUNE_INTERVAL;
+  limiterState.lastPersistenceWarningAt = 0;
 };

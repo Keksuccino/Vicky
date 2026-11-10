@@ -1,5 +1,6 @@
 import { randomBytes, scrypt as scryptCallback, timingSafeEqual, type ScryptOptions } from "node:crypto";
 
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import { getRuntimeSecret } from "@/lib/runtime-secrets.mjs";
 
 // These parameters are one of OWASP's equivalent minimum scrypt profiles: roughly
@@ -21,11 +22,20 @@ export const ADMIN_PASSWORD_BUSY_RETRY_AFTER_SECONDS = 1;
 
 const SCRYPT_OPTIONS: ScryptOptions = Object.freeze({ N: SCRYPT_COST, r: SCRYPT_BLOCK_SIZE, p: SCRYPT_PARALLELIZATION, maxmem: SCRYPT_MAX_MEMORY });
 
+type DerivationLimiter = {
+  active: number;
+  waiting: Array<() => void>;
+};
+
+// The concurrency bound protects process-wide memory and libuv workers, so every module copy
+// shares one limiter. The salt and the derived expected key below may differ per copy: each copy
+// verifies against its own derivation, so a duplicate costs one extra KDF run but never changes
+// a verification outcome.
+const derivationLimiter = processSingleton("adminPassword.derivationLimiter", (): DerivationLimiter => ({ active: 0, waiting: [] }));
+
 // The configured password is plaintext runtime input rather than a persisted hash, so a
 // fresh process-local salt provides uniqueness without introducing a new state file.
 const processSalt = randomBytes(SCRYPT_SALT_LENGTH);
-const pendingDerivations: Array<() => void> = [];
-let activeDerivations = 0;
 let expectedPasswordKeyPromise: Promise<Buffer> | null = null;
 
 export class AdminPasswordVerificationBusyError extends Error {
@@ -36,20 +46,20 @@ export class AdminPasswordVerificationBusyError extends Error {
 }
 
 const acquireDerivationPermit = async (): Promise<void> => {
-  if (activeDerivations < MAX_CONCURRENT_DERIVATIONS) {
-    activeDerivations += 1;
+  if (derivationLimiter.active < MAX_CONCURRENT_DERIVATIONS) {
+    derivationLimiter.active += 1;
     return;
   }
 
-  if (pendingDerivations.length >= MAX_QUEUED_DERIVATIONS) {
+  if (derivationLimiter.waiting.length >= MAX_QUEUED_DERIVATIONS) {
     throw new AdminPasswordVerificationBusyError();
   }
 
-  await new Promise<void>((resolve) => pendingDerivations.push(resolve));
+  await new Promise<void>((resolve) => derivationLimiter.waiting.push(resolve));
 };
 
 const releaseDerivationPermit = (): void => {
-  const next = pendingDerivations.shift();
+  const next = derivationLimiter.waiting.shift();
   if (next) {
     // The active permit is handed directly to the next waiter, so the counter must
     // remain unchanged until the queue is empty.
@@ -57,7 +67,7 @@ const releaseDerivationPermit = (): void => {
     return;
   }
 
-  activeDerivations -= 1;
+  derivationLimiter.active -= 1;
 };
 
 const scryptAsync = (password: Buffer): Promise<Buffer> =>

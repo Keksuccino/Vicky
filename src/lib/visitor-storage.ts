@@ -3,6 +3,7 @@ import path from "node:path";
 
 import Database from "better-sqlite3";
 
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import { ensurePrivateDirectorySync, ensurePrivateFileSync } from "@/lib/runtime-file-security.mjs";
 import type {
   VisitorPageIdentity,
@@ -17,7 +18,6 @@ type SqliteDatabase = ReturnType<typeof Database>;
 const DEFAULT_ANALYTICS_DB_PATH = path.join(process.cwd(), "data", "wiki-analytics.sqlite");
 const ALL_TIME_CHART_PERIOD_LIMIT = 150;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const ANALYTICS_DB_STATE_KEY = Symbol.for("vicky.analytics.sqlite");
 
 type AnalyticsDbState = {
   db: SqliteDatabase;
@@ -53,26 +53,17 @@ const REQUIRED_TABLE_COLUMNS: Record<AnalyticsTableName, string[]> = {
 
 const getAnalyticsDbPath = (): string => process.env.WIKI_ANALYTICS_DB_PATH?.trim() || DEFAULT_ANALYTICS_DB_PATH;
 
-const getGlobalState = (): AnalyticsDbState | null => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, AnalyticsDbState | undefined>;
-  return globalState[ANALYTICS_DB_STATE_KEY] ?? null;
-};
+const analyticsConnection = processSingleton("analytics.sqliteConnection", (): { current: AnalyticsDbState | null } => ({ current: null }));
 
-const setGlobalState = (state: AnalyticsDbState): void => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, AnalyticsDbState | undefined>;
-  globalState[ANALYTICS_DB_STATE_KEY] = state;
-};
-
-const clearGlobalState = (): void => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, AnalyticsDbState | undefined>;
-  const existing = globalState[ANALYTICS_DB_STATE_KEY];
+const closeAnalyticsDatabase = (): void => {
+  const existing = analyticsConnection.current;
   if (existing?.db.open) {
     existing.db.close();
   }
-  delete globalState[ANALYTICS_DB_STATE_KEY];
+  analyticsConnection.current = null;
 };
 
-export const resetVisitorAnalyticsStorageForTests = (): void => clearGlobalState();
+export const resetVisitorAnalyticsStorageForTests = (): void => closeAnalyticsDatabase();
 
 const getTableColumns = (db: SqliteDatabase, tableName: AnalyticsTableName): Set<string> =>
   new Set(db.prepare<[], TableInfoRow>(`PRAGMA table_info(${tableName})`).all().map((row) => row.name));
@@ -169,7 +160,7 @@ const ensurePrivateAnalyticsFiles = (dbPath: string): void => {
 
 const getDatabase = (): SqliteDatabase => {
   const dbPath = getAnalyticsDbPath();
-  const existing = getGlobalState();
+  const existing = analyticsConnection.current;
   if (existing?.path === dbPath && existing.db.open) {
     try {
       ensurePrivateAnalyticsFiles(dbPath);
@@ -177,7 +168,7 @@ const getDatabase = (): SqliteDatabase => {
     } catch (error) {
       // Do not keep a native connection usable after permission verification fails.
       // Closing it also removes transient WAL/SHM state when SQLite can do so safely.
-      clearGlobalState();
+      closeAnalyticsDatabase();
       throw error;
     }
   }
@@ -190,7 +181,7 @@ const getDatabase = (): SqliteDatabase => {
     db = new Database(dbPath);
     initDatabase(db);
     ensurePrivateAnalyticsFiles(dbPath);
-    setGlobalState({ db, path: dbPath });
+    analyticsConnection.current = { db, path: dbPath };
     return db;
   } catch (error) {
     if (db?.open) {

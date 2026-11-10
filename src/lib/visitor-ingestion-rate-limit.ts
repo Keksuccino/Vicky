@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { getClientIp } from "@/lib/client-ip-policy";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 
 type ClientAdmissionState = {
   activeRequests: number;
@@ -42,10 +43,20 @@ const GLOBAL_MAX_CONCURRENCY = parseBoundedPositiveInteger(process.env.VISITOR_A
 const CLIENT_STATE_TTL_MS = RATE_WINDOW_MS * 2;
 const CLIENT_PRUNE_INTERVAL_MS = Math.min(RATE_WINDOW_MS, 30_000);
 
-const clients = new Map<string, ClientAdmissionState>();
-let globalActiveRequests = 0;
-let globalRequestedAt: number[] = [];
-let lastClientPruneAt = Number.NEGATIVE_INFINITY;
+type VisitorIngestionAdmissionState = {
+  clients: Map<string, ClientAdmissionState>;
+  globalActiveRequests: number;
+  globalRequestedAt: number[];
+  lastClientPruneAt: number;
+};
+
+const admissionState = processSingleton("visitorIngestion.admissionState", (): VisitorIngestionAdmissionState => ({
+  clients: new Map(),
+  globalActiveRequests: 0,
+  globalRequestedAt: [],
+  lastClientPruneAt: Number.NEGATIVE_INFINITY,
+}));
+const { clients } = admissionState;
 
 const withinWindow = (timestamp: number, now: number): boolean => now - timestamp < RATE_WINDOW_MS;
 
@@ -55,12 +66,12 @@ const retryAfterFor = (timestamps: number[], now: number): number => {
 };
 
 const pruneAdmissionState = (now: number): void => {
-  globalRequestedAt = globalRequestedAt.filter((timestamp) => withinWindow(timestamp, now));
+  admissionState.globalRequestedAt = admissionState.globalRequestedAt.filter((timestamp) => withinWindow(timestamp, now));
 
-  if (now - lastClientPruneAt < CLIENT_PRUNE_INTERVAL_MS) {
+  if (now - admissionState.lastClientPruneAt < CLIENT_PRUNE_INTERVAL_MS) {
     return;
   }
-  lastClientPruneAt = now;
+  admissionState.lastClientPruneAt = now;
 
   for (const [clientId, state] of clients.entries()) {
     state.requestedAt = state.requestedAt.filter((timestamp) => withinWindow(timestamp, now));
@@ -100,8 +111,8 @@ const getOrCreateClientState = (clientId: string, now: number): ClientAdmissionS
 };
 
 const createAcceptedPermit = (now: number, state?: ClientAdmissionState): VisitorIngestionPermit => {
-  globalRequestedAt.push(now);
-  globalActiveRequests += 1;
+  admissionState.globalRequestedAt.push(now);
+  admissionState.globalActiveRequests += 1;
   if (state) {
     state.requestedAt.push(now);
     state.activeRequests += 1;
@@ -118,7 +129,7 @@ const createAcceptedPermit = (now: number, state?: ClientAdmissionState): Visito
       if (state) {
         state.activeRequests = Math.max(0, state.activeRequests - 1);
       }
-      globalActiveRequests = Math.max(0, globalActiveRequests - 1);
+      admissionState.globalActiveRequests = Math.max(0, admissionState.globalActiveRequests - 1);
     },
   };
 };
@@ -126,12 +137,12 @@ const createAcceptedPermit = (now: number, state?: ClientAdmissionState): Visito
 export const acquireVisitorIngestionPermit = (request: NextRequest, now = Date.now()): VisitorIngestionPermit => {
   pruneAdmissionState(now);
 
-  if (globalActiveRequests >= GLOBAL_MAX_CONCURRENCY) {
+  if (admissionState.globalActiveRequests >= GLOBAL_MAX_CONCURRENCY) {
     return { allowed: false, retryAfterSeconds: 1 };
   }
 
-  if (globalRequestedAt.length >= GLOBAL_MAX_REQUESTS) {
-    return { allowed: false, retryAfterSeconds: retryAfterFor(globalRequestedAt, now) };
+  if (admissionState.globalRequestedAt.length >= GLOBAL_MAX_REQUESTS) {
+    return { allowed: false, retryAfterSeconds: retryAfterFor(admissionState.globalRequestedAt, now) };
   }
 
   const clientId = getClientIp(request);
@@ -160,7 +171,7 @@ export const acquireVisitorIngestionPermit = (request: NextRequest, now = Date.n
 
 export const resetVisitorIngestionRateLimitForTests = (): void => {
   clients.clear();
-  globalActiveRequests = 0;
-  globalRequestedAt = [];
-  lastClientPruneAt = Number.NEGATIVE_INFINITY;
+  admissionState.globalActiveRequests = 0;
+  admissionState.globalRequestedAt = [];
+  admissionState.lastClientPruneAt = Number.NEGATIVE_INFINITY;
 };

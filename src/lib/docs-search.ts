@@ -2,6 +2,7 @@ import { docsSearchCorpusCache } from "@/lib/cache";
 import { listMarkdownDocsTreePagesWithTitles, loadGitHubLocalizationSnapshot, toRuntimeConfigCacheKey } from "@/lib/github";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess } from "@/lib/github-cache-invalidation";
 import { isLocalizedPageOutdated, isSourceLanguage } from "@/lib/page-localization-read";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubDocTreeItem, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
 const DEFAULT_SEARCH_LIMIT = 50;
@@ -51,7 +52,7 @@ type SearchTranslationOptions = {
   localizationPath: string;
 };
 
-const docsSearchCorpusLoads = new Map<string, Promise<SearchableDoc[]>>();
+const docsSearchCorpusLoads = processSingleton("docsSearch.corpusLoads", () => new Map<string, Promise<SearchableDoc[]>>());
 
 const FIELD_WEIGHTS: Record<SearchField, number> = {
   title: 3.0,

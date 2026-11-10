@@ -11,6 +11,7 @@ import {
   type PageLocalizationRequestResult,
   type PageLocalizationTranslationEvent,
 } from "@/lib/page-localization";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   AutoTranslateLanguage,
   GitHubRuntimeConfig,
@@ -75,7 +76,6 @@ type StartPageLocalizationJobInput = {
   siteTitle: string;
 };
 
-const PAGE_LOCALIZATION_JOB_STATE_KEY = Symbol.for("vicky.pageLocalization.jobState");
 const MAX_JOB_LOG_ENTRIES = 500;
 const MAX_JOB_STATUS_LOG_ENTRIES = 200;
 
@@ -91,21 +91,14 @@ const emptyResult = (): PageLocalizationRequestResult => ({
   failures: [],
 });
 
-const getPageLocalizationJobState = (): PageLocalizationJobState => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, PageLocalizationJobState | undefined>;
-  let state = globalState[PAGE_LOCALIZATION_JOB_STATE_KEY];
-
-  if (!state) {
-    state = {
-      latestJob: null,
-      nextJobId: 1,
-      nextLogId: 1,
-    };
-    globalState[PAGE_LOCALIZATION_JOB_STATE_KEY] = state;
-  }
-
-  return state;
-};
+// Resolved on every access instead of once at module load, so removing the registration (as
+// the job and status-route tests do between cases) starts a fresh job history.
+const getPageLocalizationJobState = (): PageLocalizationJobState =>
+  processSingleton("pageLocalization.jobState", (): PageLocalizationJobState => ({
+    latestJob: null,
+    nextJobId: 1,
+    nextLogId: 1,
+  }));
 
 const addJobLog = (
   job: PageLocalizationJob,

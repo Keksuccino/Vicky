@@ -14,6 +14,7 @@ import next from "next";
 import { INTERNAL_CLIENT_IP_HEADER, isTrustedProxyClientIpPeer, normalizeClientIp, resolveTrustedForwardedClientIp } from "./src/lib/client-ip-policy.mjs";
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
 import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse } from "./src/lib/https-runtime-policy.mjs";
+import { peekProcessSingleton } from "./src/lib/process-singleton.mjs";
 import { INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER, INTERNAL_REQUEST_HOST_HEADER, INTERNAL_REQUEST_PROTOCOL_HEADER, isProxyOriginHeaderTrustEnabled, normalizeHttpAuthority, normalizeHttpProtocol } from "./src/lib/request-origin-policy.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "./src/lib/runtime-file-security.mjs";
 import { validateRuntimeSecretsOrExit } from "./src/lib/runtime-secret-startup.mjs";
@@ -52,7 +53,7 @@ const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_S
 const SSL_RUNTIME_INSTANCE_ID = randomUUID();
 const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
-const GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY = Symbol.for("vicky.githubLocalization.uploadQueue.shutdown");
+const GITHUB_LOCALIZATION_UPLOAD_QUEUE_NAME = "githubLocalization.uploadQueue";
 
 // The admin route may run in a Next worker, so an inherited process environment value is
 // the reliable way to distinguish this server's live snapshot from a stale file or start:next.
@@ -619,8 +620,9 @@ async function closeServer(server) {
 }
 
 async function stopGitHubLocalizationUploadQueue() {
-  const shutdownQueue = globalThis[GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY];
-  if (typeof shutdownQueue !== "function") {
+  // Registered by src/lib/github-localization-upload-queue.ts on first use; no registration means nothing was ever queued.
+  const uploadQueue = peekProcessSingleton(GITHUB_LOCALIZATION_UPLOAD_QUEUE_NAME);
+  if (typeof uploadQueue?.shutdown !== "function") {
     return;
   }
 
@@ -634,7 +636,7 @@ async function stopGitHubLocalizationUploadQueue() {
   });
 
   try {
-    await Promise.race([Promise.resolve().then(() => shutdownQueue()), timeoutPromise]);
+    await Promise.race([Promise.resolve().then(() => uploadQueue.shutdown()), timeoutPromise]);
     if (timedOut) {
       warn(`GitHub localization uploads did not settle within ${SERVER_CLOSE_GRACE_MS}ms; continuing shutdown.`);
     }

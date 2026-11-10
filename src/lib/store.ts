@@ -17,6 +17,7 @@ import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-s
 import { normalizeFooterTemplate } from "@/lib/footer";
 import { createGitHubCacheEpoch, normalizeGitHubCacheEpoch } from "@/lib/github-cache-identity";
 import { cleanupLegacyGitHubLogicalSourceCaches } from "@/lib/github-legacy-cache-cleanup";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import { ensurePrivateFile, openPrivateFileExclusive, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
 import { createAdminCredentialFingerprint, isAdminCredentialFingerprint, isAdminSessionEpoch } from "@/lib/session-security";
 import { normalizeStartPage } from "@/lib/start-page";
@@ -433,12 +434,21 @@ const readStoreFile = async (): Promise<StoreFileRead> => {
   }
 };
 
-let mutationQueue: Promise<unknown> = Promise.resolve();
-let cachedStore: { store: DocsStore; expiresAtMs: number } | null = null;
+type StoreProcessState = {
+  // Tagged with its file because module copies evaluated with a different store path (for
+  // example after a dev-server env reload) must never read each other's settings.
+  cached: { path: string; store: DocsStore; expiresAtMs: number } | null;
+  mutationQueue: Promise<unknown>;
+};
+
+const storeState = processSingleton("store.state", (): StoreProcessState => ({
+  cached: null,
+  mutationQueue: Promise.resolve(),
+}));
 
 const enqueueMutation = <T>(work: () => Promise<T>): Promise<T> => {
-  const result = mutationQueue.then(work, work);
-  mutationQueue = result.then(
+  const result = storeState.mutationQueue.then(work, work);
+  storeState.mutationQueue = result.then(
     () => undefined,
     () => undefined,
   );
@@ -449,16 +459,22 @@ const enqueueMutation = <T>(work: () => Promise<T>): Promise<T> => {
 export const getStorePath = (): string => STORE_PATH;
 
 const getCachedStore = (): DocsStore | null => {
-  if (!cachedStore || cachedStore.expiresAtMs <= Date.now()) {
-    cachedStore = null;
+  const { cached } = storeState;
+  if (!cached || cached.path !== STORE_PATH) {
     return null;
   }
 
-  return cloneStore(cachedStore.store);
+  if (cached.expiresAtMs <= Date.now()) {
+    storeState.cached = null;
+    return null;
+  }
+
+  return cloneStore(cached.store);
 };
 
 const updateCachedStore = (store: DocsStore): void => {
-  cachedStore = {
+  storeState.cached = {
+    path: STORE_PATH,
     store: cloneStore(store),
     expiresAtMs: Date.now() + STORE_READ_CACHE_TTL_MS,
   };

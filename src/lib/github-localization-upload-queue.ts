@@ -5,6 +5,7 @@ import {
   type GitHubLocalizedDocSourcePage,
   type SaveGitHubLocalizedDocBatchItem,
 } from "@/lib/github";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   AutoTranslateLanguage,
   GitHubDocPage,
@@ -93,8 +94,9 @@ export type GitHubLocalizationUploadQueueOptions = {
   uploadIntervalMs?: number;
 };
 
-const GITHUB_LOCALIZATION_UPLOAD_QUEUE_KEY = Symbol.for("vicky.githubLocalization.uploadQueue");
-const GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY = Symbol.for("vicky.githubLocalization.uploadQueue.shutdown");
+// The custom production server cannot import this TypeScript module. It resolves the queue by this process-singleton name and calls
+// `shutdown()` during graceful stop, which keeps shutdown explicit without adding process listeners per hot reload. Keep both names in sync.
+const GITHUB_LOCALIZATION_UPLOAD_QUEUE_NAME = "githubLocalization.uploadQueue";
 
 const asRecord = (value: unknown): Record<string, unknown> =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
@@ -554,20 +556,9 @@ export class GitHubLocalizationUploadQueue {
   }
 }
 
-const getUploadQueue = (): GitHubLocalizationUploadQueue => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, GitHubLocalizationUploadQueue | (() => Promise<void>) | undefined>;
-  let queue = globalState[GITHUB_LOCALIZATION_UPLOAD_QUEUE_KEY] as GitHubLocalizationUploadQueue | undefined;
-
-  if (!queue) {
-    // Uploads intentionally share the process lifetime of their in-memory translation jobs. Persisting token-bearing queue inputs without durable job/callback ownership would create orphaned writes after restart.
-    queue = new GitHubLocalizationUploadQueue();
-    globalState[GITHUB_LOCALIZATION_UPLOAD_QUEUE_KEY] = queue;
-    // The custom production server cannot import a Next.js TypeScript module directly. A symbol hook keeps shutdown explicit without adding process listeners per hot reload.
-    globalState[GITHUB_LOCALIZATION_UPLOAD_SHUTDOWN_KEY] = () => queue!.shutdown();
-  }
-
-  return queue;
-};
+// Uploads intentionally share the process lifetime of their in-memory translation jobs. Persisting token-bearing queue inputs without durable job/callback ownership would create orphaned writes after restart.
+const getUploadQueue = (): GitHubLocalizationUploadQueue =>
+  processSingleton(GITHUB_LOCALIZATION_UPLOAD_QUEUE_NAME, () => new GitHubLocalizationUploadQueue());
 
 export const flushGitHubLocalizationUploads = async (): Promise<void> => getUploadQueue().flush();
 

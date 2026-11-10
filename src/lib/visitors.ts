@@ -3,6 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 
 import { getClientIp } from "@/lib/client-ip-policy";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   GitHubDocPage,
   VisitorPageIdentity,
@@ -49,8 +50,6 @@ type VisitorStorageLoader = () => Promise<VisitorStorageBackend>;
 
 const defaultVisitorStorageLoader: VisitorStorageLoader = () => import("@/lib/visitor-storage");
 
-let visitorStorageLoader: VisitorStorageLoader = defaultVisitorStorageLoader;
-
 type QueuedDocPageVisit = {
   attempts: number;
   availableAt: number;
@@ -66,23 +65,41 @@ export type EnqueueDocPageVisitResult =
   | { status: "duplicate" }
   | { retryAfterSeconds: number; status: "full" };
 
-// Ready and delayed work stay separate so a backed-off write cannot block newer visits and
-// draining the normal FIFO does not repeatedly splice a large array.
-const readyVisitQueue = new Map<string, QueuedDocPageVisit>();
-const delayedVisitQueue = new Map<string, QueuedDocPageVisit>();
-const queuedEventIds = new Set<string>();
-const recentEventIds = new Map<string, number>();
-let activeQueuedVisitCount = 0;
-let lastRecentEventPruneAt = Number.NEGATIVE_INFINITY;
-let visitQueueFlushing = false;
-let visitQueueWakeAt = 0;
-let visitQueueWakeTimer: ReturnType<typeof setTimeout> | null = null;
-
-export const setVisitorStorageLoaderForTests = (loader: VisitorStorageLoader | null): void => {
-  visitorStorageLoader = loader ?? defaultVisitorStorageLoader;
+type VisitQueueState = {
+  activeQueuedVisitCount: number;
+  // Ready and delayed work stay separate so a backed-off write cannot block newer visits and
+  // draining the normal FIFO does not repeatedly splice a large array.
+  delayedVisitQueue: Map<string, QueuedDocPageVisit>;
+  flushing: boolean;
+  lastRecentEventPruneAt: number;
+  queuedEventIds: Set<string>;
+  readyVisitQueue: Map<string, QueuedDocPageVisit>;
+  recentEventIds: Map<string, number>;
+  // Shared with the queue because whichever module copy flushes it must use the same backend.
+  storageLoader: VisitorStorageLoader;
+  wakeAt: number;
+  wakeTimer: ReturnType<typeof setTimeout> | null;
 };
 
-const loadVisitorStorage = async (): Promise<VisitorStorageBackend> => visitorStorageLoader();
+const visitQueue = processSingleton("visitors.visitQueue", (): VisitQueueState => ({
+  activeQueuedVisitCount: 0,
+  delayedVisitQueue: new Map(),
+  flushing: false,
+  lastRecentEventPruneAt: Number.NEGATIVE_INFINITY,
+  queuedEventIds: new Set(),
+  readyVisitQueue: new Map(),
+  recentEventIds: new Map(),
+  storageLoader: defaultVisitorStorageLoader,
+  wakeAt: 0,
+  wakeTimer: null,
+}));
+const { delayedVisitQueue, queuedEventIds, readyVisitQueue, recentEventIds } = visitQueue;
+
+export const setVisitorStorageLoaderForTests = (loader: VisitorStorageLoader | null): void => {
+  visitQueue.storageLoader = loader ?? defaultVisitorStorageLoader;
+};
+
+const loadVisitorStorage = async (): Promise<VisitorStorageBackend> => visitQueue.storageLoader();
 
 const createEmptyVisitorStatsStore = (updatedAt: Date): VisitorStatsStore => ({
   salt: "",
@@ -353,10 +370,11 @@ const createVisitDedupKey = (ipAddress: string, eventId: string | null): string 
 const createVisitorClientIdentity = (ipAddress: string): string => ipAddress === "unknown" ? `anonymous:${randomUUID()}` : ipAddress;
 
 const pruneRecentEventIds = (now: number): void => {
+  const { lastRecentEventPruneAt } = visitQueue;
   if (now >= lastRecentEventPruneAt && now - lastRecentEventPruneAt < RECENT_EVENT_ID_PRUNE_INTERVAL_MS) {
     return;
   }
-  lastRecentEventPruneAt = now;
+  visitQueue.lastRecentEventPruneAt = now;
   for (const [dedupKey, acceptedAt] of recentEventIds.entries()) {
     if (now - acceptedAt >= RECENT_EVENT_ID_TTL_MS) {
       recentEventIds.delete(dedupKey);
@@ -384,11 +402,11 @@ const recordPageIdentityVisitForClient = async (clientIdentity: string, page: Vi
 };
 
 const clearVisitQueueWakeTimer = (): void => {
-  if (visitQueueWakeTimer) {
-    clearTimeout(visitQueueWakeTimer);
+  if (visitQueue.wakeTimer) {
+    clearTimeout(visitQueue.wakeTimer);
   }
-  visitQueueWakeTimer = null;
-  visitQueueWakeAt = 0;
+  visitQueue.wakeTimer = null;
+  visitQueue.wakeAt = 0;
 };
 
 const nextVisitRetryDelayMs = (attempts: number): number => Math.min(VISIT_RETRY_MAX_MS, VISIT_RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1));
@@ -413,18 +431,19 @@ const takeNextReadyVisit = (): QueuedDocPageVisit | null => {
 };
 
 const scheduleVisitQueueWake = (wakeAt: number): void => {
-  if (visitQueueWakeTimer && visitQueueWakeAt <= wakeAt) {
+  if (visitQueue.wakeTimer && visitQueue.wakeAt <= wakeAt) {
     return;
   }
 
   clearVisitQueueWakeTimer();
-  visitQueueWakeAt = wakeAt;
-  visitQueueWakeTimer = setTimeout(() => {
-    visitQueueWakeTimer = null;
-    visitQueueWakeAt = 0;
+  visitQueue.wakeAt = wakeAt;
+  const wakeTimer = setTimeout(() => {
+    visitQueue.wakeTimer = null;
+    visitQueue.wakeAt = 0;
     void flushQueuedVisits();
   }, Math.max(1, wakeAt - Date.now()));
-  visitQueueWakeTimer.unref?.();
+  wakeTimer.unref?.();
+  visitQueue.wakeTimer = wakeTimer;
 };
 
 const scheduleNextQueuedVisit = (): void => {
@@ -459,18 +478,18 @@ const completeQueuedVisit = (visit: QueuedDocPageVisit, remember: boolean): void
 };
 
 const flushQueuedVisits = async (): Promise<void> => {
-  if (visitQueueFlushing) {
+  if (visitQueue.flushing) {
     return;
   }
 
   clearVisitQueueWakeTimer();
-  visitQueueFlushing = true;
+  visitQueue.flushing = true;
 
   try {
     promoteReadyRetries(Date.now());
     let visit = takeNextReadyVisit();
     while (visit) {
-      activeQueuedVisitCount += 1;
+      visitQueue.activeQueuedVisitCount += 1;
 
       try {
         await recordPageIdentityVisitForClient(visit.clientIdentity, visit.page, visit.eventId);
@@ -486,14 +505,14 @@ const flushQueuedVisits = async (): Promise<void> => {
           completeQueuedVisit(visit, false);
         }
       } finally {
-        activeQueuedVisitCount = Math.max(0, activeQueuedVisitCount - 1);
+        visitQueue.activeQueuedVisitCount = Math.max(0, visitQueue.activeQueuedVisitCount - 1);
       }
 
       promoteReadyRetries(Date.now());
       visit = takeNextReadyVisit();
     }
   } finally {
-    visitQueueFlushing = false;
+    visitQueue.flushing = false;
     scheduleNextQueuedVisit();
   }
 };
@@ -518,7 +537,7 @@ export const enqueueDocPageVisit = (request: NextRequest, page: VisitorPageIdent
     return { status: "duplicate" };
   }
 
-  if (readyVisitQueue.size + delayedVisitQueue.size + activeQueuedVisitCount >= VISIT_QUEUE_CAPACITY) {
+  if (readyVisitQueue.size + delayedVisitQueue.size + visitQueue.activeQueuedVisitCount >= VISIT_QUEUE_CAPACITY) {
     let earliestAvailableAt = Number.POSITIVE_INFINITY;
     for (const visit of delayedVisitQueue.values()) {
       earliestAvailableAt = Math.min(earliestAvailableAt, visit.availableAt);
@@ -551,9 +570,9 @@ export const resetVisitorVisitQueueForTests = (): void => {
   delayedVisitQueue.clear();
   queuedEventIds.clear();
   recentEventIds.clear();
-  activeQueuedVisitCount = 0;
-  lastRecentEventPruneAt = Number.NEGATIVE_INFINITY;
-  visitQueueFlushing = false;
+  visitQueue.activeQueuedVisitCount = 0;
+  visitQueue.lastRecentEventPruneAt = Number.NEGATIVE_INFINITY;
+  visitQueue.flushing = false;
 };
 
 const summarizePages = (

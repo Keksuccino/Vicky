@@ -38,6 +38,7 @@ import {
   writePersistentRenderedMarkdown,
   type PersistedRenderedMarkdown,
 } from "@/lib/markdown-render-cache-store";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import { remarkGitHubAlerts } from "@/lib/remark-github-alerts";
 import type { GitHubDocPage, GitHubRuntimeConfig, MarkdownHeading } from "@/lib/types";
 
@@ -67,21 +68,9 @@ type MarkdownRenderQueueState = {
   renders: Map<string, Promise<RenderedMarkdownDocument>>;
 };
 
-const MARKDOWN_RENDER_QUEUE_STATE_KEY = Symbol.for("vicky.markdownRender.queueState");
-
-const getMarkdownRenderQueueState = (): MarkdownRenderQueueState => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, MarkdownRenderQueueState | undefined>;
-  let state = globalState[MARKDOWN_RENDER_QUEUE_STATE_KEY];
-
-  if (!state) {
-    state = {
-      renders: new Map(),
-    };
-    globalState[MARKDOWN_RENDER_QUEUE_STATE_KEY] = state;
-  }
-
-  return state;
-};
+const renderQueueState = processSingleton("markdownRender.queueState", (): MarkdownRenderQueueState => ({
+  renders: new Map(),
+}));
 
 const hashValue = (value: string): string => createHash("sha256").update(value).digest("hex").slice(0, 32);
 
@@ -376,9 +365,8 @@ export const renderMarkdownToHtmlCached = async ({
     };
   }
 
-  const queueState = getMarkdownRenderQueueState();
   const renderQueueKey = `${cacheKey}|generation-${access.generation}`;
-  const pending = queueState.renders.get(renderQueueKey);
+  const pending = renderQueueState.renders.get(renderQueueKey);
   if (pending) {
     const rendered = await pending;
     assertGitHubCacheAccess(access);
@@ -413,12 +401,12 @@ export const renderMarkdownToHtmlCached = async ({
       };
     })
     .finally(() => {
-      if (queueState.renders.get(renderQueueKey) === renderPromise) {
-        queueState.renders.delete(renderQueueKey);
+      if (renderQueueState.renders.get(renderQueueKey) === renderPromise) {
+        renderQueueState.renders.delete(renderQueueKey);
       }
     });
 
-  queueState.renders.set(renderQueueKey, renderPromise);
+  renderQueueState.renders.set(renderQueueKey, renderPromise);
   return renderPromise;
 };
 

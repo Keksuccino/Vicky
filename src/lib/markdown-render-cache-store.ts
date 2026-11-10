@@ -4,6 +4,7 @@ import { readFile, readdir, unlink } from "node:fs/promises";
 import path from "node:path";
 
 import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import {
   ensurePrivateDirectory,
   ensurePrivateDirectorySync,
@@ -60,22 +61,10 @@ type RenderedMarkdownCacheMutationState = {
   lastMutation: RenderedMarkdownCacheMutation | null;
 };
 
-const RENDERED_MARKDOWN_CACHE_MUTATION_STATE_KEY = Symbol.for("vicky.markdownRender.cacheMutationState");
-
-const getRenderedMarkdownCacheMutationState = (): RenderedMarkdownCacheMutationState => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, RenderedMarkdownCacheMutationState | undefined>;
-  let state = globalState[RENDERED_MARKDOWN_CACHE_MUTATION_STATE_KEY];
-
-  if (!state) {
-    state = {
-      cacheDir: "",
-      lastMutation: null,
-    };
-    globalState[RENDERED_MARKDOWN_CACHE_MUTATION_STATE_KEY] = state;
-  }
-
-  return state;
-};
+const cacheMutationState = processSingleton("markdownRender.cacheMutationState", (): RenderedMarkdownCacheMutationState => ({
+  cacheDir: "",
+  lastMutation: null,
+}));
 
 const getMarkdownRenderCacheDir = (): string =>
   process.env.WIKI_MARKDOWN_CACHE_DIR?.trim() || DEFAULT_MARKDOWN_RENDER_CACHE_DIR;
@@ -285,9 +274,8 @@ export const recordRenderedMarkdownCacheMutation = async (
     ...mutation,
     at: new Date().toISOString(),
   };
-  const state = getRenderedMarkdownCacheMutationState();
-  state.cacheDir = getMarkdownRenderCacheDir();
-  state.lastMutation = recorded;
+  cacheMutationState.cacheDir = getMarkdownRenderCacheDir();
+  cacheMutationState.lastMutation = recorded;
 
   try {
     await writeJsonFile(cacheMetadataFilePath(), {
@@ -303,16 +291,15 @@ export const recordRenderedMarkdownCacheMutation = async (
 };
 
 export const getRenderedMarkdownCacheLastMutation = async (): Promise<RenderedMarkdownCacheMutation | null> => {
-  const state = getRenderedMarkdownCacheMutationState();
   const cacheDir = getMarkdownRenderCacheDir();
-  if (state.cacheDir === cacheDir && state.lastMutation) {
-    return state.lastMutation;
+  if (cacheMutationState.cacheDir === cacheDir && cacheMutationState.lastMutation) {
+    return cacheMutationState.lastMutation;
   }
 
   const metadata = await readRenderedMarkdownCacheMetadata();
-  state.cacheDir = cacheDir;
-  state.lastMutation = metadata?.lastMutation ?? null;
-  return state.lastMutation;
+  cacheMutationState.cacheDir = cacheDir;
+  cacheMutationState.lastMutation = metadata?.lastMutation ?? null;
+  return cacheMutationState.lastMutation;
 };
 
 const listPersistentRenderedMarkdownFileNames = async (): Promise<string[]> => {

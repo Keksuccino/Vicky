@@ -9,7 +9,9 @@ const createHeaderRequest = (headers: Record<string, string>): NextRequest => ({
 const createTrustedProxyRequest = (clientIp: string): NextRequest => createHeaderRequest({ "x-forwarded-for": clientIp, [INTERNAL_REQUEST_CONTEXT_TOKEN_HEADER]: "analytics-test-token", [INTERNAL_CLIENT_IP_HEADER]: "10.0.0.2" });
 
 describe("visitor analytics admission limits", () => {
-  afterEach(() => {
+  afterEach(async () => {
+    // Admission counters are process-wide, so a re-imported module copy would inherit them.
+    (await import("@/lib/visitor-ingestion-rate-limit")).resetVisitorIngestionRateLimitForTests();
     vi.unstubAllEnvs();
     vi.resetModules();
   });

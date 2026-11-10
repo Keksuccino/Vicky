@@ -9,6 +9,8 @@ const createTrustedProxyRequest = (clientIp: string): NextRequest => createReque
 
 describe("AI chat rate limiting client identity", () => {
   afterEach(() => {
+    // Attempt windows are process-wide, so a re-imported module copy would inherit them.
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.aiChat.rateLimitAttempts")];
     vi.unstubAllEnvs();
     vi.resetModules();
   });

@@ -1,5 +1,6 @@
 import { ApiError } from "@/lib/http";
 import { getClientIp, type ClientIpRequest } from "@/lib/client-ip-policy";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 
 type ClientAdmissionState = {
   activeRequests: number;
@@ -41,17 +42,12 @@ const GLOBAL_MAX_CONCURRENCY = parseBoundedPositiveInteger(process.env.PUBLIC_DO
 const CLIENT_STATE_TTL_MS = RATE_WINDOW_MS * 2;
 const CLIENT_PRUNE_INTERVAL_MS = Math.min(RATE_WINDOW_MS, 30_000);
 
-const PUBLIC_DOCS_ADMISSION_STATE_KEY = Symbol.for("vicky.publicDocs.admissionState");
-
-const getAdmissionState = (): PublicDocsAdmissionState => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, PublicDocsAdmissionState | undefined>;
-  let state = globalState[PUBLIC_DOCS_ADMISSION_STATE_KEY];
-  if (!state) {
-    state = { clients: new Map(), globalActiveRequests: 0, globalRequestedAt: [], lastClientPruneAt: Number.NEGATIVE_INFINITY };
-    globalState[PUBLIC_DOCS_ADMISSION_STATE_KEY] = state;
-  }
-  return state;
-};
+const admissionState = processSingleton("publicDocs.admissionState", (): PublicDocsAdmissionState => ({
+  clients: new Map(),
+  globalActiveRequests: 0,
+  globalRequestedAt: [],
+  lastClientPruneAt: Number.NEGATIVE_INFINITY,
+}));
 
 const withinWindow = (timestamp: number, now: number): boolean => now - timestamp < RATE_WINDOW_MS;
 
@@ -61,7 +57,6 @@ const retryAfterFor = (timestamps: number[], now: number): number => {
 };
 
 const pruneAdmissionState = (now: number): void => {
-  const admissionState = getAdmissionState();
   admissionState.globalRequestedAt = admissionState.globalRequestedAt.filter((timestamp) => withinWindow(timestamp, now));
   if (now - admissionState.lastClientPruneAt < CLIENT_PRUNE_INTERVAL_MS) {
     return;
@@ -77,7 +72,6 @@ const pruneAdmissionState = (now: number): void => {
 };
 
 const evictOldestInactiveClient = (): boolean => {
-  const admissionState = getAdmissionState();
   let oldestClientId: string | null = null;
   let oldestSeenAt = Number.POSITIVE_INFINITY;
   for (const [clientId, state] of admissionState.clients.entries()) {
@@ -90,7 +84,6 @@ const evictOldestInactiveClient = (): boolean => {
 };
 
 const getOrCreateClientState = (clientId: string, now: number): ClientAdmissionState | null => {
-  const admissionState = getAdmissionState();
   const existing = admissionState.clients.get(clientId);
   if (existing) {
     existing.lastSeenAt = now;
@@ -107,7 +100,6 @@ const getOrCreateClientState = (clientId: string, now: number): ClientAdmissionS
 };
 
 const createAcceptedPermit = (now: number, state?: ClientAdmissionState): PublicDocsAdmissionPermit => {
-  const admissionState = getAdmissionState();
   admissionState.globalRequestedAt.push(now);
   admissionState.globalActiveRequests += 1;
   if (state) {
@@ -133,7 +125,6 @@ const createAcceptedPermit = (now: number, state?: ClientAdmissionState): Public
 
 export const acquirePublicDocsAdmissionPermit = (request?: ClientIpRequest, now = Date.now()): PublicDocsAdmissionPermit => {
   pruneAdmissionState(now);
-  const admissionState = getAdmissionState();
   if (admissionState.globalActiveRequests >= GLOBAL_MAX_CONCURRENCY) {
     return { allowed: false, retryAfterSeconds: 1 };
   }
@@ -177,7 +168,6 @@ export const withPublicDocsAdmission = async <T>(request: ClientIpRequest | unde
 };
 
 export const resetPublicDocsAdmissionForTests = (): void => {
-  const admissionState = getAdmissionState();
   admissionState.clients.clear();
   admissionState.globalActiveRequests = 0;
   admissionState.globalRequestedAt = [];

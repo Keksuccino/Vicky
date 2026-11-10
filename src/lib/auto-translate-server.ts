@@ -19,6 +19,7 @@ import {
 import { ApiError } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
 import { requestOpenRouterChatCompletion } from "@/lib/openrouter";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import {
   readPersistentTitleTranslations,
   readPersistentTitleTranslationsSync,
@@ -60,22 +61,10 @@ type TranslationQueueState = {
   titleQueues: Map<string, Map<string, Promise<Map<string, string>>>>;
 };
 
-const TRANSLATION_QUEUE_STATE_KEY = Symbol.for("vicky.autoTranslate.translationQueueState");
-
-const getTranslationQueueState = (): TranslationQueueState => {
-  const globalState = globalThis as typeof globalThis & Record<symbol, TranslationQueueState | undefined>;
-  let state = globalState[TRANSLATION_QUEUE_STATE_KEY];
-
-  if (!state) {
-    state = {
-      pageQueues: new Map(),
-      titleQueues: new Map(),
-    };
-    globalState[TRANSLATION_QUEUE_STATE_KEY] = state;
-  }
-
-  return state;
-};
+const translationQueueState = processSingleton("autoTranslate.translationQueueState", (): TranslationQueueState => ({
+  pageQueues: new Map(),
+  titleQueues: new Map(),
+}));
 
 const languageQueueKey = (language: AutoTranslateLanguage): string =>
   normalizeAutoTranslateLanguageCode(language.code).toLowerCase();
@@ -441,12 +430,11 @@ const loadTitleOnlyTranslations = async ({
   siteTitle: string;
 }): Promise<Map<string, string>> => {
   const access = beginGitHubCacheAccess(config);
-  const queueState = getTranslationQueueState();
 
   return runQueuedTranslation({
     getCached: () => getCachedTitleTranslations({ config, items, language, model }),
     languageKey: languageQueueKey(language),
-    queues: queueState.titleQueues,
+    queues: translationQueueState.titleQueues,
     queueKey: titleTranslationQueueKey(config),
     task: async () => {
       const keys = titleTranslationCacheKeys(config, items, language, model);
@@ -832,11 +820,10 @@ export const translateGitHubDocPage = async ({
     return sourcePage;
   }
 
-  const queueState = getTranslationQueueState();
   const loadPromise = runQueuedTranslation({
     getCached: () => getCachedTranslatedDocPage(config, sourcePage, language, model),
     languageKey: languageQueueKey(language),
-    queues: queueState.pageQueues,
+    queues: translationQueueState.pageQueues,
     queueKey: pageTranslationQueueKey(config, sourcePage),
     task: async () => {
       const keys = pageTranslationCacheKeys(config, sourcePage, language, model);

@@ -32,6 +32,7 @@ import {
 import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import { canonicalizePublicDocLocator, type CanonicalPublicDocLocator } from "@/lib/public-doc-path";
 import {
   deletePersistentRenderedMarkdownWhere,
@@ -365,17 +366,46 @@ const pruneTranslatedDocsCacheForSnapshotChange = async (
   }
 };
 
-const docsSnapshotLoads = new Map<string, Promise<GitHubDocsSnapshot>>();
-const localizationSnapshotLoads = new Map<string, Promise<GitHubLocalizationSnapshot>>();
-const docsTreeLoads = new Map<string, Promise<GitHubDocTreeItem[]>>();
-const docsTitleIndexLoads = new Map<string, Promise<GitHubDocTreeItem[]>>();
-const docsPageLoads = new Map<string, Promise<GitHubDocPage>>();
-const commitMetadataLoads = new Map<string, Promise<{ updatedAt?: string; updatedBy?: string }>>();
-const publicDocsTreeIndexes = new WeakMap<GitHubDocTreeItem[], { byPath: Map<string, GitHubDocTreeItem>; bySlug: Map<string, GitHubDocTreeItem> }>();
-const publicDocsNegativeCache = new Map<string, number>();
+type PublicDocsTreeIndex = {
+  byPath: Map<string, GitHubDocTreeItem>;
+  bySlug: Map<string, GitHubDocTreeItem>;
+};
+
+type GitHubDocsLoadState = {
+  commitMetadataLoads: Map<string, Promise<{ updatedAt?: string; updatedBy?: string }>>;
+  docsPageLoads: Map<string, Promise<GitHubDocPage>>;
+  docsSnapshotLoads: Map<string, Promise<GitHubDocsSnapshot>>;
+  docsTitleIndexLoads: Map<string, Promise<GitHubDocTreeItem[]>>;
+  docsTreeLoads: Map<string, Promise<GitHubDocTreeItem[]>>;
+  localizationSnapshotLoads: Map<string, Promise<GitHubLocalizationSnapshot>>;
+  publicDocsNegativeCache: Map<string, number>;
+  publicDocsNegativeCacheLastPruneAt: number;
+  publicDocsTreeIndexes: WeakMap<GitHubDocTreeItem[], PublicDocsTreeIndex>;
+};
+
+const docsLoadState = processSingleton("github.docsLoadState", (): GitHubDocsLoadState => ({
+  commitMetadataLoads: new Map(),
+  docsPageLoads: new Map(),
+  docsSnapshotLoads: new Map(),
+  docsTitleIndexLoads: new Map(),
+  docsTreeLoads: new Map(),
+  localizationSnapshotLoads: new Map(),
+  publicDocsNegativeCache: new Map(),
+  publicDocsNegativeCacheLastPruneAt: Number.NEGATIVE_INFINITY,
+  publicDocsTreeIndexes: new WeakMap(),
+}));
+const {
+  commitMetadataLoads,
+  docsPageLoads,
+  docsSnapshotLoads,
+  docsTitleIndexLoads,
+  docsTreeLoads,
+  localizationSnapshotLoads,
+  publicDocsNegativeCache,
+  publicDocsTreeIndexes,
+} = docsLoadState;
 const MAX_PUBLIC_DOC_NEGATIVE_CACHE_ENTRIES = 10_000;
 const MAX_PUBLIC_DOC_NEGATIVE_CACHE_TTL_MS = 30_000;
-let lastPublicDocsNegativeCachePruneAt = Number.NEGATIVE_INFINITY;
 
 const createOctokit = (config: GitHubRuntimeConfig): Octokit =>
   new Octokit({
@@ -1659,13 +1689,13 @@ const createDirectSlugReadTargets = (config: GitHubRuntimeConfig, slugInput: str
   return targets;
 };
 
-const getPublicDocsTreeIndex = (tree: GitHubDocTreeItem[]): { byPath: Map<string, GitHubDocTreeItem>; bySlug: Map<string, GitHubDocTreeItem> } => {
+const getPublicDocsTreeIndex = (tree: GitHubDocTreeItem[]): PublicDocsTreeIndex => {
   const cached = publicDocsTreeIndexes.get(tree);
   if (cached) {
     return cached;
   }
 
-  const index = { byPath: new Map<string, GitHubDocTreeItem>(), bySlug: new Map<string, GitHubDocTreeItem>() };
+  const index: PublicDocsTreeIndex = { byPath: new Map(), bySlug: new Map() };
   for (const item of tree) {
     const normalizedPath = item.path.normalize("NFC");
     const normalizedSlug = item.slug.normalize("NFC");
@@ -1700,8 +1730,8 @@ const hasPublicDocNegativeCacheEntry = (key: string, now = Date.now()): boolean 
 
 const cachePublicDocNegativeEntry = (key: string, now = Date.now()): void => {
   const ttlMs = Math.min(MAX_PUBLIC_DOC_NEGATIVE_CACHE_TTL_MS, docsTreeCache.getTtlMs());
-  if (now - lastPublicDocsNegativeCachePruneAt >= ttlMs) {
-    lastPublicDocsNegativeCachePruneAt = now;
+  if (now - docsLoadState.publicDocsNegativeCacheLastPruneAt >= ttlMs) {
+    docsLoadState.publicDocsNegativeCacheLastPruneAt = now;
     for (const [entryKey, expiresAt] of publicDocsNegativeCache.entries()) {
       if (now >= expiresAt) {
         publicDocsNegativeCache.delete(entryKey);

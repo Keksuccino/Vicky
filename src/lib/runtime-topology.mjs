@@ -4,6 +4,7 @@ import { access, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { processSingleton } from "./process-singleton.mjs";
 import { assertDedicatedPrivateDirectory, ensurePrivateDirectory, ensurePrivateFile, openPrivateFileExclusive } from "./runtime-file-security.mjs";
 
 export const SUPPORTED_RUNTIME_TOPOLOGY = "single-process-local";
@@ -13,7 +14,6 @@ export const RUNTIME_OWNER_ID_ENV = "VICKY_INTERNAL_RUNTIME_OWNER_ID";
 const OWNER_SCHEMA_VERSION = 1;
 const OWNER_FILE_SUFFIX = ".runtime-owner.json";
 const OWNER_ASSIGNMENT_FILE_SUFFIX = ".child.json";
-const OWNER_STATE_KEY = Symbol.for("vicky.runtimeTopology.ownerLease");
 const OWNER_ASSIGNMENT_POLL_MS = 10;
 const OWNER_ASSIGNMENT_TIMEOUT_MS = 10_000;
 
@@ -215,18 +215,14 @@ const assertRuntimeStorageLayoutIsDedicated = (layout) => {
   }
 };
 
-const getOwnerState = () => {
-  const globalState = globalThis;
-  return globalState[OWNER_STATE_KEY] ?? null;
-};
+// Process-wide, so another copy of this module (such as a bundled one) cannot acquire a second
+// lease in the same process.
+const ownerLeaseSlot = processSingleton("runtimeTopology.ownerLeaseSlot", () => ({ lease: null }));
+
+const getOwnerState = () => ownerLeaseSlot.lease;
 
 const setOwnerState = (state) => {
-  const globalState = globalThis;
-  if (state) {
-    globalState[OWNER_STATE_KEY] = state;
-  } else {
-    delete globalState[OWNER_STATE_KEY];
-  }
+  ownerLeaseSlot.lease = state ?? null;
 };
 
 export function shouldReleaseRuntimeOwnerOnProcessExit(rawOwner, rawAssignment, ownerId, exitingPid = process.pid) {

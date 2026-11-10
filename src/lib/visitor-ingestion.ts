@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 import { getCachedGitHubDocPage } from "@/lib/github";
 import { ApiError, badRequest, notFound, parseBoundedJsonBody } from "@/lib/http";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 import { normalizeHttpOrigin, resolveRequestOrigin } from "@/lib/request-origin-policy.mjs";
 import { normalizeVisitorPageIdentity } from "@/lib/visitors";
 import type { GitHubDocTreeItem, GitHubRuntimeConfig, VisitorPageIdentity } from "@/lib/types";
@@ -18,7 +19,7 @@ const UNSAFE_PATH_CHARACTER_PATTERN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}\\?#%<>"`|{}\[\]
 const UNSAFE_TITLE_CHARACTER_PATTERN = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 // Docs-tree arrays are reused by the TTL cache. A WeakMap makes repeated visit lookup O(1)
 // without retaining expired trees or introducing another invalidation path.
-const knownPageIndexes = new WeakMap<GitHubDocTreeItem[], Map<string, GitHubDocTreeItem>>();
+const knownPageIndexes = processSingleton("visitorIngestion.knownPageIndexes", () => new WeakMap<GitHubDocTreeItem[], Map<string, GitHubDocTreeItem>>());
 
 const isSafeSlug = (value: string): boolean => {
   if (!value || value.length > MAX_SLUG_LENGTH || value !== value.trim()) {

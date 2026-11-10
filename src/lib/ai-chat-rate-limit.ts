@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 import { getClientIp } from "@/lib/client-ip-policy";
+import { processSingleton } from "@/lib/process-singleton.mjs";
 
 type AiChatAttemptState = {
   requestedAt: number[];
@@ -17,7 +18,7 @@ const MAX_REQUESTS = 12;
 const WINDOW_MS = 60_000;
 const BLOCK_MS = 5 * 60_000;
 
-const attemptsByIp = new Map<string, AiChatAttemptState>();
+const attemptsByIp = processSingleton("aiChat.rateLimitAttempts", () => new Map<string, AiChatAttemptState>());
 
 const getRetryAfterSeconds = (blockedUntil: number, now: number): number =>
   Math.max(0, Math.ceil((blockedUntil - now) / 1000));

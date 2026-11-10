@@ -1,3 +1,5 @@
+import { processSingleton } from "@/lib/process-singleton.mjs";
+
 const FALLBACK_DOCS_CACHE_TTL_MS = 3_600_000;
 export const MIN_DOCS_CACHE_TTL_MS = 1_000;
 export const MAX_DOCS_CACHE_TTL_MS = 86_400_000;
@@ -110,14 +112,25 @@ export class MemoryCache<K, V> {
 const defaultTtlMs = normalizeDocsCacheTtlMs(process.env.DOCS_CACHE_TTL_MS);
 export const DOCS_CACHE_TTL_MS = defaultTtlMs;
 
-export const docsSnapshotCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
-export const docsTreeCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
-export const docsPageCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
-export const docsSearchCorpusCache = new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS);
-export const aiPlaintextDocsCache = new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS);
-export const translatedDocsPageCache = new MemoryCache<string, unknown>();
-export const translatedDocsTitleCache = new MemoryCache<string, unknown>();
-export const renderedMarkdownCache = new MemoryCache<string, unknown>();
+const docsMemoryCaches = processSingleton("cache.docsMemoryCaches", () => ({
+  docsSnapshot: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
+  docsTree: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
+  docsPage: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
+  docsSearchCorpus: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
+  aiPlaintextDocs: new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS),
+  translatedDocsPage: new MemoryCache<string, unknown>(),
+  translatedDocsTitle: new MemoryCache<string, unknown>(),
+  renderedMarkdown: new MemoryCache<string, unknown>(),
+}));
+
+export const docsSnapshotCache = docsMemoryCaches.docsSnapshot;
+export const docsTreeCache = docsMemoryCaches.docsTree;
+export const docsPageCache = docsMemoryCaches.docsPage;
+export const docsSearchCorpusCache = docsMemoryCaches.docsSearchCorpus;
+export const aiPlaintextDocsCache = docsMemoryCaches.aiPlaintextDocs;
+export const translatedDocsPageCache = docsMemoryCaches.translatedDocsPage;
+export const translatedDocsTitleCache = docsMemoryCaches.translatedDocsTitle;
+export const renderedMarkdownCache = docsMemoryCaches.renderedMarkdown;
 
 export const setDocsCacheTtlMs = (ttlMs: number): number => {
   const normalized = normalizeDocsCacheTtlMs(ttlMs, docsSnapshotCache.getTtlMs());

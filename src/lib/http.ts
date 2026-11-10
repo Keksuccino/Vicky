@@ -1,16 +1,28 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-export class ApiError extends Error {
-  readonly status: number;
-  readonly headers?: HeadersInit;
+import { processSingleton } from "@/lib/process-singleton.mjs";
 
-  constructor(status: number, message: string, headers?: HeadersInit) {
-    super(message);
-    this.status = status;
-    this.headers = headers;
-  }
-}
+/**
+ * One class object for the whole process. Every bundle graph evaluates this module separately,
+ * and a coalesced load started by one graph can reject into another graph's request. A
+ * per-copy class would fail `instanceof ApiError` there and turn an expected status into a 500.
+ */
+export const ApiError = processSingleton(
+  "http.ApiError",
+  () =>
+    class ApiError extends Error {
+      readonly status: number;
+      readonly headers?: HeadersInit;
+
+      constructor(status: number, message: string, headers?: HeadersInit) {
+        super(message);
+        this.status = status;
+        this.headers = headers;
+      }
+    },
+);
+export type ApiError = InstanceType<typeof ApiError>;
 
 export const badRequest = (message: string): ApiError => new ApiError(400, message);
 export const unauthorized = (message = "Unauthorized"): ApiError => new ApiError(401, message);
@@ -138,7 +150,8 @@ export const PUBLIC_ERROR_LOG_MAX_LENGTH = 2_000;
 const MAX_PUBLIC_ERROR_LOG_COMPONENT_LENGTH = 4_096;
 const MAX_PUBLIC_ERROR_CAUSE_DEPTH = 4;
 const OVERSIZED_PUBLIC_ERROR_LOG_COMPONENT = "[oversized error detail omitted]";
-const loggedPublicErrorObjects = new WeakSet<object>();
+// Process-wide because one rejected coalesced load can reach requests in several bundle graphs.
+const loggedPublicErrorObjects = processSingleton("http.loggedPublicErrorObjects", () => new WeakSet<object>());
 
 const redactSensitivePublicErrorLogText = (value: string): string => {
   return value
