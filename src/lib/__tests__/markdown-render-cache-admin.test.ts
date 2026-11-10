@@ -205,5 +205,7 @@ describe("markdown render cache admin helpers", () => {
       vi.useRealTimers();
       releaseBlobs();
     }
+    // The variant that was waiting still finishes; let it write into this test's directory.
+    await vi.waitFor(async () => expect(await listPersistentRenderedMarkdownCacheEntries()).toHaveLength(3));
   });
 });
