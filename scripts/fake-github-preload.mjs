@@ -119,7 +119,10 @@ if (isMainThread) {
 
   // Control endpoint: `/` reports request counts by kind (OpenRouter requests as `openrouter`),
   // `/reset` clears them, `/delete?path=<repo path>` removes a file as a commit on GitHub would,
-  // and `/file?path=<repo path>` returns a file's current content.
+  // and `/file?path=<repo path>` returns a file's current content. Under `npm run dev` and
+  // `npm run start:next` every process of the launcher chain loads this preload and the first one
+  // takes the port, so the endpoint is only meaningful for `node server.mjs`; the others go on
+  // without it instead of failing.
   http
     .createServer((request, response) => {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
@@ -143,6 +146,9 @@ if (isMainThread) {
       }
       response.setHeader("content-type", "application/json");
       response.end(JSON.stringify({ total: fake.requests.length, counts }));
+    })
+    .on("error", (error) => {
+      console.warn(`[fake-github] Control endpoint not started in process ${process.pid}: ${error.message}`);
     })
     .listen(Number(process.env.FAKE_GITHUB_CONTROL_PORT ?? 39190), "127.0.0.1")
     .unref();
