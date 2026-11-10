@@ -225,6 +225,8 @@ Common optional settings:
 | `HOST` | Listen host | `0.0.0.0` |
 | `HTTP_PORT` | HTTP listen port | `3000` |
 | `HTTPS_PORT` | HTTPS listen port | `443` |
+| `SERVER_KEEP_ALIVE_TIMEOUT_MS` | Idle keep-alive timeout of the `npm run start` listeners; keep it above the idle timeout of every proxy or CDN in front of Vicky (Cloudflare: 900 s) | `920000` |
+| `SERVER_HEADERS_TIMEOUT_MS` | Header receipt timeout of the `npm run start` listeners | 1 s above `SERVER_KEEP_ALIVE_TIMEOUT_MS` |
 | `LETS_ENCRYPT_STAGING` | Use Let's Encrypt staging CA for test runs | `false` |
 | `AUTH_TRUST_PROXY_HEADERS` | Enable one proxy-overwritten client IP from an allowlisted peer | `false` |
 | `AUTH_TRUSTED_PROXY_IPS` | Exact comma-separated proxy socket IP allowlist for client-IP forwarding | unset |
@@ -295,6 +297,7 @@ The optional external SSL health endpoint defaults to `/.well-known/vicky/ssl-st
 `HTTP_PORT` and `HTTPS_PORT` must be different values.
 
 If you run Vicky behind a reverse proxy:
+- keep the proxy's idle timeout for upstream keep-alive connections below `SERVER_KEEP_ALIVE_TIMEOUT_MS` (Cloudflare's fixed 900 s is covered by the default); otherwise Vicky can close a connection the proxy reuses and the request fails with a 502 or 520
 - forward `/.well-known/acme-challenge/*` to Vicky unchanged
 - do not replace Vicky's fail-closed custom-domain `503` response with a plaintext application fallback
 - preserve the original `Host` header

@@ -45,6 +45,14 @@ const SSL_STORE_WATCH_DEBOUNCE_MS = parsePositiveInteger(process.env.SSL_STORE_W
 const SSL_ISSUE_RETRY_BASE_MS = parsePositiveInteger(process.env.SSL_ISSUE_RETRY_BASE_MS, 15 * 60 * 1000);
 const SSL_ISSUE_RETRY_MAX_MS = parsePositiveInteger(process.env.SSL_ISSUE_RETRY_MAX_MS, 24 * 60 * 60 * 1000);
 const SERVER_CLOSE_GRACE_MS = parsePositiveInteger(process.env.SERVER_CLOSE_GRACE_MS, 5000);
+// Reverse proxies and CDNs reuse idle upstream connections until their own idle timeout expires
+// (Cloudflare: 900 s, Google Cloud load balancers: 600 s, nginx and AWS ALB: 60 s by default). With
+// Node's 5 s default the server closes such a connection first, and a request the proxy sends on it
+// at that moment fails as a 502/520. This must stay above the idle timeout of every proxy in front.
+const SERVER_KEEP_ALIVE_TIMEOUT_MS = parsePositiveInteger(process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS, 920_000);
+// Kept slightly above the keep-alive timeout by convention. Node bounds header receipt by the smaller
+// of this value and server.requestTimeout (300 s by default), and a whole request by the larger one.
+const SERVER_HEADERS_TIMEOUT_MS = parsePositiveInteger(process.env.SERVER_HEADERS_TIMEOUT_MS, SERVER_KEEP_ALIVE_TIMEOUT_MS + 1_000);
 const SSL_STATUS_ENDPOINT_PATH = normalizeStatusEndpointPath(
   process.env.SSL_STATUS_ENDPOINT_PATH ?? "/.well-known/vicky/ssl-status",
 );
@@ -567,6 +575,13 @@ async function listen(server, port, host) {
   });
 }
 
+// The keep-alive timeout only applies to connections accepted after it is set, so call this before listen().
+function applyConnectionTimeouts(server) {
+  server.keepAliveTimeout = SERVER_KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = SERVER_HEADERS_TIMEOUT_MS;
+  return server;
+}
+
 async function closeServer(server) {
   await new Promise((resolve, reject) => {
     let settled = false;
@@ -951,7 +966,7 @@ async function ensureHttpsServer(domainState) {
   }
 
   if (!httpsServer) {
-    const candidateServer = https.createServer(
+    const candidateServer = applyConnectionTimeouts(https.createServer(
       {
         key: bundle.key,
         cert: bundle.cert,
@@ -975,7 +990,7 @@ async function ensureHttpsServer(domainState) {
 
         void handleRequest(request, response);
       },
-    );
+    ));
 
     await listen(candidateServer, HTTPS_PORT, LISTEN_HOST);
     if (shuttingDown) {
@@ -1226,7 +1241,7 @@ async function start() {
   await app.prepare();
   activeDomainState = await loadDomainStateFromStore();
 
-  httpServer = http.createServer((request, response) => {
+  httpServer = applyConnectionTimeouts(http.createServer((request, response) => {
     const requestContext = {
       requestUrl: request.url,
       requestHost: request.headers.host,
@@ -1239,7 +1254,7 @@ async function start() {
       serveApplication: () => void handleRequest(request, response),
     };
     routeRuntimeHttpRequest(requestContext);
-  });
+  }));
 
   await listen(httpServer, HTTP_PORT, LISTEN_HOST);
   log(`HTTP server is listening on http://${LISTEN_HOST}:${HTTP_PORT}.`);
