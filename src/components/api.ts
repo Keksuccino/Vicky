@@ -341,22 +341,6 @@ function normalizePage(source: unknown, fallbackPath = "/"): DocPage {
   };
 }
 
-function normalizePageMetadata(
-  source: unknown,
-  fallbackPath = "/",
-): Pick<DocPage, "path" | "slug" | "updatedAt" | "updatedBy"> {
-  const payload = asRecord(asRecord(source).metadata ?? source);
-  const slug = asString(payload.slug) || toDocSlug(asString(payload.path));
-  const path = slug ? slugToPath(slug) : toAbsoluteDocPath(asString(payload.path, fallbackPath));
-
-  return {
-    path,
-    slug: slug || toDocSlug(path),
-    updatedAt: asString(payload.updatedAt || payload.lastUpdatedAt).trim() || undefined,
-    updatedBy: asString(payload.updatedBy || payload.lastUpdatedBy).trim() || undefined,
-  };
-}
-
 function normalizeTreeItems(source: unknown): RawTreeItem[] {
   const payload = asRecord(source).items;
 
@@ -1170,25 +1154,6 @@ export async function fetchDocsTreeState(
   };
 }
 
-export async function fetchDocPage(pathOrSlug: string, languageCode?: string): Promise<DocPage> {
-  const slug = toDocSlug(pathOrSlug);
-  const query = new URLSearchParams({
-    slug,
-    ...(languageCode ? { language: languageCode } : {}),
-  });
-  const response = await requestJson<unknown>(`/api/docs/page?${query.toString()}`);
-  return normalizePage(response, slugToPath(slug));
-}
-
-export async function fetchDocPageMetadata(
-  pathOrSlug: string,
-): Promise<Pick<DocPage, "path" | "slug" | "updatedAt" | "updatedBy">> {
-  const slug = toDocSlug(pathOrSlug);
-  const query = new URLSearchParams({ slug });
-  const response = await requestJson<unknown>(`/api/docs/page-metadata?${query.toString()}`);
-  return normalizePageMetadata(response, slugToPath(slug));
-}
-
 export function createDisplayedDocPageVisitEventId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
@@ -1536,11 +1501,6 @@ export async function fetchAdminLanguageTranslationStatus(jobId?: string): Promi
   });
 
   return normalizeAdminTranslationRuntimeStatus(response);
-}
-
-export async function fetchAdminLanguageTranslationCacheStatuses(): Promise<AdminLanguageTranslationCacheStatus[]> {
-  const response = await fetchAdminLanguageTranslationStatus();
-  return response.statuses;
 }
 
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {

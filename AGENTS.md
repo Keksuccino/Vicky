@@ -40,7 +40,7 @@
   - `src/app/layout.tsx`
   - `src/components/app-header.tsx`
 - Docs UI and navigation/search/hash scrolling:
-  - `src/components/docs-client.tsx`
+  - `src/components/docs-shell.tsx`
   - `src/components/docs-tree.tsx`
 - Markdown rendering:
   - `src/components/markdown-renderer.tsx`
