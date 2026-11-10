@@ -67,5 +67,5 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
 };
 
 export const config = {
-  matcher: ["/admin/:path*", "/editor/:path*", "/api/admin/:path*", "/docs/:path*"],
+  matcher: ["/admin/:path*", "/editor/:path*", "/api/admin/:path*"],
 };
