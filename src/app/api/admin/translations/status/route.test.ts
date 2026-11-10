@@ -22,7 +22,7 @@ const statusRequest = (body: unknown): NextRequest => new NextRequest("http://lo
 describe("admin translation status", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobState")];
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobSlot")];
     mocks.requireAdminRequest.mockResolvedValue(null);
   });
 

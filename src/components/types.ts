@@ -265,18 +265,19 @@ export type AdminMarkdownCacheMutation = {
   target?: string;
 };
 
-export type AdminMarkdownCacheWarmResult = {
-  cachedVariants: number;
-  failedVariants: number;
-  failures: Array<{
-    error: string;
-    languageCode: string;
-    slug: string;
-  }>;
+/** The background job that renders missing Markdown HTML. */
+export type AdminMarkdownCacheWarmJob = {
+  id: string;
+  status: "running" | "completed" | "completed_with_failures" | "failed";
+  phase: "planning" | "rendering" | "finished";
+  error: string | null;
+  /** Variants without HTML when the job started; `processedVariants` counts up to it. */
+  missingVariants: number;
+  processedVariants: number;
   renderedVariants: number;
-  skippedVariants: number;
-  totalPages: number;
-  totalVariants: number;
+  failedVariants: number;
+  /** `null` until the first variant is processed. */
+  etaSeconds: number | null;
 };
 
 export type AdminMarkdownCacheClearResult = {

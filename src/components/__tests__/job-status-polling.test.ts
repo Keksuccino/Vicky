@@ -2,9 +2,9 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { startTranslationStatusPolling } from "../translation-status-polling";
+import { startJobStatusPolling } from "../job-status-polling";
 
-describe("translation status polling", () => {
+describe("job status polling", () => {
   let visibilityState: DocumentVisibilityState;
 
   beforeEach(() => {
@@ -22,7 +22,7 @@ describe("translation status polling", () => {
     const poll = vi.fn(async () => {
       running = false;
     });
-    const stop = startTranslationStatusPolling({ documentTarget: document, intervalMs: 4_000, isJobRunning: () => running, onPoll: poll, windowTarget: window });
+    const stop = startJobStatusPolling({ documentTarget: document, intervalMs: 4_000, isJobRunning: () => running, onPoll: poll, windowTarget: window });
 
     await vi.advanceTimersByTimeAsync(4_000);
     await vi.advanceTimersByTimeAsync(20_000);
@@ -34,7 +34,7 @@ describe("translation status polling", () => {
 
   it("clears polling while hidden and resumes immediately when visible", async () => {
     const poll = vi.fn(async () => undefined);
-    const stop = startTranslationStatusPolling({ documentTarget: document, intervalMs: 4_000, isJobRunning: () => true, onPoll: poll, windowTarget: window });
+    const stop = startJobStatusPolling({ documentTarget: document, intervalMs: 4_000, isJobRunning: () => true, onPoll: poll, windowTarget: window });
 
     visibilityState = "hidden";
     document.dispatchEvent(new Event("visibilitychange"));

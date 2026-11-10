@@ -23,6 +23,7 @@ import {
   fetchAdminDomainSslStatus,
   fetchAdminLanguageTranslationStatus,
   fetchAdminMarkdownCacheStatus,
+  fetchAdminMarkdownCacheWarmJob,
   fetchAdminModerators,
   fetchAdminPerformanceStats,
   fetchAdminSettings,
@@ -33,16 +34,16 @@ import {
   requestAdminLanguageTranslations,
   requestAdminSourceVersionRecording,
   saveAdminSettings,
+  startAdminMarkdownCacheWarmJob,
   testAdminConnection,
   updateAdminModerator,
-  warmAdminMarkdownCache,
 } from "@/components/api";
 import { CircleFlagIconPicker } from "@/components/circle-flag-icon-picker";
 import { ColorPickerField } from "@/components/color-picker-field";
+import { startJobStatusPolling } from "@/components/job-status-polling";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
 import { useTheme } from "@/components/theme-provider";
-import { startTranslationStatusPolling } from "@/components/translation-status-polling";
 import {
   AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
@@ -72,6 +73,7 @@ import type {
   AdminLanguageTranslationCacheStatus,
   AdminMarkdownCachePageStatus,
   AdminMarkdownCacheStatus,
+  AdminMarkdownCacheWarmJob,
   AdminSettings,
   AdminTranslationJobLogEntry,
   AdminTranslationJobSnapshot,
@@ -114,6 +116,7 @@ const VISITOR_STATS_CATCH_UP_POLL_MS = 2_000;
 const VISITOR_STATS_PENDING_POLL_MS = 1_000;
 const TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS = 650;
 const TRANSLATION_CACHE_STATUS_POLL_MS = 4_000;
+const MARKDOWN_CACHE_WARM_JOB_POLL_MS = 1_000;
 const PERFORMANCE_REFRESH_INTERVAL_MS = 60_000;
 
 const INITIAL_SETTINGS: AdminSettings = {
@@ -726,14 +729,19 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
   );
 }
 
+type MarkdownCacheActionMessage = { tone: "success" | "warning" | "error"; text: string };
+
 type MarkdownCacheCardProps = {
-  actionMessage: { tone: "success" | "warning" | "error"; text: string } | null;
+  actionMessage: MarkdownCacheActionMessage | null;
   clearingAll: boolean;
   clearingSlug: string | null;
   error: string | null;
   loading: boolean;
   status: AdminMarkdownCacheStatus | null;
-  warming: boolean;
+  /** The latest warm job; while it runs, the card shows its progress. */
+  warmJob: AdminMarkdownCacheWarmJob | null;
+  /** The request that starts a warm job is on its way. */
+  warmStarting: boolean;
   onClearAll: () => void;
   onClearPage: (page: AdminMarkdownCachePageStatus) => void;
   onRefresh: () => void;
@@ -747,13 +755,17 @@ function MarkdownCacheCard({
   error,
   loading,
   status,
-  warming,
+  warmJob,
+  warmStarting,
   onClearAll,
   onClearPage,
   onRefresh,
   onWarmAll,
 }: MarkdownCacheCardProps) {
-  const busy = loading || warming || clearingAll || Boolean(clearingSlug);
+  const warmJobRunning = warmJob?.status === "running";
+  const warming = warmStarting || warmJobRunning;
+  const clearing = clearingAll || Boolean(clearingSlug);
+  const busy = loading || warming || clearing;
 
   return (
     <section className="panel-card panel-card-markdown-cache">
@@ -767,7 +779,7 @@ function MarkdownCacheCard({
             <button
               type="button"
               className="btn btn-icon visitor-refresh-button"
-              disabled={busy}
+              disabled={loading || clearing}
               aria-label={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}
               onClick={onRefresh}
             >
@@ -779,6 +791,7 @@ function MarkdownCacheCard({
 
       {error ? <p className="error-text">{error}</p> : null}
       {actionMessage ? <p className={`${actionMessage.tone}-text`}>{actionMessage.text}</p> : null}
+      {warmJob && warmJobRunning ? <MarkdownCacheWarmProgress job={warmJob} /> : null}
 
       {status ? (
         <MarkdownCacheStatusDetails
@@ -797,7 +810,7 @@ function MarkdownCacheCard({
             <strong>Cache status loads on request</strong>
             <span>Check which pages and translations already have rendered HTML. It only loads when you ask, so the admin panel opens faster.</span>
           </div>
-          <button type="button" className="btn btn-primary" disabled={busy} onClick={onRefresh}>
+          <button type="button" className="btn btn-primary" disabled={loading || clearing} onClick={onRefresh}>
             <MaterialIcon name={loading ? "hourglass_top" : "query_stats"} />
             <span>{loading ? "Loading..." : "Show cache status"}</span>
           </button>
@@ -809,10 +822,11 @@ function MarkdownCacheCard({
 
 type MarkdownCacheStatusDetailsProps = Pick<
   MarkdownCacheCardProps,
-  "clearingAll" | "clearingSlug" | "warming" | "onClearAll" | "onClearPage" | "onWarmAll"
+  "clearingAll" | "clearingSlug" | "onClearAll" | "onClearPage" | "onWarmAll"
 > & {
   busy: boolean;
   status: AdminMarkdownCacheStatus;
+  warming: boolean;
 };
 
 function MarkdownCacheStatusDetails({
@@ -1300,38 +1314,74 @@ const formatRemainingTime = (seconds: number): string => {
   return `about ${hours} h${restMinutes > 0 ? ` ${restMinutes} min` : ""} left`;
 };
 
+/** Rounded down, so a bar never reads 100% before the last item is done. */
+const progressPercent = (processed: number, total: number): number => (total > 0 ? Math.min(99, Math.floor((processed / total) * 100)) : 0);
+
+const formatEtaSeconds = (etaSeconds: number | null): string => (etaSeconds === null ? "working out the time left" : formatRemainingTime(etaSeconds));
+
+type ProgressPanelProps = {
+  ariaLabel: string;
+  detail: string;
+  percent: number;
+  title: string;
+};
+
+/** Progress of a long-running background job: title, percentage, bar, and what is left. */
+function ProgressPanel({ ariaLabel, detail, percent, title }: ProgressPanelProps) {
+  const style = { "--progress-panel-size": `${percent}%` } as CSSProperties;
+
+  return (
+    <div className="progress-panel">
+      <div className="progress-panel-heading">
+        <strong>{title}</strong>
+        <span>{percent}%</span>
+      </div>
+      <div className="progress-panel-bar" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+        <span style={style} />
+      </div>
+      <span className="progress-panel-detail">{detail}</span>
+    </div>
+  );
+}
+
 type VisitorCatchUpProgressProps = {
   progress: NonNullable<VisitorAnalyticsStatus["catchingUp"]>;
 };
 
 function VisitorCatchUpProgress({ progress }: VisitorCatchUpProgressProps) {
-  // Rounded down so the bar never reads 100% before the last visit is in.
-  const percent = progress.total > 0 ? Math.min(99, Math.floor((progress.processed / progress.total) * 100)) : 0;
-  const style = { "--visitor-catch-up-size": `${percent}%` } as CSSProperties;
-  const remaining = progress.etaSeconds === null ? "working out the time left" : formatRemainingTime(progress.etaSeconds);
-
   return (
-    <div className="visitor-catch-up">
-      <div className="visitor-catch-up-heading">
-        <strong>Catching up on earlier visits</strong>
-        <span>{percent}%</span>
-      </div>
-      <div
-        className="visitor-catch-up-bar"
-        role="progressbar"
-        aria-label="Earlier visits added"
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={percent}
-      >
-        <span style={style} />
-      </div>
-      <span className="visitor-catch-up-detail">
-        {formatVisitorCount(progress.processed)} of {formatVisitorCount(progress.total)} visits, {remaining}. The numbers below fill in as it goes.
-      </span>
-    </div>
+    <ProgressPanel
+      ariaLabel="Earlier visits added"
+      detail={`${formatVisitorCount(progress.processed)} of ${formatVisitorCount(progress.total)} visits, ${formatEtaSeconds(progress.etaSeconds)}. The numbers below fill in as it goes.`}
+      percent={progressPercent(progress.processed, progress.total)}
+      title="Catching up on earlier visits"
+    />
   );
 }
+
+function MarkdownCacheWarmProgress({ job }: { job: AdminMarkdownCacheWarmJob }) {
+  const detail =
+    job.phase === "planning"
+      ? "Checking which pages and translations still need HTML."
+      : `${formatVisitorCount(job.processedVariants)} of ${formatVisitorCount(job.missingVariants)} variants, ${formatEtaSeconds(job.etaSeconds)}. It keeps going if you leave this page.`;
+
+  return <ProgressPanel ariaLabel="Missing HTML rendered" detail={detail} percent={progressPercent(job.processedVariants, job.missingVariants)} title="Rendering missing HTML" />;
+}
+
+/** What the card says once a warm job it watched has finished. */
+const markdownCacheWarmOutcome = (job: AdminMarkdownCacheWarmJob): MarkdownCacheActionMessage => {
+  const rendered = `${formatVisitorCount(job.renderedVariants)} Markdown HTML variant${job.renderedVariants === 1 ? "" : "s"}`;
+  if (job.status === "failed") {
+    return { tone: "error", text: job.error ?? "Rendering the missing HTML stopped." };
+  }
+  if (job.failedVariants > 0) {
+    return { tone: "warning", text: `Cached ${rendered}; ${formatVisitorCount(job.failedVariants)} failed.` };
+  }
+  if (job.renderedVariants === 0) {
+    return { tone: "success", text: "All available Markdown HTML variants were already cached." };
+  }
+  return { tone: "success", text: `Cached ${rendered}.` };
+};
 
 type VisitorStatsCardProps = {
   activeScope: VisitorStatsScope;
@@ -1655,11 +1705,9 @@ export function AdminSettingsPanel() {
   const [markdownCacheStatus, setMarkdownCacheStatus] = useState<AdminMarkdownCacheStatus | null>(null);
   const [markdownCacheStatusLoading, setMarkdownCacheStatusLoading] = useState(false);
   const [markdownCacheStatusError, setMarkdownCacheStatusError] = useState<string | null>(null);
-  const [markdownCacheActionMessage, setMarkdownCacheActionMessage] = useState<{
-    tone: "success" | "warning" | "error";
-    text: string;
-  } | null>(null);
-  const [warmingMarkdownCache, setWarmingMarkdownCache] = useState(false);
+  const [markdownCacheActionMessage, setMarkdownCacheActionMessage] = useState<MarkdownCacheActionMessage | null>(null);
+  const [markdownCacheWarmJob, setMarkdownCacheWarmJob] = useState<AdminMarkdownCacheWarmJob | null>(null);
+  const [startingMarkdownCacheWarm, setStartingMarkdownCacheWarm] = useState(false);
   const [clearingMarkdownCacheAll, setClearingMarkdownCacheAll] = useState(false);
   const [clearingMarkdownCacheSlug, setClearingMarkdownCacheSlug] = useState<string | null>(null);
 
@@ -1702,6 +1750,8 @@ export function AdminSettingsPanel() {
   const markdownCacheStatusRequestRef = useRef(0);
   /** Set once the admin asks for the Markdown cache status; it is never loaded before that. */
   const markdownCacheStatusRequestedRef = useRef(false);
+  const markdownCacheWarmJobRef = useRef<AdminMarkdownCacheWarmJob | null>(null);
+  const lastMarkdownCacheWarmJobStatusRef = useRef<AdminMarkdownCacheWarmJob["status"] | null>(null);
   const performanceStatsRequestRef = useRef(0);
   const visitorStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
@@ -2173,49 +2223,48 @@ export function AdminSettingsPanel() {
     logElement.scrollTop = logElement.scrollHeight;
   }, [translationLogEntries.length, translationJob?.id]);
 
+  const trackMarkdownCacheWarmJob = useCallback((job: AdminMarkdownCacheWarmJob | null): void => {
+    markdownCacheWarmJobRef.current = job;
+    setMarkdownCacheWarmJob(job);
+  }, []);
+
+  /** Reads the latest warm job; the server answers from memory, so the card can poll it while it runs. */
+  const refreshMarkdownCacheWarmJob = useCallback(async () => {
+    try {
+      trackMarkdownCacheWarmJob(await fetchAdminMarkdownCacheWarmJob());
+    } catch {
+      // The next poll tries again; a job that is gone for good is no longer shown once polling stops.
+    }
+  }, [trackMarkdownCacheWarmJob]);
+
   const cacheMissingMarkdownHtml = useCallback(async () => {
-    setWarmingMarkdownCache(true);
+    setStartingMarkdownCacheWarm(true);
     setMarkdownCacheActionMessage(null);
     setMarkdownCacheStatusError(null);
 
     try {
       await persistLatestSettings();
-      const { result, status } = await warmAdminMarkdownCache();
-      setMarkdownCacheStatus(status);
-
-      if (result.failedVariants > 0) {
-        setMarkdownCacheActionMessage({
-          tone: "warning",
-          text: `Cached ${formatVisitorCount(result.renderedVariants)} Markdown HTML variant${
-            result.renderedVariants === 1 ? "" : "s"
-          }; ${formatVisitorCount(result.failedVariants)} failed.`,
-        });
-        return;
-      }
-
-      if (result.renderedVariants === 0) {
-        setMarkdownCacheActionMessage({
-          tone: "success",
-          text: "All available Markdown HTML variants were already cached.",
-        });
-        return;
-      }
-
-      setMarkdownCacheActionMessage({
-        tone: "success",
-        text: `Cached ${formatVisitorCount(result.renderedVariants)} missing Markdown HTML variant${
-          result.renderedVariants === 1 ? "" : "s"
-        }.`,
-      });
+      trackMarkdownCacheWarmJob(await startAdminMarkdownCacheWarmJob());
     } catch (error) {
       setMarkdownCacheActionMessage({
         tone: "error",
         text: formatApiError(error),
       });
     } finally {
-      setWarmingMarkdownCache(false);
+      setStartingMarkdownCacheWarm(false);
     }
-  }, [persistLatestSettings]);
+  }, [persistLatestSettings, trackMarkdownCacheWarmJob]);
+
+  useEffect(() => {
+    const job = markdownCacheWarmJob;
+    const previousStatus = lastMarkdownCacheWarmJobStatusRef.current;
+    lastMarkdownCacheWarmJobStatusRef.current = job?.status ?? null;
+
+    if (previousStatus === "running" && job && job.status !== "running") {
+      setMarkdownCacheActionMessage(markdownCacheWarmOutcome(job));
+      refreshRequestedMarkdownCacheStatus();
+    }
+  }, [markdownCacheWarmJob, refreshRequestedMarkdownCacheStatus]);
 
   const clearMarkdownCacheForAllPages = useCallback(async () => {
     if (!window.confirm("Clear rendered Markdown HTML for all pages?")) {
@@ -2479,8 +2528,16 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    return startTranslationStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_CACHE_STATUS_POLL_MS, isJobRunning: () => translationJobRef.current?.status === "running", onPoll: refreshTranslationCacheStatuses, windowTarget: window });
+    return startJobStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_CACHE_STATUS_POLL_MS, isJobRunning: () => translationJobRef.current?.status === "running", onPoll: refreshTranslationCacheStatuses, windowTarget: window });
   }, [loadError, loading, refreshTranslationCacheStatuses, translationJob?.id, translationJob?.status]);
+
+  useEffect(() => {
+    if (loading || loadError || markdownCacheWarmJob?.status !== "running") {
+      return;
+    }
+
+    return startJobStatusPolling({ documentTarget: document, intervalMs: MARKDOWN_CACHE_WARM_JOB_POLL_MS, isJobRunning: () => markdownCacheWarmJobRef.current?.status === "running", onPoll: refreshMarkdownCacheWarmJob, windowTarget: window });
+  }, [loadError, loading, markdownCacheWarmJob?.id, markdownCacheWarmJob?.status, refreshMarkdownCacheWarmJob]);
 
   useEffect(() => {
     if (loading || loadError) {
@@ -2568,6 +2625,8 @@ export function AdminSettingsPanel() {
         void refreshSslStatus();
         void refreshPerformanceStats();
         void refreshVisitorStats();
+        // A warm job keeps running while the admin is away; show its progress again.
+        void refreshMarkdownCacheWarmJob();
       } catch (error) {
         if (isActive) {
           setLoadError(formatApiError(error));
@@ -2587,7 +2646,7 @@ export function AdminSettingsPanel() {
       isActive = false;
       autoSaveReadyRef.current = false;
     };
-  }, [createSaveSnapshot, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings]);
+  }, [createSaveSnapshot, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;
@@ -2803,7 +2862,8 @@ export function AdminSettingsPanel() {
             error={markdownCacheStatusError}
             loading={markdownCacheStatusLoading}
             status={markdownCacheStatus}
-            warming={warmingMarkdownCache}
+            warmJob={markdownCacheWarmJob}
+            warmStarting={startingMarkdownCacheWarm}
             onClearAll={clearMarkdownCacheForAllPages}
             onClearPage={clearMarkdownCacheForPage}
             onRefresh={() => {

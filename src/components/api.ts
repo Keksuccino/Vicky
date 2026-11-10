@@ -5,7 +5,7 @@ import {
   type AdminMarkdownCacheLanguageStatus,
   type AdminMarkdownCachePageStatus,
   type AdminMarkdownCacheStatus,
-  type AdminMarkdownCacheWarmResult,
+  type AdminMarkdownCacheWarmJob,
   type AdminTranslationJobLogEntry,
   type AdminTranslationJobSnapshot,
   type AiChatReply,
@@ -1004,38 +1004,29 @@ function normalizeAdminMarkdownCacheStatus(source: unknown): AdminMarkdownCacheS
   };
 }
 
-function normalizeAdminMarkdownCacheWarmResult(source: unknown): AdminMarkdownCacheWarmResult {
-  const payload = asRecord(asRecord(source).result ?? source);
-  const rawFailures = payload.failures;
-  const failures = Array.isArray(rawFailures)
-    ? rawFailures
-        .map((entry) => {
-          const failure = asRecord(entry);
-          const slug = asString(failure.slug).trim();
-          const languageCode = asString(failure.languageCode).trim();
-          const error = asString(failure.error).trim();
+function normalizeAdminMarkdownCacheWarmJob(source: unknown): AdminMarkdownCacheWarmJob | null {
+  const payload = asRecord(asRecord(source).job);
+  const id = asString(payload.id).trim();
+  if (!id) {
+    return null;
+  }
 
-          if (!slug && !languageCode && !error) {
-            return null;
-          }
-
-          return {
-            error: error || "Rendered Markdown HTML cache failed.",
-            languageCode,
-            slug,
-          };
-        })
-        .filter((entry): entry is AdminMarkdownCacheWarmResult["failures"][number] => Boolean(entry))
-    : [];
+  const status = asString(payload.status).trim();
+  const phase = asString(payload.phase).trim();
+  const count = (value: unknown): number => Math.max(0, Math.round(asNumber(value, 0)));
+  const missingVariants = count(payload.missingVariants);
+  const etaSeconds = asNumber(payload.etaSeconds, Number.NaN);
 
   return {
-    cachedVariants: Math.max(0, Math.round(asNumber(payload.cachedVariants, 0))),
-    failedVariants: Math.max(0, Math.round(asNumber(payload.failedVariants, failures.length))),
-    failures,
-    renderedVariants: Math.max(0, Math.round(asNumber(payload.renderedVariants, 0))),
-    skippedVariants: Math.max(0, Math.round(asNumber(payload.skippedVariants, 0))),
-    totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
-    totalVariants: Math.max(0, Math.round(asNumber(payload.totalVariants, 0))),
+    id,
+    status: status === "completed" || status === "completed_with_failures" || status === "failed" ? status : "running",
+    phase: phase === "planning" || phase === "finished" ? phase : "rendering",
+    error: asString(payload.error).trim() || null,
+    missingVariants,
+    processedVariants: Math.min(missingVariants, count(payload.processedVariants)),
+    renderedVariants: count(payload.renderedVariants),
+    failedVariants: count(payload.failedVariants),
+    etaSeconds: Number.isFinite(etaSeconds) ? Math.max(0, Math.round(etaSeconds)) : null,
   };
 }
 
@@ -1315,18 +1306,19 @@ export async function fetchAdminMarkdownCacheStatus(): Promise<AdminMarkdownCach
   return normalizeAdminMarkdownCacheStatus(response);
 }
 
-export async function warmAdminMarkdownCache(): Promise<{
-  result: AdminMarkdownCacheWarmResult;
-  status: AdminMarkdownCacheStatus;
-}> {
-  const response = await requestJson<unknown>("/api/admin/markdown-cache", {
-    method: "POST",
-  });
+/** Starts rendering the missing Markdown HTML in the background, or returns the job already running. */
+export async function startAdminMarkdownCacheWarmJob(): Promise<AdminMarkdownCacheWarmJob> {
+  const job = normalizeAdminMarkdownCacheWarmJob(await requestJson<unknown>("/api/admin/markdown-cache/warm", { method: "POST" }));
+  if (!job) {
+    throw new ApiError("The server did not return the Markdown HTML cache job.", 500, null);
+  }
 
-  return {
-    result: normalizeAdminMarkdownCacheWarmResult(response),
-    status: normalizeAdminMarkdownCacheStatus(response),
-  };
+  return job;
+}
+
+/** The latest Markdown HTML cache job of the server process, or `null` when none ran. */
+export async function fetchAdminMarkdownCacheWarmJob(): Promise<AdminMarkdownCacheWarmJob | null> {
+  return normalizeAdminMarkdownCacheWarmJob(await requestJson<unknown>("/api/admin/markdown-cache/warm"));
 }
 
 export async function clearAdminMarkdownCache(slug?: string): Promise<{

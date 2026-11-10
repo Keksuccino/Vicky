@@ -1,4 +1,4 @@
-export type TranslationStatusPollingOptions = {
+export type JobStatusPollingOptions = {
   documentTarget: Pick<Document, "addEventListener" | "removeEventListener" | "visibilityState">;
   intervalMs: number;
   isJobRunning: () => boolean;
@@ -10,7 +10,7 @@ export type TranslationStatusPollingOptions = {
  * Runs one status request at a time, only while the tracked job is active and the page is visible.
  * Visibility changes clear the pending timer so hidden admin tabs consume no server capacity.
  */
-export const startTranslationStatusPolling = ({ documentTarget, intervalMs, isJobRunning, onPoll, windowTarget }: TranslationStatusPollingOptions): (() => void) => {
+export const startJobStatusPolling = ({ documentTarget, intervalMs, isJobRunning, onPoll, windowTarget }: JobStatusPollingOptions): (() => void) => {
   let active = true;
   let inFlight = false;
   let timerId: number | null = null;

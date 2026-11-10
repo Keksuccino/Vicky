@@ -5,19 +5,20 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { docsSourceCache, renderedMarkdownCache } from "@/lib/cache";
+import { invalidateGitHubRuntimeCaches } from "@/lib/github-cache-invalidation";
 import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import {
   clearMarkdownRenderCache,
   createMarkdownRenderCacheStatus,
-  warmMarkdownRenderCache,
 } from "@/lib/markdown-render-cache-admin";
 import { listPersistentRenderedMarkdownCacheEntries } from "@/lib/markdown-render-cache-store";
+import { getMarkdownRenderCacheWarmJob, startMarkdownRenderCacheWarmJob } from "@/lib/markdown-render-cache-warm-job";
 import type {
   DocsStore,
   GitHubRuntimeConfig,
 } from "@/lib/types";
 
-import { createFakeGitHub } from "./fixtures/fake-github-api";
+import { createFakeGitHub, type FakeGitHub } from "./fixtures/fake-github-api";
 
 const config: GitHubRuntimeConfig = {
   owner: "owner",
@@ -49,6 +50,14 @@ describe("markdown render cache admin helpers", () => {
   const previousDocsCacheDir = process.env.WIKI_DOCS_CACHE_DIR;
   let cacheDir = "";
   let docsCacheDir = "";
+  let fake: FakeGitHub;
+
+  /** Runs a warm job to its end and returns its final state. */
+  const warmCache = async () => {
+    startMarkdownRenderCacheWarmJob({ config, store });
+    await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()?.status).not.toBe("running"));
+    return getMarkdownRenderCacheWarmJob();
+  };
 
   beforeEach(async () => {
     cacheDir = await mkdtemp(path.join(os.tmpdir(), "vicky-markdown-admin-cache-"));
@@ -58,7 +67,8 @@ describe("markdown render cache admin helpers", () => {
     renderedMarkdownCache.clear();
     docsSourceCache.clear();
     clearGitHubBlobMemory();
-    const fake = createFakeGitHub();
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.markdownRender.warmJobSlot")];
+    fake = createFakeGitHub();
     fake.setFile("docs/home.md", "---\ntitle: Home\n---\n## Home");
     fake.setFile("docs/advanced.md", "---\ntitle: Advanced\n---\n## Advanced");
     fake.setFile("localizations/de/home.md", "---\ntitle: Startseite\n---\n## Startseite");
@@ -88,10 +98,8 @@ describe("markdown render cache admin helpers", () => {
     expect(initialStatus.totalVariants).toBe(3);
     expect(initialStatus.cachedVariants).toBe(0);
 
-    const firstWarm = await warmMarkdownRenderCache({ config, store });
-    expect(firstWarm.renderedVariants).toBe(3);
-    expect(firstWarm.skippedVariants).toBe(0);
-    expect(firstWarm.failedVariants).toBe(0);
+    const firstWarm = await warmCache();
+    expect(firstWarm).toMatchObject({ status: "completed", phase: "finished", totalVariants: 3, missingVariants: 3, processedVariants: 3, renderedVariants: 3, skippedVariants: 0, failedVariants: 0 });
     expect(await listPersistentRenderedMarkdownCacheEntries()).toHaveLength(3);
     const warmedStatus = await createMarkdownRenderCacheStatus({ config, store });
     expect(warmedStatus.cacheDirectory).toBe(cacheDir);
@@ -99,9 +107,9 @@ describe("markdown render cache admin helpers", () => {
     expect(warmedStatus.globalEntries).toBe(3);
     expect(warmedStatus.otherSourceEntries).toBe(0);
 
-    const secondWarm = await warmMarkdownRenderCache({ config, store });
-    expect(secondWarm.renderedVariants).toBe(0);
-    expect(secondWarm.skippedVariants).toBe(3);
+    const secondWarm = await warmCache();
+    expect(secondWarm).toMatchObject({ status: "completed", missingVariants: 0, renderedVariants: 0 });
+    expect(secondWarm?.id).not.toBe(firstWarm?.id);
     expect(await listPersistentRenderedMarkdownCacheEntries()).toHaveLength(3);
 
     const homeClear = await clearMarkdownRenderCache({ config, slug: "home" });
@@ -136,5 +144,66 @@ describe("markdown render cache admin helpers", () => {
       reason: "admin-clear-current-source",
       scope: "all",
     });
+  });
+
+  it("warms in the background: returns at once, reports progress, and finishes", async () => {
+    // The docs view and its source pages are loaded; the German translation still has to be downloaded.
+    await createMarkdownRenderCacheStatus({ config, store });
+    const releaseBlobs = fake.hold("blob");
+
+    const started = startMarkdownRenderCacheWarmJob({ config, store });
+    expect(started).toMatchObject({ status: "running", phase: "planning", processedVariants: 0 });
+    expect(await listPersistentRenderedMarkdownCacheEntries()).toHaveLength(0);
+
+    await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()).toMatchObject({ phase: "rendering", missingVariants: 3, processedVariants: 2, renderedVariants: 2 }));
+    expect(getMarkdownRenderCacheWarmJob()?.status).toBe("running");
+    expect(getMarkdownRenderCacheWarmJob()?.etaSeconds).toEqual(expect.any(Number));
+    // Starting again while it runs returns the running job.
+    expect(startMarkdownRenderCacheWarmJob({ config, store }).id).toBe(started.id);
+
+    releaseBlobs();
+    await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()).toMatchObject({ id: started.id, status: "completed", phase: "finished", processedVariants: 3, renderedVariants: 3, etaSeconds: null }));
+    expect(await listPersistentRenderedMarkdownCacheEntries()).toHaveLength(3);
+  });
+
+  it("reports variants that cannot be rendered and still finishes", async () => {
+    await createMarkdownRenderCacheStatus({ config, store });
+    fake.intercept((request) => (request.kind === "blob" ? new Response(JSON.stringify({ message: "Not Found" }), { status: 404, headers: { "content-type": "application/json" } }) : undefined));
+
+    await expect(warmCache()).resolves.toMatchObject({ status: "completed_with_failures", processedVariants: 3, renderedVariants: 2, failedVariants: 1, failures: [{ languageCode: "de", slug: "home" }] });
+  });
+
+  it("fails cleanly when the docs source changes while it runs, and a later job starts again", async () => {
+    await createMarkdownRenderCacheStatus({ config, store });
+    const releaseBlobs = fake.hold("blob");
+    const started = startMarkdownRenderCacheWarmJob({ config, store });
+    await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()?.processedVariants).toBe(2));
+
+    await invalidateGitHubRuntimeCaches(config);
+    releaseBlobs();
+
+    await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()).toMatchObject({ id: started.id, status: "failed", phase: "finished", error: expect.any(String) }));
+    const next = await warmCache();
+    expect(next).toMatchObject({ status: "completed", failedVariants: 0 });
+    expect(next?.id).not.toBe(started.id);
+  });
+
+  it("fails a job that stops making progress instead of leaving it running", async () => {
+    await createMarkdownRenderCacheStatus({ config, store });
+    const releaseBlobs = fake.hold("blob");
+    // Only the watchdog's clock is faked; the job's own I/O and turns of the event loop stay real.
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval", "Date"] });
+    try {
+      const hung = startMarkdownRenderCacheWarmJob({ config, store });
+      await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()?.processedVariants).toBe(2));
+
+      vi.advanceTimersByTime(4 * 60_000);
+      expect(getMarkdownRenderCacheWarmJob()?.status).toBe("running");
+      vi.advanceTimersByTime(2 * 60_000);
+      expect(getMarkdownRenderCacheWarmJob()).toMatchObject({ id: hung.id, status: "failed", phase: "finished", error: expect.any(String) });
+    } finally {
+      vi.useRealTimers();
+      releaseBlobs();
+    }
   });
 });

@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminSettings, DomainSslRuntimeStatus } from "@/components/types";
 
@@ -18,6 +18,7 @@ const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
 const fetchAdminLanguageTranslationStatusMock = vi.fn();
 const fetchAdminMarkdownCacheStatusMock = vi.fn();
+const fetchAdminMarkdownCacheWarmJobMock = vi.fn();
 const fetchAdminModeratorsMock = vi.fn();
 const fetchAdminPerformanceStatsMock = vi.fn();
 const fetchAdminSettingsMock = vi.fn();
@@ -29,8 +30,8 @@ const requestAdminLanguageTranslationsMock = vi.fn();
 const requestAdminSourceVersionRecordingMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
 const testAdminConnectionMock = vi.fn();
+const startAdminMarkdownCacheWarmJobMock = vi.fn();
 const updateAdminModeratorMock = vi.fn();
-const warmAdminMarkdownCacheMock = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useRouter: () => routerMock,
@@ -49,6 +50,7 @@ vi.mock("@/components/api", () => ({
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
   fetchAdminLanguageTranslationStatus: (...args: unknown[]) => fetchAdminLanguageTranslationStatusMock(...args),
   fetchAdminMarkdownCacheStatus: (...args: unknown[]) => fetchAdminMarkdownCacheStatusMock(...args),
+  fetchAdminMarkdownCacheWarmJob: (...args: unknown[]) => fetchAdminMarkdownCacheWarmJobMock(...args),
   fetchAdminModerators: (...args: unknown[]) => fetchAdminModeratorsMock(...args),
   fetchAdminPerformanceStats: (...args: unknown[]) => fetchAdminPerformanceStatsMock(...args),
   fetchAdminSettings: (...args: unknown[]) => fetchAdminSettingsMock(...args),
@@ -60,9 +62,9 @@ vi.mock("@/components/api", () => ({
   requestAdminLanguageTranslations: (...args: unknown[]) => requestAdminLanguageTranslationsMock(...args),
   requestAdminSourceVersionRecording: (...args: unknown[]) => requestAdminSourceVersionRecordingMock(...args),
   saveAdminSettings: (...args: unknown[]) => saveAdminSettingsMock(...args),
+  startAdminMarkdownCacheWarmJob: (...args: unknown[]) => startAdminMarkdownCacheWarmJobMock(...args),
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
   updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
-  warmAdminMarkdownCache: (...args: unknown[]) => warmAdminMarkdownCacheMock(...args),
 }));
 
 function createDeferred<T>() {
@@ -263,6 +265,18 @@ const MARKDOWN_CACHE_STATUS = {
   ],
 };
 
+const RUNNING_WARM_JOB = {
+  id: "markdown-cache-1",
+  status: "running",
+  phase: "rendering",
+  error: null,
+  missingVariants: 4,
+  processedVariants: 2,
+  renderedVariants: 2,
+  failedVariants: 0,
+  etaSeconds: 30,
+};
+
 describe("AdminSettingsPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -276,6 +290,7 @@ describe("AdminSettingsPanel", () => {
       updatedAt: "2026-03-10T12:00:00.000Z",
     });
     fetchAdminMarkdownCacheStatusMock.mockResolvedValue(MARKDOWN_CACHE_STATUS);
+    fetchAdminMarkdownCacheWarmJobMock.mockResolvedValue(null);
     fetchAdminPerformanceStatsMock.mockResolvedValue(PERFORMANCE_STATS);
     fetchAdminVisitorStatsMock.mockResolvedValue({ stats: VISITOR_STATS, status: IDLE_VISITOR_STATUS });
     createAdminModeratorMock.mockResolvedValue({
@@ -327,18 +342,41 @@ describe("AdminSettingsPanel", () => {
       result: { clearedEntries: 1, scope: "all" },
       status: MARKDOWN_CACHE_STATUS,
     });
-    warmAdminMarkdownCacheMock.mockResolvedValue({
-      result: {
-        cachedVariants: 1,
-        failedVariants: 0,
-        failures: [],
-        renderedVariants: 1,
-        skippedVariants: 1,
-        totalPages: 1,
-        totalVariants: 2,
-      },
-      status: { ...MARKDOWN_CACHE_STATUS, cachedVariants: 2, uncachedVariants: 0 },
-    });
+    startAdminMarkdownCacheWarmJobMock.mockResolvedValue(RUNNING_WARM_JOB);
+  });
+
+  // A panel left mounted keeps polling and would answer the next test's queries.
+  afterEach(() => {
+    cleanup();
+  });
+
+  it("starts warming the Markdown cache in the background and follows its progress until it finishes", async () => {
+    fetchAdminMarkdownCacheWarmJobMock.mockResolvedValueOnce(null).mockResolvedValue({ ...RUNNING_WARM_JOB, status: "completed", phase: "finished", processedVariants: 4, renderedVariants: 4, etaSeconds: null });
+
+    const { container } = render(<AdminSettingsPanel />);
+    const card = (): Element | null => container.querySelector(".panel-card-markdown-cache");
+    await waitFor(() => expect(card()?.querySelector(".markdown-cache-idle button")).not.toBeNull(), { timeout: 3_000 });
+    fireEvent.click(card()!.querySelector(".markdown-cache-idle button")!);
+    await waitFor(() => expect(card()?.querySelector(".action-row .btn-primary")?.hasAttribute("disabled")).toBe(false));
+
+    fireEvent.click(card()!.querySelector(".action-row .btn-primary")!);
+    await waitFor(() => expect(card()?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("50"));
+    expect(startAdminMarkdownCacheWarmJobMock).toHaveBeenCalledTimes(1);
+    expect(card()?.querySelector(".action-row .btn-primary")?.hasAttribute("disabled")).toBe(true);
+
+    await waitFor(() => expect(card()?.querySelector(".success-text")).not.toBeNull(), { timeout: 3_000 });
+    expect(card()?.querySelector('[role="progressbar"]')).toBeNull();
+    // The status the admin opened is refreshed once the job finished.
+    await waitFor(() => expect(fetchAdminMarkdownCacheStatusMock).toHaveBeenCalledTimes(2));
+  });
+
+  it("shows a Markdown cache job that is still running when the panel opens", async () => {
+    fetchAdminMarkdownCacheWarmJobMock.mockResolvedValue({ ...RUNNING_WARM_JOB, processedVariants: 1 });
+
+    const { container } = render(<AdminSettingsPanel />);
+
+    await waitFor(() => expect(container.querySelector('.panel-card-markdown-cache [role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25"), { timeout: 3_000 });
+    expect(fetchAdminMarkdownCacheStatusMock).not.toHaveBeenCalled();
   });
 
   it("offers recording source versions only while unrecorded translations exist, and starts it after confirmation with the count", async () => {

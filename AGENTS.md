@@ -69,7 +69,11 @@
   - `src/lib/docs-search.ts`
 - Cache implementations:
   - `src/lib/cache.ts`
-  - `src/lib/markdown-render-cache-store.ts`
+  - `src/lib/markdown-render-cache-store.ts`: rendered HTML on disk with its index
+  - `src/lib/markdown-render-cache-admin.ts`, `src/lib/markdown-render-cache-warm-job.ts`: the admin card's status, clears, and warm job
+- Background jobs:
+  - `src/lib/background-jobs.ts`: lifecycle shared by the translation and warm jobs
+  - `src/lib/page-localization-jobs.ts`
 - Auth + rate limiting:
   - `src/lib/auth.ts`
   - `src/lib/login-rate-limit.ts`
@@ -117,7 +121,8 @@
   - `GET|POST /api/admin/docs`
   - `POST /api/admin/docs/refresh`
   - `GET /api/admin/domain-status`
-  - `GET|POST|DELETE /api/admin/markdown-cache`
+  - `GET|DELETE /api/admin/markdown-cache`
+  - `GET|POST /api/admin/markdown-cache/warm`
   - `GET|POST /api/admin/moderators`
   - `PATCH|DELETE /api/admin/moderators/[id]`
   - `GET /api/admin/performance`
@@ -162,6 +167,8 @@ Useful URLs:
 - Public reads are index-authorized: an unknown locator or language is answered from the view and never becomes a GitHub request. Editor reads fall back to reading an unindexed page directly.
 - Public admission: each public request takes exactly one permit at its boundary (route handler or the docs route render) via `withPublicDocsAdmission`; the loaders in `docs-server-data.ts` take none. `generateMetadata`, the docs layout, and the docs page share one `loadDocsRouteData` call per request.
 - Localizations (`github-localization.ts`): translations at `<localizationPath>/<language>/<source path>` are read from the same index, the content store, and the commit metadata store; no reader makes its own tree request, and only translations of pages in the view are served. A translated page view costs nothing once its blob is stored, otherwise one interactive blob download. Sidebar titles come from blob summaries, search from stored blobs; what a language lacks is downloaded lazily by one background load per language (bulk priority, 4 at a time) the first time its sidebar or search needs it, while the answer uses what is stored (`titlesPending`; `waitForTitles=1` waits at most 5 s; incomplete search corpora are not cached). The job's status scan (`loadGitHubLocalizationStatuses`) needs only the index, blob summaries, and commit metadata; the admin Markdown-cache status uses summaries and stored metadata only and makes no GitHub request. "Outdated" is decided in one place, `localizationState`: a translation recording `sourceBlobSha` is current exactly when it equals the source page's blob SHA; one without it falls back to commit dates (source committed after the translation), and is `undetermined` when a date is unknown (served as current). Commit metadata is only looked up for translations that need the date rule. Localized saves apply the commit response to index, store, metadata, and view through `applyCommittedGitHubFiles`, like editor saves.
+- Background jobs (`background-jobs.ts`): the translation jobs and the Markdown-cache warm job share one lifecycle: one running job per slot (a second start returns it), a final state set exactly once, and a watchdog that fails a job reporting no progress past its stall limit. Jobs live in process memory; the admin card polls the latest one (`startJobStatusPolling`, only while it runs and the tab is visible) and picks a running job up again when the panel opens.
+- Markdown-cache warm job (`markdown-render-cache-warm-job.ts`, `POST /api/admin/markdown-cache/warm` answers 202 at once, `GET` returns the job): plans from the cache index (no entry opened), loads up to 4 variants at a time (translation blobs the store lacks are downloaded at bulk priority) but renders one at a time, each after a turn of the event loop (`yieldToEventLoop`), so public requests are answered between two renders. It reports processed/missing variants and an estimate of the time left, stops at once with `failed` when the docs source changes (409), and fails after 5 minutes without progress.
 - Translation job (`page-localization.ts`, `page-localization-jobs.ts`): starting one costs one index refresh (a single tree request on a warm index); status comes from `loadGitHubLocalizationStatuses`. Up to 16 OpenRouter requests run in parallel (fewer under memory pressure). `classifyTranslationFailure` decides retries: transient failures retry up to 6 attempts with exponential backoff and jitter, `retry-after` pauses every worker, page-level 4xx fail only that page, and 401/404/402-without-`retry-after` (or a closed upload queue) stop starting further translations. The memory wait is bounded (2 minutes), a batch upload is bounded (10 minutes, `GITHUB_LOCALIZATION_UPLOAD_TIMEOUT_MS`), and a watchdog fails a job that reports no progress for 15 minutes past its next expected activity, so a job always reaches a final state and never blocks later jobs.
 - Recording source versions (`recordGitHubLocalizationSourceVersions`, admin action "Record Source Versions", `POST /api/admin/translations/source-versions` with the confirmed `expectedFiles`): writes `sourceBlobSha` into every translation that lacks it and is current by commit dates; outdated, undetermined, and unreadable ones are never touched. It refreshes the index until it matches the branch head, commits everything in one commit (one tree request per 100 files, content inline, non-forced ref update), applies the files to index, store, and metadata, and prunes no rendered HTML (bodies are unchanged). It runs as a job of the shared job/log (`mode: "source-versions"`); both job kinds share one slot, so they never overlap. The UI offers it only while the latest job reports `unrecordedPages`.
 - Front matter (`markdown.ts`): the app manages `title`, `description`, `excludeFromAiPlaintext`, and `sourceBlobSha`. Saves edit those keys line by line in the existing YAML (`serializeMarkdownDocument(fields, base)`), so other keys, comments, and formatting survive every read–modify–write; pass the replaced file (or the Markdown sent) as `base`. `withSourceBlobSha` changes only the front matter and keeps every body byte, so rendered HTML stays valid.

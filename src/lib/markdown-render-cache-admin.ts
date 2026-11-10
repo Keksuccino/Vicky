@@ -8,12 +8,14 @@ import {
   normalizeAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguages,
 } from "@/lib/auto-translate";
-import { renderedMarkdownCache } from "@/lib/cache";
+import { yieldToEventLoop } from "@/lib/background-jobs";
+import { renderedMarkdownCache, setDocsCacheTtlMs } from "@/lib/cache";
+import { resolveRuntimeConfig } from "@/lib/github";
 import { assertGitHubCacheAccess, beginGitHubCacheAccess, trackGitHubCacheWrite } from "@/lib/github-cache-invalidation";
 import { hashMarkdownContent, loadGitHubBlobs, loadStoredGitHubBlobSummaries } from "@/lib/github-content-store";
 import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
 import { loadGitHubDocsSourceView } from "@/lib/github-docs-source";
-import { listCurrentGitHubLocalizations, mapWithConcurrency } from "@/lib/github-localization";
+import { listCurrentGitHubLocalizations } from "@/lib/github-localization";
 import { badRequest } from "@/lib/http";
 import {
   deletePersistentRenderedMarkdownWhere,
@@ -23,6 +25,7 @@ import {
   hasPersistentRenderedMarkdown,
   recordRenderedMarkdownCacheMutation,
   writePersistentRenderedMarkdown,
+  type PersistedRenderedMarkdown,
   type RenderedMarkdownCacheMutation,
 } from "@/lib/markdown-render-cache-store";
 import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
@@ -31,9 +34,9 @@ import {
   markdownRenderCachePrefix,
   renderMarkdownToHtml,
 } from "@/lib/markdown-server-renderer";
+import { getStore } from "@/lib/store";
 import type { AutoTranslateLanguage, DocsStore, GitHubDocPage, GitHubRuntimeConfig } from "@/lib/types";
 
-const MARKDOWN_CACHE_RENDER_CONCURRENCY = 4;
 const markdownExtensionRegex = /\.(md|mdx)$/i;
 
 export type MarkdownRenderCacheLanguageStatus = {
@@ -79,20 +82,6 @@ export type MarkdownRenderCacheStatus = {
   pages: MarkdownRenderCachePageStatus[];
 };
 
-export type MarkdownRenderCacheWarmResult = {
-  cachedVariants: number;
-  failedVariants: number;
-  failures: Array<{
-    error: string;
-    languageCode: string;
-    slug: string;
-  }>;
-  renderedVariants: number;
-  skippedVariants: number;
-  totalPages: number;
-  totalVariants: number;
-};
-
 export type MarkdownRenderCacheClearResult = {
   clearedEntries: number;
   scope: "all" | "page";
@@ -100,7 +89,7 @@ export type MarkdownRenderCacheClearResult = {
 };
 
 /** One rendered-HTML variant: a source page in the source language or one of its current translations. */
-type MarkdownRenderCacheVariant = {
+export type MarkdownRenderCacheVariant = {
   /** Unset while a translation's blob is not in the store yet; such a variant cannot have been rendered. */
   contentHash?: string;
   language: AutoTranslateLanguage;
@@ -109,6 +98,17 @@ type MarkdownRenderCacheVariant = {
   /** Blob of the variant's content. */
   sha: string;
   sourceLanguage: boolean;
+};
+
+/** The settings and docs source the cache admin routes work on. */
+export const loadMarkdownRenderCacheContext = async (): Promise<{ config: GitHubRuntimeConfig; store: DocsStore }> => {
+  const store = await getStore();
+  setDocsCacheTtlMs(store.settings.docsCacheTtlMs);
+
+  return {
+    config: resolveRuntimeConfig(store.settings.github),
+    store,
+  };
 };
 
 const sourceLanguage = (): AutoTranslateLanguage => ({
@@ -329,98 +329,86 @@ export const createMarkdownRenderCacheStatus = async ({
   };
 };
 
-export const warmMarkdownRenderCache = async ({
+/** The variants a warm run renders, and how it renders one; see `planMarkdownRenderCacheWarm`. */
+export type MarkdownRenderCacheWarmPlan = {
+  /** Variants without stored HTML when the plan was made. */
+  missing: MarkdownRenderCacheVariant[];
+  totalPages: number;
+  totalVariants: number;
+  /**
+   * Loads, renders, and stores one variant: `"rendered"`, or `"cached"` when its HTML was stored
+   * meanwhile (a page view rendered it). Throws when it fails, with a 409 `ApiError` once the docs
+   * source changed, which ends the run.
+   */
+  warm: (variant: MarkdownRenderCacheVariant) => Promise<"cached" | "rendered">;
+};
+
+/**
+ * Plans rendering the HTML that is missing for the current docs, from the index of the cache
+ * alone (no entry is opened). Bodies are loaded one variant at a time and dropped after rendering;
+ * translations the store lacks are downloaded here, the only place the cache card fetches page
+ * content. Rendering is synchronous CPU work, so `warm` renders one variant at a time, each after
+ * a turn of the event loop: callers may load several variants at once, and requests still get
+ * answered between two renders.
+ */
+export const planMarkdownRenderCacheWarm = async ({
   config,
   store,
 }: {
   config: GitHubRuntimeConfig;
   store: DocsStore;
-}): Promise<MarkdownRenderCacheWarmResult> => {
+}): Promise<MarkdownRenderCacheWarmPlan> => {
   const access = beginGitHubCacheAccess(config);
   const baseDir = getGitHubDocsCacheDir();
   const { pages, variants } = await buildMarkdownRenderCacheVariants({ config, store });
-  const isCachedOnDisk = async (cacheKey: string): Promise<boolean> => {
-    const persisted = await hasPersistentRenderedMarkdown(cacheKey);
+  const isCached = async (cacheKey: string): Promise<boolean> => {
+    const cached = await hasPersistentRenderedMarkdown(cacheKey);
     assertGitHubCacheAccess(access);
-    return persisted;
+    return cached;
   };
-  const missingVariants: MarkdownRenderCacheVariant[] = [];
-
+  const missing: MarkdownRenderCacheVariant[] = [];
   for (const variant of variants) {
-    if (!variant.contentHash || !(await isCachedOnDisk(variantCacheKey(config, variant, variant.contentHash)))) {
-      missingVariants.push(variant);
+    if (!variant.contentHash || !(await isCached(variantCacheKey(config, variant, variant.contentHash)))) {
+      missing.push(variant);
     }
   }
 
-  // Bodies are loaded one variant at a time and dropped after rendering; translations the store
-  // lacks are downloaded here, the only place the cache card fetches page content.
-  const results = await mapWithConcurrency(
-    missingVariants,
-    MARKDOWN_CACHE_RENDER_CONCURRENCY,
-    async (variant) => {
-      try {
-        const record = variant.sourceLanguage ? null : (await loadGitHubBlobs(config, [variant.sha], baseDir)).get(variant.sha);
-        const content = variant.sourceLanguage ? variant.page.content : record?.content;
-        const contentHash = variant.contentHash ?? record?.contentHash;
-        if (content === undefined || !contentHash) {
-          throw new Error(`Blob ${variant.sha} is missing from the content store.`);
-        }
-
-        const cacheKey = variantCacheKey(config, variant, contentHash);
-        if (!variant.contentHash && (await isCachedOnDisk(cacheKey))) {
-          return { ok: true as const, rendered: false, variant };
-        }
-
-        const fromMemory = renderedMarkdownCache.get(cacheKey);
-        const rendered =
-          fromMemory && typeof fromMemory === "object" && fromMemory !== null && "html" in fromMemory && "headings" in fromMemory
-            ? (fromMemory as Awaited<ReturnType<typeof renderMarkdownToHtml>>)
-            : await renderMarkdownToHtml(content, variant.language.code);
-
-        assertGitHubCacheAccess(access);
-        renderedMarkdownCache.set(cacheKey, rendered);
-
-        const persisted = await trackGitHubCacheWrite(access, writePersistentRenderedMarkdown(cacheKey, rendered));
-        assertGitHubCacheAccess(access);
-        if (!persisted) {
-          throw new Error("Failed to write rendered Markdown HTML cache.");
-        }
-
-        return {
-          ok: true as const,
-          rendered: true,
-          variant,
-        };
-      } catch (error: unknown) {
-        return {
-          error: error instanceof Error ? error.message : String(error),
-          ok: false as const,
-          variant,
-        };
-      }
-    },
-  );
-
-  const failures = results
-    .filter((result): result is Extract<(typeof results)[number], { ok: false }> => !result.ok)
-    .map((result) => ({
-      error: result.error,
-      languageCode: result.variant.language.code,
-      slug: result.variant.page.slug,
-    }));
-  const renderedVariants = results.filter((result) => result.ok && result.rendered).length;
-  const skippedVariants = variants.length - failures.length - renderedVariants;
-  assertGitHubCacheAccess(access);
-
-  return {
-    cachedVariants: skippedVariants,
-    failedVariants: failures.length,
-    failures,
-    renderedVariants,
-    skippedVariants,
-    totalPages: pages.length,
-    totalVariants: variants.length,
+  let renderTurn: Promise<unknown> = Promise.resolve();
+  const renderInTurn = (content: string, languageCode: string): Promise<PersistedRenderedMarkdown> => {
+    const rendered = renderTurn.then(async () => {
+      await yieldToEventLoop();
+      return renderMarkdownToHtml(content, languageCode);
+    });
+    renderTurn = rendered.catch(() => undefined);
+    return rendered;
   };
+
+  const warm = async (variant: MarkdownRenderCacheVariant): Promise<"cached" | "rendered"> => {
+    const record = variant.sourceLanguage ? null : (await loadGitHubBlobs(config, [variant.sha], baseDir)).get(variant.sha);
+    const content = variant.sourceLanguage ? variant.page.content : record?.content;
+    const contentHash = variant.contentHash ?? record?.contentHash;
+    if (content === undefined || !contentHash) {
+      throw new Error(`Blob ${variant.sha} is missing from the content store.`);
+    }
+
+    const cacheKey = variantCacheKey(config, variant, contentHash);
+    if (await isCached(cacheKey)) {
+      return "cached";
+    }
+
+    const rendered = (renderedMarkdownCache.get(cacheKey) as PersistedRenderedMarkdown | undefined) ?? (await renderInTurn(content, variant.language.code));
+    assertGitHubCacheAccess(access);
+    renderedMarkdownCache.set(cacheKey, rendered);
+
+    const persisted = await trackGitHubCacheWrite(access, writePersistentRenderedMarkdown(cacheKey, rendered));
+    assertGitHubCacheAccess(access);
+    if (!persisted) {
+      throw new Error("Failed to write rendered Markdown HTML cache.");
+    }
+    return "rendered";
+  };
+
+  return { missing, totalPages: pages.length, totalVariants: variants.length, warm };
 };
 
 export const clearMarkdownRenderCache = async ({

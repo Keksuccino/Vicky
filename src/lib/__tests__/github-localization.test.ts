@@ -17,7 +17,8 @@ import { loadGitHubLocalizationStatuses } from "@/lib/github-localization";
 import { recordGitHubLocalizationSourceVersions, saveGitHubLocalizedDocsBatch } from "@/lib/github-localization-saves";
 import { GitHubLocalizationUploadQueue } from "@/lib/github-localization-upload-queue";
 import { parseMarkdownDocument } from "@/lib/markdown";
-import { createMarkdownRenderCacheStatus, warmMarkdownRenderCache } from "@/lib/markdown-render-cache-admin";
+import { createMarkdownRenderCacheStatus } from "@/lib/markdown-render-cache-admin";
+import { getMarkdownRenderCacheWarmJob, startMarkdownRenderCacheWarmJob } from "@/lib/markdown-render-cache-warm-job";
 import { translatePageLocalizations, type PageLocalizationTranslationEvent } from "@/lib/page-localization";
 import { getLatestPageLocalizationJob, startPageLocalizationJob, startSourceVersionRecordingJob } from "@/lib/page-localization-jobs";
 import type { AutoTranslateLanguage, DocsStore, GitHubRuntimeConfig } from "@/lib/types";
@@ -83,6 +84,13 @@ describe("GitHub localizations from the repository index", () => {
     await vi.waitFor(async () => expect(JSON.stringify(await readPrivateJsonFile(filePath))).toContain(repoPath));
   };
 
+  /** Runs a Markdown cache warm job to its end and returns its final state. */
+  const warmCache = async () => {
+    startMarkdownRenderCacheWarmJob({ config, store });
+    await vi.waitFor(() => expect(getMarkdownRenderCacheWarmJob()?.status).not.toBe("running"));
+    return getMarkdownRenderCacheWarmJob();
+  };
+
   /** Lets the background language load finish and returns the complete sidebar. */
   const loadCompleteTree = async (languageCode: string) => {
     const tree = await loadDocsTreeForLanguage({ config, requestedLanguageCode: languageCode, store, waitForPendingTitles: true });
@@ -95,6 +103,7 @@ describe("GitHub localizations from the repository index", () => {
     process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
     simulateRestart();
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.markdownRender.warmJobSlot")];
     setDocsCacheTtlMs(3_600_000);
     config = createConfig();
     store = createStore();
@@ -265,7 +274,7 @@ describe("GitHub localizations from the repository index", () => {
   });
 
   it("drops the rendered HTML of translations that changed or disappeared on GitHub and keeps every other entry", async () => {
-    await warmMarkdownRenderCache({ config, store });
+    await warmCache();
     await expect(createMarkdownRenderCacheStatus({ config, store })).resolves.toMatchObject({ cachedVariants: 6, currentSourceEntries: 6, staleEntries: 0 });
 
     fake.setFile("localizations/de/home.md", page("Startseite", "Willkommen zurück"));
@@ -320,15 +329,15 @@ describe("GitHub localizations from the repository index", () => {
     expect(fake.count()).toBe(0);
     expect(cold).toMatchObject({ totalPages: 3, totalVariants: 6, translatedVariants: 3, cachedVariants: 0 });
 
-    const warmed = await warmMarkdownRenderCache({ config, store });
-    expect(warmed).toMatchObject({ renderedVariants: 6, failedVariants: 0 });
+    const warmed = await warmCache();
+    expect(warmed).toMatchObject({ status: "completed", missingVariants: 6, renderedVariants: 6, failedVariants: 0 });
     expect(fake.count("blob")).toBe(3);
 
     fake.resetRequests();
     await expect(createMarkdownRenderCacheStatus({ config, store })).resolves.toMatchObject({ cachedVariants: 6, uncachedVariants: 0, staleEntries: 0 });
     simulateRestart();
     await expect(createMarkdownRenderCacheStatus({ config, store })).resolves.toMatchObject({ cachedVariants: 6, uncachedVariants: 0 });
-    await expect(warmMarkdownRenderCache({ config, store })).resolves.toMatchObject({ renderedVariants: 0, skippedVariants: 6 });
+    await expect(warmCache()).resolves.toMatchObject({ status: "completed", missingVariants: 0, renderedVariants: 0 });
     expect(fake.count()).toBe(0);
   });
 
@@ -406,14 +415,14 @@ describe("GitHub localizations from the repository index", () => {
   });
 
   it("records the source version only in current unrecorded translations, in one commit that keeps rendered HTML valid", async () => {
-    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobState")];
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobSlot")];
     const home = page("Home", "Welcome home");
     fake.setFile("localizations/fr/home.md", recordedTranslation("Accueil", "Bienvenue", home));
     // The German setup translation becomes outdated.
     fake.setFile("docs/guide/setup.md", page("Setup", "Install the package and restart"));
     await refreshGitHubDocsCache(config);
     await loadGitHubLocalizationStatuses({ config, languageCodes: ["de", "fr"], localizationPath: "localizations" });
-    await warmMarkdownRenderCache({ config, store });
+    await warmCache();
     const before = new Map(Array.from(fake.files, ([repoPath, bytes]) => [repoPath, bytes.toString("utf8")]));
     fake.resetRequests();
 

@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, readdir, stat, unlink } from "node:fs/promises";
 import path from "node:path";
 
+import { yieldToEventLoop } from "@/lib/background-jobs";
 import { MARKDOWN_RENDER_VERSION } from "@/lib/markdown-rendering-shared";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import { ensurePrivateDirectory, ensurePrivateFile, secureAtomicWriteFile } from "@/lib/runtime-file-security.mjs";
@@ -135,8 +136,6 @@ const warnCacheFailure = (action: string, key: string, error: unknown): void => 
 const warnCacheFileFailure = (action: string, fileName: string, error: unknown): void => {
   console.warn(`[markdown] Failed to ${action} persistent rendered markdown cache file ${fileName}: ${errorMessage(error)}`);
 };
-
-const yieldToEventLoop = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
 
 const asRecord = (value: unknown): Record<string, unknown> | null =>
   typeof value === "object" && value !== null ? (value as Record<string, unknown>) : null;

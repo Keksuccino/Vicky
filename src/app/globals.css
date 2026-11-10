@@ -3073,7 +3073,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
 }
 
 .markdown-cache-idle,
-.visitor-catch-up {
+.progress-panel {
   border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent-surface-soft) 62%, var(--surface-muted));
@@ -3637,7 +3637,7 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .visitor-page-meter,
-.visitor-catch-up-bar {
+.progress-panel-bar {
   background: color-mix(in srgb, var(--border) 70%, transparent);
 }
 
@@ -3648,29 +3648,29 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
 }
 
 .visitor-page-meter-fill,
-.visitor-catch-up-bar > span {
+.progress-panel-bar > span {
   background: color-mix(in srgb, var(--accent) 72%, var(--accent-surface));
 }
 
-.visitor-catch-up {
+.progress-panel {
   display: grid;
   gap: 0.5rem;
 }
 
-.visitor-catch-up-heading {
+.progress-panel-heading {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.62rem;
 }
 
-.visitor-catch-up-heading strong {
+.progress-panel-heading strong {
   min-width: 0;
   color: var(--text-primary);
   font-weight: 800;
 }
 
-.visitor-catch-up-heading span {
+.progress-panel-heading span {
   flex: 0 0 auto;
   color: var(--text-secondary);
   font-size: 0.86rem;
@@ -3678,28 +3678,28 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   font-variant-numeric: tabular-nums;
 }
 
-.visitor-catch-up-bar {
+.progress-panel-bar {
   height: 6px;
   border-radius: 999px;
   overflow: hidden;
 }
 
-.visitor-catch-up-bar > span {
+.progress-panel-bar > span {
   display: block;
-  width: var(--visitor-catch-up-size, 0%);
+  width: var(--progress-panel-size, 0%);
   height: 100%;
   border-radius: inherit;
   transition: width 0.4s ease;
 }
 
-.visitor-catch-up-detail {
+.progress-panel-detail {
   color: var(--text-secondary);
   font-size: 0.86rem;
   line-height: 1.45;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .visitor-catch-up-bar > span {
+  .progress-panel-bar > span {
     transition: none;
   }
 }

@@ -60,7 +60,7 @@ Vicky keeps GitHub traffic small and predictable, so a busy site stays far below
 - **Saving in the editor updates the local copy immediately**, so the saved page is live without fetching it back from GitHub. Translations saved by the translation job work the same way.
 - **Translated pages cost nothing after their first view.** Translations come from the same local copy; a translated page is downloaded at most once, and later views (also after a restart) make no GitHub request. The first time a language's sidebar or search is used, its remaining translations are downloaded once in the background, while the sidebar shows source titles for the pages still on their way.
 - **Missing or outdated translations fall back to the source page.** Every translation the job writes records the exact version of the source page it was made from (`sourceBlobSha`, see [Front Matter](#front-matter)), so it counts as outdated exactly when that page has changed since. Translations without that record count as outdated when their source page was committed after them; **Record Source Versions** in the Page Localization settings adds the record to every such translation that is current, in a single commit that only touches their front matter (it appears after a translation job found some). Only the translation job creates or updates translations.
-- **The Markdown HTML cache card loads on request** and never downloads page content or contacts GitHub to show its status.
+- **The Markdown HTML cache card loads on request** and never downloads page content or contacts GitHub to show its status. **Cache missing HTML** renders in the background, one page at a time, so visitors keep getting answers meanwhile; the card shows its progress and the time left, also after you leave the admin panel and come back.
 - **After a restart**, pages are served from the local copy right away; the first refresh normally costs a single request.
 - **One shared GitHub client** caps concurrent requests, times out stalled ones, retries temporary failures with backoff, and honours GitHub's rate-limit responses. When the hourly quota is used up, Vicky stops sending requests until GitHub's reset time and reports when docs can be loaded again.
 - **Background work is paced.** Large downloads and background commits (loading a language's translations, warming the Markdown HTML cache, translation uploads) stay within GitHub's documented secondary rate limits, so they can never pause the site for visitors. Page views and editor saves are never slowed down by this.
@@ -391,7 +391,8 @@ Admin endpoints:
 - `GET|POST /api/admin/docs`
 - `POST /api/admin/docs/refresh`
 - `GET /api/admin/domain-status`
-- `GET|POST|DELETE /api/admin/markdown-cache`
+- `GET|DELETE /api/admin/markdown-cache`
+- `GET|POST /api/admin/markdown-cache/warm`
 - `GET|POST /api/admin/moderators`
 - `PATCH|DELETE /api/admin/moderators/<id>`
 - `GET /api/admin/performance`

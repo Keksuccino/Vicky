@@ -44,7 +44,7 @@ const createDeferred = <T>() => {
 describe("page localization background jobs", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobState")];
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobSlot")];
   });
 
   it("deduplicates overlapping admin starts onto the active job", async () => {

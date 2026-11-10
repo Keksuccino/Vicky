@@ -3,6 +3,7 @@ import {
   getDetailedAutoTranslateErrorMessage,
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
+import { createBackgroundJobSlot, type BackgroundJobState, type BackgroundJobStatus } from "@/lib/background-jobs";
 import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
 import { recordGitHubLocalizationSourceVersions, type GitHubSourceVersionRecordingEvent } from "@/lib/github-localization-saves";
 import {
@@ -14,13 +15,12 @@ import {
   type PageLocalizationTranslationEvent,
 } from "@/lib/page-localization";
 import { isSourceLanguage } from "@/lib/page-localization-read";
-import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   AutoTranslateLanguage,
   GitHubRuntimeConfig,
 } from "@/lib/types";
 
-export type PageLocalizationJobStatus = "running" | "completed" | "completed_with_failures" | "failed";
+export type PageLocalizationJobStatus = BackgroundJobStatus;
 /** `checking` and `uploading` are the phases of a source-version recording job. */
 export type PageLocalizationJobPhase = "queued" | "checking" | "translating" | "uploading" | "finished";
 /** A translation run, or `source-versions`: recording the source version in existing translations. */
@@ -38,20 +38,14 @@ export type PageLocalizationJobLogEntry = {
   slug?: string;
 };
 
-export type PageLocalizationJobSnapshot = {
-  id: string;
-  status: PageLocalizationJobStatus;
+export type PageLocalizationJobSnapshot = BackgroundJobState & {
   phase: PageLocalizationJobPhase;
   mode: PageLocalizationJobMode;
-  createdAt: string;
-  startedAt: string | null;
-  finishedAt: string | null;
   languages: Array<Pick<AutoTranslateLanguage, "code" | "name">>;
   localizationPath: string;
   model: string;
   result: PageLocalizationRequestResult;
   statuses: PageLocalizationLanguageStatus[];
-  error: string | null;
   logs: PageLocalizationJobLogEntry[];
 };
 
@@ -63,15 +57,6 @@ export type PageLocalizationJobLookup = {
 type PageLocalizationJob = PageLocalizationJobSnapshot & {
   /** Longest single step the job may wait on without reporting (one OpenRouter attempt). */
   attemptTimeoutMs: number;
-  /** The job fails if it reports no progress by then; see `noteJobProgress`. */
-  progressDeadlineAtMs: number;
-  promise: Promise<void> | null;
-  watchdog: ReturnType<typeof setInterval> | null;
-};
-
-type PageLocalizationJobState = {
-  latestJob: PageLocalizationJob | null;
-  nextJobId: number;
   nextLogId: number;
 };
 
@@ -123,30 +108,20 @@ const emptyResult = (): PageLocalizationRequestResult => ({
   failures: [],
 });
 
-// Resolved on every access instead of once at module load, so removing the registration (as
-// the job and status-route tests do between cases) starts a fresh job history.
-const getPageLocalizationJobState = (): PageLocalizationJobState =>
-  processSingleton("pageLocalization.jobState", (): PageLocalizationJobState => ({
-    latestJob: null,
-    nextJobId: 1,
-    nextLogId: 1,
-  }));
-
 const addJobLog = (
   job: PageLocalizationJob,
   level: PageLocalizationJobLogLevel,
   message: string,
   options: Omit<PageLocalizationJobLogEntry, "createdAt" | "id" | "level" | "message"> = {},
 ): void => {
-  const state = getPageLocalizationJobState();
   job.logs.push({
-    id: state.nextLogId,
+    id: job.nextLogId,
     createdAt: new Date().toISOString(),
     level,
     message,
     ...options,
   });
-  state.nextLogId += 1;
+  job.nextLogId += 1;
 
   if (job.logs.length > MAX_JOB_LOG_ENTRIES) {
     job.logs.splice(0, job.logs.length - MAX_JOB_LOG_ENTRIES);
@@ -173,78 +148,55 @@ const cloneJob = (job: PageLocalizationJob, logLimit = MAX_JOB_LOG_ENTRIES): Pag
   logs: job.logs.slice(-Math.max(1, logLimit)).map((entry) => ({ ...entry })),
 });
 
-const createJob = (definition: JobDefinition): PageLocalizationJob => {
-  const state = getPageLocalizationJobState();
-  const job: PageLocalizationJob = {
-    id: `translation-${Date.now()}-${state.nextJobId}`,
-    status: "running",
-    phase: "queued",
-    mode: definition.mode,
-    createdAt: new Date().toISOString(),
-    startedAt: null,
-    finishedAt: null,
-    languages: definition.languages.map((language) => ({
-      code: language.code,
-      name: language.name,
-    })),
-    localizationPath: definition.localizationPath,
-    model: definition.model,
-    result: emptyResult(),
-    statuses: [],
-    error: null,
-    logs: [],
-    attemptTimeoutMs: definition.attemptTimeoutMs,
-    progressDeadlineAtMs: Date.now() + JOB_STALL_LIMIT_MS,
-    promise: null,
-    watchdog: null,
-  };
-
-  state.nextJobId += 1;
-  return job;
-};
-
-const noteJobProgress = (job: PageLocalizationJob, nextActivityAtMs = Date.now()): void => {
-  job.progressDeadlineAtMs = Math.max(job.progressDeadlineAtMs, (Number.isFinite(nextActivityAtMs) ? nextActivityAtMs : Date.now()) + JOB_STALL_LIMIT_MS);
-};
+const createJob = (state: BackgroundJobState, definition: JobDefinition): PageLocalizationJob => ({
+  ...state,
+  phase: "queued",
+  mode: definition.mode,
+  languages: definition.languages.map((language) => ({
+    code: language.code,
+    name: language.name,
+  })),
+  localizationPath: definition.localizationPath,
+  model: definition.model,
+  result: emptyResult(),
+  statuses: [],
+  logs: [],
+  attemptTimeoutMs: definition.attemptTimeoutMs,
+  nextLogId: 1,
+});
 
 /** Moves a running job to its final state once; later results of a job that already finished are ignored. */
 const finishJob = (
   job: PageLocalizationJob,
   outcome: { details?: string; error?: string; level: PageLocalizationJobLogLevel; message: string; result?: PageLocalizationRequestResult; status: Exclude<PageLocalizationJobStatus, "running"> },
 ): boolean => {
-  if (job.status !== "running") {
+  if (!jobSlot.finish(job, outcome.status, outcome.error ?? null)) {
     return false;
   }
 
   if (outcome.result) {
     job.result = outcome.result;
   }
-  job.status = outcome.status;
   job.phase = "finished";
-  job.error = outcome.error ?? null;
-  job.finishedAt = new Date().toISOString();
-  if (job.watchdog) {
-    clearInterval(job.watchdog);
-    job.watchdog = null;
-  }
   addJobLog(job, outcome.level, outcome.message, outcome.details ? { details: outcome.details } : {});
   return true;
 };
 
-const startJobWatchdog = (job: PageLocalizationJob): void => {
-  job.watchdog = setInterval(() => {
-    if (Date.now() > job.progressDeadlineAtMs) {
-      finishJob(job, {
-        details: `No progress for ${JOB_STALL_LIMIT_MS / 60_000} minutes. Start it again; files that were already committed are kept.`,
-        error: "The job stopped making progress.",
-        level: "error",
-        message: "Job stopped because it made no progress.",
-        status: "failed",
-      });
-    }
-  }, JOB_WATCHDOG_INTERVAL_MS);
-  job.watchdog.unref?.();
-};
+/** Both job kinds write translations, so they share one slot and never overlap. */
+const jobSlot = createBackgroundJobSlot<PageLocalizationJob>({
+  idPrefix: "translation",
+  name: "pageLocalization.jobSlot",
+  onStalled: (job) =>
+    finishJob(job, {
+      details: `No progress for ${JOB_STALL_LIMIT_MS / 60_000} minutes. Start it again; files that were already committed are kept.`,
+      error: "The job stopped making progress.",
+      level: "error",
+      message: "Job stopped because it made no progress.",
+      status: "failed",
+    }),
+  stallLimitMs: JOB_STALL_LIMIT_MS,
+  watchdogIntervalMs: JOB_WATCHDOG_INTERVAL_MS,
+});
 
 const formatLanguage = (language: Pick<AutoTranslateLanguage, "code" | "name">): string =>
   `${language.name || language.code} (${language.code})`;
@@ -283,7 +235,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
   if (job.status !== "running") {
     return;
   }
-  noteJobProgress(job, nextActivityAtMs(job, event));
+  jobSlot.noteProgress(job, nextActivityAtMs(job, event));
 
   if (event.type === "translation-stopped") {
     addJobLog(job, "error", "Stopped starting new translations.", { details: `Pages that were not translated yet count as failed. ${event.error}` });
@@ -502,8 +454,6 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
       jobId: job.id,
       error: message,
     });
-  } finally {
-    job.promise = null;
   }
 };
 
@@ -511,7 +461,7 @@ const updateJobFromSourceVersionEvent = (job: PageLocalizationJob, event: GitHub
   if (job.status !== "running") {
     return;
   }
-  noteJobProgress(job);
+  jobSlot.noteProgress(job);
 
   if (event.type === "reading-translations") {
     logTranslationDownloads(job, event.downloaded, event.total);
@@ -584,29 +534,19 @@ const runSourceVersionJob = async (job: PageLocalizationJob, input: StartSourceV
   } catch (error: unknown) {
     const message = getDetailedAutoTranslateErrorMessage(error);
     finishJob(job, { details: `${message} Nothing was committed.`, error: message, level: "error", message: "Recording source versions stopped.", status: "failed" });
-  } finally {
-    job.promise = null;
   }
 };
 
-/** Starts a job unless one is running already (jobs of both kinds write translations, so they never overlap). */
+/** Starts a job unless one is running already, which then keeps running and logs the ignored request. */
 const startJob = (definition: JobDefinition, queuedLog: { details: string; message: string }, run: (job: PageLocalizationJob) => Promise<void>): PageLocalizationJobSnapshot => {
-  const state = getPageLocalizationJobState();
-  const activeJob = state.latestJob;
-
-  if (activeJob?.status === "running") {
-    addJobLog(activeJob, "warning", "A new request was received while a job is already running.", {
+  const { job, started } = jobSlot.start((state) => createJob(state, definition), run);
+  if (started) {
+    addJobLog(job, "info", queuedLog.message, { details: queuedLog.details });
+  } else {
+    addJobLog(job, "warning", "A new request was received while a job is already running.", {
       details: "Kept the current job running and ignored the new request.",
     });
-    return cloneJob(activeJob);
   }
-
-  const job = createJob(definition);
-  state.latestJob = job;
-  addJobLog(job, "info", queuedLog.message, { details: queuedLog.details });
-
-  startJobWatchdog(job);
-  job.promise = Promise.resolve().then(() => run(job));
   return cloneJob(job);
 };
 
@@ -633,7 +573,7 @@ export const startSourceVersionRecordingJob = (input: StartSourceVersionJobInput
   );
 
 export const getLatestPageLocalizationJob = (): PageLocalizationJobSnapshot | null => {
-  const job = getPageLocalizationJobState().latestJob;
+  const job = jobSlot.latest();
   return job ? cloneJob(job) : null;
 };
 
@@ -642,7 +582,7 @@ export const getLatestPageLocalizationJob = (): PageLocalizationJobSnapshot | nu
  * provider, and filesystem refreshes because the admin client calls it while tracking active work.
  */
 export const getPageLocalizationJobStatus = (jobId?: string): PageLocalizationJobLookup => {
-  const job = getPageLocalizationJobState().latestJob;
+  const job = jobSlot.latest();
 
   if (!job) {
     return { state: jobId ? "unknown" : "none", job: null };
