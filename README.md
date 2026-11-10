@@ -57,7 +57,10 @@ Vicky keeps GitHub traffic small and predictable, so a busy site stays far below
 - **Only changed files are downloaded.** Markdown files are stored by their Git blob SHA, so a refresh downloads exactly the files whose content is new. Changing one page costs one tree request, one file download, and at most one commit lookup.
 - **"Last updated" data is looked up once per file version** in batched GraphQL queries and kept on disk; it is never fetched again for an unchanged file.
 - **Visitors never wait for a refresh.** When the refresh interval (`Docs cache TTL` in the admin settings) passes, Vicky keeps serving the current pages and refreshes in the background. **Refresh docs** in the admin panel does the same: the site keeps answering while new pages are fetched, then switches to them at once. Pages deleted on GitHub disappear with the next refresh.
-- **Saving in the editor updates the local copy immediately**, so the saved page is live without fetching it back from GitHub.
+- **Saving in the editor updates the local copy immediately**, so the saved page is live without fetching it back from GitHub. Translations saved by the translation job work the same way.
+- **Translated pages cost nothing after their first view.** Translations come from the same local copy; a translated page is downloaded at most once, and later views (also after a restart) make no GitHub request. The first time a language's sidebar or search is used, its remaining translations are downloaded once in the background, while the sidebar shows source titles for the pages still on their way.
+- **Missing or outdated translations fall back to the source page.** A translation counts as outdated when its source page was changed after it; only the translation job creates or updates translations.
+- **The Markdown HTML cache card loads on request** and never downloads page content or contacts GitHub to show its status.
 - **After a restart**, pages are served from the local copy right away; the first refresh normally costs a single request.
 - **One shared GitHub client** caps concurrent requests, times out stalled ones, retries temporary failures with backoff, and honours GitHub's rate-limit responses. When the hourly quota is used up, Vicky stops sending requests until GitHub's reset time and reports when docs can be loaded again.
 
