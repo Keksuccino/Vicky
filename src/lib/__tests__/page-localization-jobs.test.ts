@@ -140,7 +140,7 @@ describe("page localization background jobs", () => {
   it("updates the local language snapshot from upload progress without rescanning GitHub", async () => {
     mocks.listMarkdownDocsTreePagesWithTitles.mockResolvedValue({ items: [], pages: [] });
     mocks.translatePageLocalizations.mockImplementation(async (input: { onEvent?: (event: PageLocalizationTranslationEvent) => void }) => {
-      input.onEvent?.({ type: "prepared", totalPages: 1, currentPages: 0, requestedPages: 1, statuses: [{ languageCode: "de", languageName: "German", sourceLanguage: false, currentPages: 0, missingPages: 1, outdatedPages: 0, totalPages: 1, unrecordedPages: 0 }], targetLanguages: 1 });
+      input.onEvent?.({ type: "prepared", totalPages: 1, currentPages: 0, requestedPages: 1, statuses: [{ languageCode: "de", languageName: "German", sourceLanguage: false, currentPages: 0, missingPages: 1, outdatedPages: 0, pendingPages: 0, totalPages: 1, unrecordedPages: 0 }], targetLanguages: 1 });
       input.onEvent?.({ type: "upload-success", attempt: 1, batchSize: 1, commitSha: "commit-sha", language, previousStatus: "missing", sourcePage: { path: "home.md", slug: "home" } });
       return { totalPages: 1, cachedPages: 0, requestedPages: 1, translatedPages: 1, uploadedPages: 1, translationFailedPages: 0, uploadFailedPages: 0, failedPages: 0, failures: [] };
     });
@@ -148,7 +148,7 @@ describe("page localization background jobs", () => {
     const started = startPageLocalizationJob({ apiKey: "openrouter-key", config, languages: [language], localizationPath: "localizations", mode: "missing-and-outdated", model: "openai/gpt-5.4-mini", origin: "https://docs.example.com", requestTimeoutMs: 60_000, siteTitle: "Vicky Docs" });
 
     await vi.waitFor(() => expect(getPageLocalizationJobStatus(started.id).job?.status).toBe("completed"));
-    expect(getPageLocalizationJobStatus(started.id).job?.statuses).toEqual([{ languageCode: "de", languageName: "German", sourceLanguage: false, currentPages: 1, missingPages: 0, outdatedPages: 0, totalPages: 1, unrecordedPages: 0 }]);
+    expect(getPageLocalizationJobStatus(started.id).job?.statuses).toEqual([{ languageCode: "de", languageName: "German", sourceLanguage: false, currentPages: 1, missingPages: 0, outdatedPages: 0, pendingPages: 0, totalPages: 1, unrecordedPages: 0 }]);
     expect(mocks.listMarkdownDocsTreePagesWithTitles).toHaveBeenCalledTimes(1);
   });
 

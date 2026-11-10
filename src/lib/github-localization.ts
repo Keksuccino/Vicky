@@ -63,9 +63,14 @@ export type GitHubLocalizationStatus = GitHubLocalizedFile & {
 type LanguageLoad = {
   /** Index files the load was started for; once the index changes, a new load may start at once. Weak, so an old index is not kept alive. */
   files: WeakRef<GitHubDocsSourceView["index"]["files"]>;
+  /** Translation blobs downloaded so far of those the store lacked; commit dates are looked up after them. */
+  progress: { downloaded: number; total: number };
   promise: Promise<void> | null;
   retryAtMs: number;
 };
+
+/** A language load that is still running. */
+type RunningLanguageLoad = LanguageLoad & { promise: Promise<void> };
 
 /** What the outdated rule needs for a set of translations. */
 type LocalizationEvidence = {
@@ -255,7 +260,7 @@ const isStaleSourceError = (error: unknown): boolean => error instanceof ApiErro
  * blobs and the commit metadata the date rule needs) and returns the running load, or null when
  * none is needed or the last one for the same index could not complete just now. Downloads run
  * at bulk priority with a small concurrency; results are content- or version-addressed, so a
- * load outliving a refresh or save stays valid.
+ * load outliving a refresh or save stays valid. The load counts its blob downloads in `progress`.
  */
 const ensureLanguageLoad = (
   config: GitHubRuntimeConfig,
@@ -265,19 +270,21 @@ const ensureLanguageLoad = (
   files: GitHubLocalizedFile[],
   evidence: LocalizationEvidence,
   baseDir: string,
-): Promise<void> | null => {
+): RunningLanguageLoad | null => {
   const key = `${gitHubRuntimeCacheKey(config)}|localization-load|${languageRoot}`;
   const previous = docsSourceCache.get(key) as LanguageLoad | undefined;
   if (previous?.promise) {
-    return previous.promise;
+    return previous as RunningLanguageLoad;
   }
   const complete = evidence.missingVersions.length === 0 && files.every((file) => evidence.summaries.has(file.sha));
   if (complete || (previous?.files.deref() === view.index.files && Date.now() < previous.retryAtMs)) {
     return null;
   }
 
-  const load: LanguageLoad = { files: new WeakRef(view.index.files), promise: null, retryAtMs: 0 };
-  const promise = downloadLocalizationEvidence(config, access, files, baseDir)
+  const load: LanguageLoad = { files: new WeakRef(view.index.files), progress: { downloaded: 0, total: 0 }, promise: null, retryAtMs: 0 };
+  const promise = downloadLocalizationEvidence(config, access, files, baseDir, (downloaded, total) => {
+    load.progress = { downloaded, total };
+  })
     .then(() => undefined)
     .catch((error: unknown) => {
       if (!isStaleSourceError(error)) {
@@ -291,7 +298,7 @@ const ensureLanguageLoad = (
     });
   load.promise = promise;
   docsSourceCache.set(key, load);
-  return promise;
+  return load as RunningLanguageLoad;
 };
 
 /** Resolves to whether the promise settled within `ms`. */
@@ -385,7 +392,7 @@ export const loadGitHubLocalizedTitles = async ({
 
   let evidence = await readLocalizationEvidence(config, files, baseDir);
   let load = ensureLanguageLoad(config, access, view, languageRoot, files, evidence, baseDir);
-  if (load && waitForPending && (await settlesWithin(load, TITLE_REFRESH_WAIT_MS))) {
+  if (load && waitForPending && (await settlesWithin(load.promise, TITLE_REFRESH_WAIT_MS))) {
     evidence = await readLocalizationEvidence(config, files, baseDir);
     load = null;
   }
@@ -471,6 +478,61 @@ export const loadGitHubLocalizationStatuses = async ({
       new Map(files.map((file) => [file.sourcePage.path, { ...file, state: stateOf(config, file, evidence), summary: evidence.summaries.get(file.sha) }] as const)),
     ]),
   );
+};
+
+export type GitHubLanguageLocalizationOverview = {
+  /** Translations whose state the stored evidence decides, by source page path; missing ones are absent. */
+  statuses: Map<string, GitHubLocalizationStatus>;
+  /** Source page paths whose translation the running language load still has to fetch before its state is known. */
+  pendingPaths: Set<string>;
+  /** The running language load's blob downloads, or null when none runs. */
+  loading: { downloaded: number; total: number } | null;
+};
+
+/**
+ * Status of every translation of the given languages for the admin overview, from the repository
+ * index and the store alone: no page body is read and nothing waits for GitHub. A language whose
+ * blobs or commit dates the store lacks gets the same background language load the sidebar
+ * starts; until it finished, the translations it fetches are pending and `loading` reports its
+ * progress. With a warm index and store this makes no GitHub request.
+ */
+export const loadGitHubLocalizationOverview = async ({
+  config,
+  languageCodes,
+  localizationPath,
+}: {
+  config: GitHubRuntimeConfig;
+  languageCodes: string[];
+  localizationPath: string;
+}): Promise<{ languages: Map<string, GitHubLanguageLocalizationOverview>; sourcePages: readonly GitHubDocPage[] }> => {
+  const access = beginGitHubCacheAccess(config);
+  const baseDir = getGitHubDocsCacheDir();
+  const view = await loadGitHubDocsSourceView(config);
+  const languages = new Map<string, GitHubLanguageLocalizationOverview>();
+
+  for (const languageCode of languageCodes) {
+    const languageRoot = localizationLanguageRoot(localizationPath, languageCode);
+    const files = listLocalizedFiles(view, languageRoot);
+    const evidence = await readLocalizationEvidence(config, files, baseDir);
+    const load = ensureLanguageLoad(config, access, view, languageRoot, files, evidence, baseDir);
+    const overview: GitHubLanguageLocalizationOverview = { statuses: new Map(), pendingPaths: new Set(), loading: load ? { ...load.progress } : null };
+    for (const file of files) {
+      const summary = evidence.summaries.get(file.sha);
+      const state = stateOf(config, file, evidence);
+      // A running load is fetching exactly what the store lacks: the blob, or the commit dates an
+      // unrecorded translation is judged by. Without a load such a translation is decided as the
+      // readers decide it (an unreadable blob by commit dates, unknown dates as current).
+      if (load && (!summary || state === "undetermined")) {
+        overview.pendingPaths.add(file.sourcePage.path);
+      } else {
+        overview.statuses.set(file.sourcePage.path, { ...file, state, summary });
+      }
+    }
+    languages.set(languageCode, overview);
+  }
+  assertGitHubCacheAccess(access);
+
+  return { languages, sourcePages: view.pages };
 };
 
 /**

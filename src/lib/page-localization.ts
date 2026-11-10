@@ -14,8 +14,8 @@ import {
 import { getDetailedAutoTranslateErrorMessage } from "@/lib/auto-translate-logging";
 import { loadGitHubBlobs } from "@/lib/github-content-store";
 import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
-import { loadGitHubLocalizationStatuses, type GitHubLocalizationStatus } from "@/lib/github-localization";
-import { isSourceLanguage } from "@/lib/page-localization-read";
+import { loadGitHubLocalizationStatuses } from "@/lib/github-localization";
+import { isSourceLanguage, summarizePageLocalizationStatuses, type PageLocalizationLanguageStatus } from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
   GitHubDocPage,
@@ -42,18 +42,6 @@ const TRANSLATION_MEMORY_CRITICAL_RATIO = 0.9;
 const TRANSLATION_MEMORY_POLL_INTERVAL_MS = 1_000;
 /** Longest wait for heap headroom before the job stops starting translations. */
 const TRANSLATION_MEMORY_WAIT_LIMIT_MS = 2 * 60_000;
-
-export type PageLocalizationLanguageStatus = {
-  languageCode: string;
-  languageName: string;
-  sourceLanguage: boolean;
-  currentPages: number;
-  missingPages: number;
-  outdatedPages: number;
-  totalPages: number;
-  /** Current translations (by commit dates) that do not record their source version yet; recording it makes their status exact. */
-  unrecordedPages: number;
-};
 
 export type PageLocalizationRequestMode = "outdated" | "missing-and-outdated";
 
@@ -535,39 +523,6 @@ export const translatePageToQueuedGitHubLocalization = async ({
     upload: queued.upload,
   };
 };
-
-/**
- * Per-language counts for the admin status: undetermined translations count as current, as
- * readers serve them; `unrecordedPages` counts the current ones the stamping action can record.
- */
-export const summarizePageLocalizationStatuses = (
-  languages: AutoTranslateLanguage[],
-  sourcePages: readonly GitHubDocPage[],
-  localizations: Map<string, Map<string, GitHubLocalizationStatus>>,
-): PageLocalizationLanguageStatus[] =>
-  languages.map((language) => {
-    const base = { languageCode: language.code, languageName: language.name, totalPages: sourcePages.length };
-    if (isSourceLanguage(language)) {
-      return { ...base, sourceLanguage: true, currentPages: sourcePages.length, missingPages: 0, outdatedPages: 0, unrecordedPages: 0 };
-    }
-
-    const byPath = localizations.get(language.code);
-    const status = { ...base, sourceLanguage: false, currentPages: 0, missingPages: 0, outdatedPages: 0, unrecordedPages: 0 };
-    for (const sourcePage of sourcePages) {
-      const localization = byPath?.get(sourcePage.path);
-      if (!localization) {
-        status.missingPages += 1;
-      } else if (localization.state === "outdated") {
-        status.outdatedPages += 1;
-      } else {
-        status.currentPages += 1;
-        if (localization.state === "current" && localization.summary && !localization.summary.sourceBlobSha) {
-          status.unrecordedPages += 1;
-        }
-      }
-    }
-    return status;
-  });
 
 export const translatePageLocalizations = async ({
   apiKey,

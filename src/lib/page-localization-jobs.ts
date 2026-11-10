@@ -7,14 +7,12 @@ import { createBackgroundJobSlot, type BackgroundJobState, type BackgroundJobSta
 import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
 import { recordGitHubLocalizationSourceVersions, type GitHubSourceVersionRecordingEvent } from "@/lib/github-localization-saves";
 import {
-  summarizePageLocalizationStatuses,
   translatePageLocalizations,
-  type PageLocalizationLanguageStatus,
   type PageLocalizationRequestMode,
   type PageLocalizationRequestResult,
   type PageLocalizationTranslationEvent,
 } from "@/lib/page-localization";
-import { isSourceLanguage } from "@/lib/page-localization-read";
+import { isSourceLanguage, summarizePageLocalizationStatuses, type PageLocalizationLanguageStatus } from "@/lib/page-localization-read";
 import type {
   AutoTranslateLanguage,
   GitHubRuntimeConfig,

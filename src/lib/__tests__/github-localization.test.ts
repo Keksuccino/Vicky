@@ -21,6 +21,7 @@ import { createMarkdownRenderCacheStatus } from "@/lib/markdown-render-cache-adm
 import { getMarkdownRenderCacheWarmJob, startMarkdownRenderCacheWarmJob } from "@/lib/markdown-render-cache-warm-job";
 import { translatePageLocalizations, type PageLocalizationTranslationEvent } from "@/lib/page-localization";
 import { getLatestPageLocalizationJob, startPageLocalizationJob, startSourceVersionRecordingJob } from "@/lib/page-localization-jobs";
+import { loadPageLocalizationOverview } from "@/lib/page-localization-read";
 import type { AutoTranslateLanguage, DocsStore, GitHubRuntimeConfig } from "@/lib/types";
 
 import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake-github-api";
@@ -150,6 +151,34 @@ describe("GitHub localizations from the repository index", () => {
     await waitForPersistedMetadata("localizations/de/home.md");
     simulateRestart();
     await expect(loadDocsPageForLanguage({ config, locator: { slug: "home" }, requestedLanguageCode: "de", store })).resolves.toMatchObject({ data: { title: "Startseite" } });
+    expect(fake.count()).toBe(0);
+  });
+
+  it("reports every language's status for the admin overview without a job, fetching a cold language once in the background", async () => {
+    const overview = async () => {
+      const statuses = await loadPageLocalizationOverview({ config, languages: [SOURCE, GERMAN, FRENCH], localizationPath: "localizations" });
+      return Object.fromEntries(statuses.map((status) => [status.languageCode, status]));
+    };
+
+    // Nothing of the translations is stored yet: their state is pending while a load fetches them.
+    const cold = await overview();
+    expect(cold["en-US"]).toMatchObject({ sourceLanguage: true, currentPages: 3, totalPages: 3, pendingPages: 0, loading: null });
+    expect(cold.de).toMatchObject({ sourceLanguage: false, currentPages: 0, missingPages: 1, pendingPages: 2, totalPages: 3 });
+    expect(cold.de.loading).not.toBeNull();
+    expect(cold.fr).toMatchObject({ missingPages: 2, pendingPages: 1 });
+
+    await vi.waitFor(async () => expect(Object.values(await overview()).every((status) => status.loading === null)).toBe(true));
+    const settled = await overview();
+    // The translations were committed after their source pages and record no source version yet.
+    expect(settled.de).toMatchObject({ currentPages: 2, missingPages: 1, outdatedPages: 0, pendingPages: 0, unrecordedPages: 2 });
+    expect(settled.fr).toMatchObject({ currentPages: 1, missingPages: 2, outdatedPages: 0, pendingPages: 0, unrecordedPages: 1 });
+
+    // Warm, the overview is computed from the index and the store alone, also after a restart.
+    fake.resetRequests();
+    await overview();
+    await waitForPersistedMetadata("localizations/fr/home.md");
+    simulateRestart();
+    await expect(overview()).resolves.toMatchObject({ de: { currentPages: 2, pendingPages: 0, loading: null } });
     expect(fake.count()).toBe(0);
   });
 
