@@ -16,7 +16,7 @@
 
 1. `npm run build`.
 2. Create a temporary directory inside the project (never commit it) and export, for the server process only:
-   - `NODE_ENV=production`, `VICKY_RUNTIME_TOPOLOGY=single-process-local`, a non-default `HTTP_PORT`/`HTTPS_PORT`, `HOST=127.0.0.1`.
+   - `VICKY_RUNTIME_TOPOLOGY=single-process-local`, a non-default `HTTP_PORT`/`HTTPS_PORT`, `HOST=127.0.0.1`.
    - Fresh `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, `ENCRYPTION_SECRET` (`openssl rand -base64 48`), not the values of `.env.local`.
    - Every runtime path, pointed into the temporary directory: `WIKI_STORE_FILE_PATH`, `WIKI_SSL_STORAGE_DIR`, `WIKI_MARKDOWN_CACHE_DIR`, `WIKI_DOCS_CACHE_DIR`, `WIKI_DOCS_SNAPSHOT_DIR`, `WIKI_TRANSLATION_CACHE_DIR` (startup deletes the old translation cache files there), `WIKI_ANALYTICS_DB_PATH`, `AUTH_LOGIN_DB_PATH`, `AUTH_LOGIN_STORE_FILE_PATH`, `SSL_STATUS_FILE_PATH`. `.env.local` sets some of these to `data/`; exported values take precedence. The preload loads the env files as the server does and refuses to start (exit code 1, listing the offending paths) while any runtime path, set or defaulted, is inside the project's `data/`.
    - `NODE_OPTIONS=--import=<absolute path>/scripts/fake-github-preload.mjs`. Worker threads (the visitor analytics worker) inherit it; the preload installs its fakes and the control endpoint in the main thread only.

@@ -215,8 +215,8 @@ Saving a page in the editor (or a translation through the job) changes only thes
 
 - `npm run dev` starts the Next.js dev server
 - `npm run build` builds the app for production
-- `npm run start` runs the included production server (`server.mjs`)
-- `npm run start:next` runs plain `next start`
+- `npm run start` runs the included production server (`server.mjs`) on the production build
+- `npm run start:next` runs plain `next start` on the production build
 - `npm run lint` runs ESLint
 - `npm run typecheck` runs TypeScript checks
 - `npm run test` runs the test suite once
@@ -316,6 +316,8 @@ Standard production flow:
 npm run build
 npm run start
 ```
+
+Both `npm run start` and `npm run start:next` run in production mode on every platform; you do not need to set `NODE_ENV`. Only an explicit `NODE_ENV=development` makes `npm run start` serve through the Next.js development server instead (it logs a warning when it does). Use `npm run dev` for development.
 
 Set the deployment replica count to one, prevent overlapping process starts during rollout, and mount one durable local-style runtime volume for every persisted path listed below. Startup fails before a listener opens if the topology declaration, runtime path permissions, or exclusive owner lease is invalid.
 

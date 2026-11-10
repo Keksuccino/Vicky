@@ -9,7 +9,6 @@ import process from "node:process";
 import tls from "node:tls";
 
 import * as acme from "acme-client";
-import next from "next";
 
 import { INTERNAL_CLIENT_IP_HEADER, isTrustedProxyClientIpPeer, normalizeClientIp, resolveTrustedForwardedClientIp } from "./src/lib/client-ip-policy.mjs";
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
@@ -24,8 +23,15 @@ import { acquireRuntimeOwnerLease } from "./src/lib/runtime-topology.mjs";
 const require = createRequire(import.meta.url);
 const { loadEnvConfig } = require("@next/env");
 
-loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
+// This server runs the production build unless NODE_ENV=development asks for the Next.js
+// development server, on every platform and without the operator exporting anything. The mode
+// must be settled before Next is loaded: Next, and React through it, pick their production or
+// development builds when they are first imported, which is why `next` is imported only below.
+process.env.NODE_ENV ||= "production";
+const IS_DEV = process.env.NODE_ENV === "development";
+loadEnvConfig(process.cwd(), IS_DEV);
 validateRuntimeSecretsOrExit();
+const { default: next } = await import("next");
 
 // App code accepts the private direct-request headers only when this per-process token
 // matches. The server overwrites all three headers below before handing a request to Next.
@@ -61,7 +67,6 @@ const SSL_STATUS_ENDPOINT_PATH = normalizeStatusEndpointPath(
 const SSL_STATUS_BEARER_TOKEN = String(process.env.SSL_STATUS_BEARER_TOKEN ?? "").trim();
 const SSL_STATUS_FILE_PATH = process.env.SSL_STATUS_FILE_PATH ?? path.join(SSL_STORAGE_DIR, "runtime-ssl-status.json");
 const SSL_RUNTIME_INSTANCE_ID = randomUUID();
-const IS_DEV = process.env.NODE_ENV !== "production";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const GITHUB_LOCALIZATION_UPLOAD_QUEUE_NAME = "githubLocalization.uploadQueue";
 
@@ -1264,6 +1269,9 @@ async function handleRequest(request, response) {
 }
 
 async function start() {
+  if (IS_DEV) {
+    warn("NODE_ENV=development: serving through the Next.js development server instead of the production build.");
+  }
   runtimeOwnerLease = await acquireRuntimeOwnerLease();
   await ensurePrivateDirectory(SSL_STORAGE_DIR);
   await app.prepare();
