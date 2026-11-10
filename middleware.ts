@@ -62,8 +62,16 @@ export const middleware = async (request: NextRequest): Promise<NextResponse> =>
     return unauthorizedApiResponse();
   }
 
-  const loginSearch = new URLSearchParams({ next: `${pathname}${search}` });
-  return new NextResponse(null, { status: 307, headers: { Location: `${LOGIN_PAGE_PATH}?${loginSearch}` } });
+  // Next's middleware adapter requires an absolute Location (a relative one fails the request with
+  // `Invalid URL`) and turns every redirect to the origin of the request URL into a relative
+  // Location. That origin is Next's own listener (for example http://0.0.0.0:3000), never taken
+  // from client headers, so visitors receive `/admin/login?next=...` and stay on the public origin
+  // they requested, including behind a proxy, a CDN, or a custom domain. Keep the redirect on
+  // `request.nextUrl`; a URL built from any other origin would reach visitors unchanged.
+  const loginUrl = request.nextUrl.clone();
+  loginUrl.pathname = LOGIN_PAGE_PATH;
+  loginUrl.search = new URLSearchParams({ next: `${pathname}${search}` }).toString();
+  return NextResponse.redirect(loginUrl);
 };
 
 export const config = {
