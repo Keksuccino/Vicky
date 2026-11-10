@@ -78,9 +78,12 @@
   - `src/lib/ai-chat.ts`
   - `src/lib/auto-translate-server.ts`
   - `src/lib/openrouter.ts`
-- Analytics:
-  - `src/lib/visitor-storage.ts`
-  - `src/lib/visitors.ts`
+- Analytics (see "Visitor Analytics"):
+  - `src/lib/visitors.ts`: visit queue (dedup, capacity, retries, batches) and the admin summary shape
+  - `src/lib/visitor-storage.ts`: main-thread client of the analytics worker (requests, watchdog, restart backoff, cached numbers)
+  - `src/lib/visitor-analytics-worker.mjs`: worker thread that owns the SQLite database
+  - `src/lib/visitor-analytics-store.mjs`: schema, batched writes, folding visits into aggregates, summary queries
+  - `src/lib/visitor-analytics-maintenance.mjs`: migration of the earlier schema, retention, compaction
 - Domain/HTTPS runtime:
   - `server.mjs`
   - `src/lib/domain-settings.ts`
@@ -169,6 +172,14 @@ Useful URLs:
 - Search builds its corpus from the source view, and per language from the stored translations.
 - Tests use the fake GitHub API in `src/lib/__tests__/fixtures/fake-github-api.ts` (`vi.stubGlobal("fetch", fake.fetch)`), which exercises the real client, and must point `WIKI_DOCS_CACHE_DIR` (and the other cache directories) at a temporary directory. `TESTING_GUIDELINES.md` describes running the production server against the same fake (`scripts/fake-github-preload.mjs`) and checking UI offscreen (`scripts/offscreen-browser.mjs`).
 
+## Visitor Analytics
+- Only the analytics worker thread opens `wiki-analytics.sqlite`; no request handler runs SQLite. `visitor-storage.ts` starts the worker from `<cwd>/src/lib/visitor-analytics-worker.mjs` (unbundled, like the `.mjs` modules `server.mjs` loads), so the app must run from the project directory. A worker that fails to open the database, exits, or leaves a request unanswered for 60 s without any message is stopped; pending requests reject, the admin card shows the error, and the next request restarts it with a backoff (5 s doubling up to 5 min). Steps that hold the worker for long (index drops, the drop of the old table, compaction) announce themselves first.
+- Writes: the queue in `visitors.ts` hashes the client address with the salt (read once, kept in memory) and sends up to 500 visits per batch; each batch is one transaction. File permissions are verified when the worker opens the database, not per call. Duplicates by visitor and event ID are skipped: `analytics_recent_events` keeps the first 64 bits of the event ID's SHA-256 for today and yesterday (clients repeat an event within seconds), so raw rows carry no event index.
+- Numbers never come from scanning raw rows. Each visit is folded into aggregates as it is written (`visitor-analytics-store.mjs` documents every table): visits per day/page and hour/page, unique visitors per day/hour via presence rows, and the last hour each visitor was seen overall and per page. Every window ends now, so a window's unique visitors are an index range count over `last_hour`; every number is exact for every window up to 365 days and independent of arrival order. All-time totals and the daily chart are kept forever; all-time unique visitors count a visitor again only after more than a year without visits (their recency rows are pruned with the raw rows).
+- The admin endpoint answers from numbers cached in memory (60 s, 10 s while catching up; `?refresh=1` re-reads once they are 2 s old) and waits at most 2.5 s for new ones, then answers with `refreshing: true`. The response is `{ stats, status: { catchingUp, refreshing, error } }`; the card polls while `catchingUp` or `refreshing` is set and ignores responses older than its latest request.
+- Retention, once per UTC day in small steps: raw rows (`analytics_visits`) and visitor recency rows older than 365 days, event IDs older than yesterday, hourly rows and presence rows outside their horizon; `incremental_vacuum` then returns freed pages to the file system.
+- Migration of the earlier schema (`visitor_events` with nine indexes) runs in the worker in steps of at most 8,192 rows or about 200 ms (large commits write far less than many small ones, because the visitor tables are updated at random keys; WAL checkpoints run every 8,000 pages meanwhile): drop the indexes no query needs, fold old rows oldest first, copy those inside the retention window into `analytics_visits` with their old row IDs, and store the position of the last folded row in the same transaction, so it resumes anywhere and never counts twice. Old rows are not deleted one by one (the old random-key indexes would make each deletion rewrite pages all over the file); the whole old table is dropped at the end in one announced step (about 0.15 s per million rows with a warm page cache). Visits recorded meanwhile are stored and folded afterwards; the card shows progress until then. A database without incremental auto-vacuum is then compacted once by `VACUUM INTO <db>.compact` and an atomic rename; it needs free space for the live data only and is retried after 6 hours when that is missing.
+
 ## Markdown + UI Expectations
 - Markdown should remain GitHub-friendly (GFM behavior expected by users).
 - Single-segment root-relative links like `[/home]` are normalized to `/docs/home`.
@@ -193,7 +204,7 @@ Useful URLs:
 
 ## Generated/Ignored Files
 - `next-env.d.ts` is ignored and generated by Next.js.
-- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*`, `login-rate-limit.json`, SSL files, rendered Markdown, the docs cache, and translations.
+- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*` (a `wiki-analytics.sqlite.compact` copy exists only during the one-time compaction and is removed at the next start), `login-rate-limit.json`, SSL files, rendered Markdown, the docs cache, and translations.
 - `.next/` artifacts are generated and can cause stale type references after route refactors; clean/restart build if needed.
 
 ## Deployment Notes

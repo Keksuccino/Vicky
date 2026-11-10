@@ -44,7 +44,7 @@ It gives you:
 - The local copy of the docs repository lives in `data/docs-cache/` by default: an index of every Markdown file with its Git blob SHA, the Markdown blobs themselves (stored once per content, already parsed), and per-file "last updated" commit data. See [How Vicky Talks to GitHub](#how-vicky-talks-to-github).
 - OpenRouter docs translation cache files live in `data/translation-cache/` by default.
 - Login rate-limit state lives in `data/login-rate-limit.sqlite` by default. A legacy `data/login-rate-limit.json` is migrated once and retained untouched.
-- Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default.
+- Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default. Single page views are kept for 365 days; daily totals per page and the all-time numbers are kept as aggregates. See [How Vicky Counts Visits](#how-vicky-counts-visits).
 - A live process owns `data/wiki-store.json.runtime-owner.json` by default. A launcher that starts a Next.js child also creates `data/wiki-store.json.runtime-owner.json.child.json`. These are exclusive runtime ownership artifacts, not application data or backup artifacts.
 
 This repo contains the app itself, not your docs content.
@@ -66,6 +66,18 @@ Vicky keeps GitHub traffic small and predictable, so a busy site stays far below
 - **Background work is paced.** Large downloads and background commits (loading a language's translations, warming the Markdown HTML cache, translation uploads) stay within GitHub's documented secondary rate limits, so they can never pause the site for visitors. Page views and editor saves are never slowed down by this.
 
 Files over 1 MB load like any other page.
+
+# How Vicky Counts Visits
+
+Visitor analytics are built so that a busy site never slows down, however many visits it has stored:
+
+- **Nothing waits for the analytics database.** A worker thread owns it, so recording visits, reading the numbers, and maintenance never block request handling. Accepted page views are written in batches.
+- **Numbers are kept up to date as visits arrive.** Each page view is added to running totals (visits per day and page, unique visitors per day and hour, and when each visitor was last seen) when it is written, so reading the admin card's numbers takes the same short time with a thousand or with millions of stored visits. The card shows when its numbers were read; they are reused for up to a minute, and the refresh button reads them again.
+- **Exact for every range.** Visits and unique visitors are exact for the last 24 hours and the last 7, 30, and 365 days, per page too. All-time visits and the all-time chart are kept forever; for all-time unique visitors, someone who comes back after more than a year without visits counts again.
+- **Stored visits are kept for a year.** Once a day, single page views and visitor records older than 365 days are deleted in small steps, and the freed space is returned to the file system.
+- **Upgrading keeps every number.** A database from an earlier Vicky version is migrated in the background on the first start: its old rows are added to the totals oldest first, and every step remembers how far it got, so the migration can be interrupted at any point and continues where it stopped. The old table is removed once all its rows are in. Visits keep being recorded meanwhile, and the admin card shows the progress until the numbers are complete. Afterwards the database is compacted once into a copy beside it (`wiki-analytics.sqlite.compact`), which needs free disk space for the remaining data only, not for the whole old file; without that space it is retried later.
+
+The worker runs `src/lib/visitor-analytics-worker.mjs` from the directory the server was started in, so start Vicky from the project directory as the npm scripts do.
 
 # Requirements
 
@@ -291,7 +303,7 @@ Public origins used for canonical/OpenGraph metadata, plaintext docs links and c
 
 `VICKY_TRUST_PROXY_ORIGIN_HEADERS` is deliberately separate from the client-IP pair `AUTH_TRUST_PROXY_HEADERS`/`AUTH_TRUSTED_PROXY_IPS`. Enabling origin trust does not enable client-IP trust, and enabling client-IP trust does not change canonical origin selection. Vicky never consumes the RFC `Forwarded` header and never guesses the first or last value in a forwarding chain. When origin-header trust is enabled, `x-forwarded-host` and `x-forwarded-proto` must both contain exactly one valid value; comma-separated, partial, or malformed pairs are ignored in favor of the validated direct request context. The included server also removes an untrusted or invalid pair before Next.js can consume it internally.
 
-Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication. Per-client controls use the trusted client-IP settings above; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. Unknown-address visits receive independent anonymous identities and do not share event-ID dedup keys, so visitor counts are necessarily approximate until a trustworthy address is available. The analytics rate, concurrency, queue, and retry limits apply to the one supported app process; ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
+Public page-view analytics accepts only small UTF-8 JSON bodies, rejects conflicting browser `Origin`/`Sec-Fetch-Site` signals, and records only pages present in the configured docs tree. Page paths and titles are resolved from server-side docs caches, client titles are ignored, and event IDs are deduplicated with bounded in-memory state before SQLite's durable per-visitor deduplication, which remembers the event IDs of today and yesterday. Per-client controls use the trusted client-IP settings above; when no trustworthy address is available, the global limits remain active without collapsing all visitors into one client quota. Unknown-address visits receive independent anonymous identities and do not share event-ID dedup keys, so visitor counts are necessarily approximate until a trustworthy address is available. The analytics rate, concurrency, queue, and retry limits apply to the one supported app process; ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
 
 Public document reads accept only bounded canonical paths that already exist in the indexed GitHub docs tree. Unknown slugs are answered from the local index and never become speculative `.md` or `.mdx` GitHub file requests. The public docs rate and concurrency limits apply to the one supported app process; when no trustworthy client address is available, only the global limits apply. Ingress rate limiting remains useful as defense in depth but does not make multiple Vicky replicas safe.
 
@@ -349,7 +361,7 @@ Persist these paths across deployments:
 - `data/markdown-cache/`
 - `data/docs-cache/`
 - `data/translation-cache/`
-- `data/wiki-analytics.sqlite`, including its `-wal` and `-shm` companions when present
+- `data/wiki-analytics.sqlite`, including its `-wal` and `-shm` companions when present (a leftover `wiki-analytics.sqlite.compact` is a disposable copy and need not be kept)
 - `data/login-rate-limit.sqlite`, including its `-wal` and `-shm` companions when present
 - `data/login-rate-limit.json` when retained as a legacy migration source
 
