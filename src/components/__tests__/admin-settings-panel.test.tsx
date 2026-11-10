@@ -140,6 +140,7 @@ const SSL_STATUS: DomainSslRuntimeStatus = {
 
 const VISITOR_STATS = {
   updatedAt: "2026-03-10T12:00:00.000Z",
+  computedAt: "2026-03-10T12:00:00.000Z",
   scopes: {
     allTime: {
       totalVisits: 0,
@@ -183,6 +184,8 @@ const VISITOR_STATS = {
     },
   },
 };
+
+const IDLE_VISITOR_STATUS = { catchingUp: null, refreshing: false, error: null };
 
 const PERFORMANCE_STATS = {
   updatedAt: "2026-03-10T12:00:00.000Z",
@@ -274,7 +277,7 @@ describe("AdminSettingsPanel", () => {
     });
     fetchAdminMarkdownCacheStatusMock.mockResolvedValue(MARKDOWN_CACHE_STATUS);
     fetchAdminPerformanceStatsMock.mockResolvedValue(PERFORMANCE_STATS);
-    fetchAdminVisitorStatsMock.mockResolvedValue(VISITOR_STATS);
+    fetchAdminVisitorStatsMock.mockResolvedValue({ stats: VISITOR_STATS, status: IDLE_VISITOR_STATUS });
     createAdminModeratorMock.mockResolvedValue({
       id: "mod-1",
       username: "docs-editor",
@@ -371,6 +374,40 @@ describe("AdminSettingsPanel", () => {
     await waitFor(() => expect(requestAdminSourceVersionRecordingMock).toHaveBeenCalledWith(3));
     await waitFor(() => expect(screen.queryByRole("button", { name: /Record Source Versions|Recording/ })).toBeNull());
     confirm.mockRestore();
+  });
+
+  it("shows analytics catch-up progress and never lets an older analytics response replace a newer one", async () => {
+    const statsWithVisits = (totalVisits: number) => ({ ...VISITOR_STATS, scopes: { ...VISITOR_STATS.scopes, allTime: { ...VISITOR_STATS.scopes.allTime, totalVisits } } });
+    const catchingUp = (processed: number) => ({ ...IDLE_VISITOR_STATUS, catchingUp: { processed, total: 100, etaSeconds: 90 } });
+    const poll = createDeferred<unknown>();
+    const manualRefresh = createDeferred<unknown>();
+    fetchAdminVisitorStatsMock
+      .mockResolvedValueOnce({ stats: statsWithVisits(100), status: catchingUp(25) })
+      .mockImplementationOnce(() => poll.promise)
+      .mockImplementationOnce(() => manualRefresh.promise);
+
+    const { container } = render(<AdminSettingsPanel />);
+    const card = (): Element | null => container.querySelector(".panel-card-visitors");
+    const shownVisits = (): string | null | undefined => card()?.querySelector(".visitor-sparkline-card-visits .visitor-sparkline-meta strong")?.textContent;
+    await waitFor(() => expect(card()?.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("25"), { timeout: 3_000 });
+    expect(shownVisits()).toBe("100");
+
+    // A background poll starts while catching up; the admin refreshes before it answers.
+    await waitFor(() => expect(fetchAdminVisitorStatsMock).toHaveBeenCalledTimes(2), { timeout: 3_500 });
+    fireEvent.click(card()!.querySelector(".visitor-refresh-button")!);
+    expect(fetchAdminVisitorStatsMock).toHaveBeenLastCalledWith({ refresh: true });
+
+    await act(async () => {
+      manualRefresh.resolve({ stats: statsWithVisits(300), status: IDLE_VISITOR_STATUS });
+      await manualRefresh.promise;
+    });
+    await act(async () => {
+      poll.resolve({ stats: statsWithVisits(200), status: catchingUp(60) });
+      await poll.promise;
+    });
+
+    expect(shownVisits()).toBe("300");
+    expect(card()?.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it("keeps the newest typed value when an older autosave response resolves later", async () => {

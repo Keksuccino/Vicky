@@ -3072,16 +3072,20 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
   gap: 0.48rem;
 }
 
-.markdown-cache-idle {
+.markdown-cache-idle,
+.visitor-catch-up {
   border: 1px solid color-mix(in srgb, var(--accent-surface) 22%, var(--border));
   border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--accent-surface-soft) 62%, var(--surface-muted));
+  padding: 0.82rem 0.9rem;
+}
+
+.markdown-cache-idle {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.72rem 1rem;
-  padding: 0.82rem 0.9rem;
 }
 
 .markdown-cache-idle-text {
@@ -3336,9 +3340,10 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
 
 .visitor-section-heading {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
-  gap: 0.62rem;
+  gap: 0.12rem 0.62rem;
 }
 
 .visitor-section-heading h3 {
@@ -3348,8 +3353,12 @@ html[data-color-mode="custom"] .visitor-sparkline-card.performance-meter-card-hi
 }
 
 .visitor-section-heading span {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-secondary);
   font-size: 0.86rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .visitor-sparkline-grid {
@@ -3625,6 +3634,10 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   right: 0;
   bottom: 0;
   height: 3px;
+}
+
+.visitor-page-meter,
+.visitor-catch-up-bar {
   background: color-mix(in srgb, var(--border) 70%, transparent);
 }
 
@@ -3632,7 +3645,63 @@ html[data-color-mode="custom"] .visitor-sparkline-card-visits {
   display: block;
   width: var(--visitor-bar-size, 0%);
   height: 100%;
+}
+
+.visitor-page-meter-fill,
+.visitor-catch-up-bar > span {
   background: color-mix(in srgb, var(--accent) 72%, var(--accent-surface));
+}
+
+.visitor-catch-up {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.visitor-catch-up-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.62rem;
+}
+
+.visitor-catch-up-heading strong {
+  min-width: 0;
+  color: var(--text-primary);
+  font-weight: 800;
+}
+
+.visitor-catch-up-heading span {
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.visitor-catch-up-bar {
+  height: 6px;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.visitor-catch-up-bar > span {
+  display: block;
+  width: var(--visitor-catch-up-size, 0%);
+  height: 100%;
+  border-radius: inherit;
+  transition: width 0.4s ease;
+}
+
+.visitor-catch-up-detail {
+  color: var(--text-secondary);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .visitor-catch-up-bar > span {
+    transition: none;
+  }
 }
 
 .theme-color-grid {

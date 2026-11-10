@@ -80,7 +80,9 @@ import type {
   ModeratorAccount,
   PerformanceStatsSnapshot,
   ThemeCustomization,
+  VisitorAnalyticsStatus,
   VisitorStatsPeriod,
+  VisitorStatsResult,
   VisitorStatsScope,
   VisitorStatsSummary,
 } from "@/components/types";
@@ -106,6 +108,10 @@ const VISITOR_STATS_TREND_LABELS: Record<VisitorStatsScope, string> = {
   monthly: "Trend of the last 30 days",
   yearly: "Trend of the last 365 days",
 };
+/** How often the card asks again while earlier visits are still being added to the numbers. */
+const VISITOR_STATS_CATCH_UP_POLL_MS = 2_000;
+/** How soon the card asks again when the server was still computing the numbers. */
+const VISITOR_STATS_PENDING_POLL_MS = 1_000;
 const TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS = 650;
 const TRANSLATION_CACHE_STATUS_POLL_MS = 4_000;
 const PERFORMANCE_REFRESH_INTERVAL_MS = 60_000;
@@ -420,8 +426,8 @@ function ResetToDefaultButton({ disabled, onClick }: ResetToDefaultButtonProps) 
 }
 
 type VisitorStatsLoadResult =
-  | { error: null; stats: VisitorStatsSummary }
-  | { error: string; stats: null };
+  | { error: null; result: VisitorStatsResult }
+  | { error: string; result: null };
 
 type PerformanceStatsLoadResult =
   | { error: null; stats: PerformanceStatsSnapshot }
@@ -431,15 +437,15 @@ type MarkdownCacheStatusLoadResult =
   | { error: null; status: AdminMarkdownCacheStatus }
   | { error: string; status: null };
 
-const loadVisitorStatsResult = async (): Promise<VisitorStatsLoadResult> => {
+const loadVisitorStatsResult = async (refresh: boolean): Promise<VisitorStatsLoadResult> => {
   try {
     return {
-      stats: await fetchAdminVisitorStats(),
+      result: await fetchAdminVisitorStats({ refresh }),
       error: null,
     };
   } catch (error) {
     return {
-      stats: null,
+      result: null,
       error: formatApiError(error),
     };
   }
@@ -1281,11 +1287,58 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
   );
 }
 
+const formatRemainingTime = (seconds: number): string => {
+  if (seconds < 60) {
+    return "less than a minute left";
+  }
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) {
+    return `about ${minutes} min left`;
+  }
+  const hours = Math.floor(minutes / 60);
+  const restMinutes = minutes % 60;
+  return `about ${hours} h${restMinutes > 0 ? ` ${restMinutes} min` : ""} left`;
+};
+
+type VisitorCatchUpProgressProps = {
+  progress: NonNullable<VisitorAnalyticsStatus["catchingUp"]>;
+};
+
+function VisitorCatchUpProgress({ progress }: VisitorCatchUpProgressProps) {
+  // Rounded down so the bar never reads 100% before the last visit is in.
+  const percent = progress.total > 0 ? Math.min(99, Math.floor((progress.processed / progress.total) * 100)) : 0;
+  const style = { "--visitor-catch-up-size": `${percent}%` } as CSSProperties;
+  const remaining = progress.etaSeconds === null ? "working out the time left" : formatRemainingTime(progress.etaSeconds);
+
+  return (
+    <div className="visitor-catch-up">
+      <div className="visitor-catch-up-heading">
+        <strong>Catching up on earlier visits</strong>
+        <span>{percent}%</span>
+      </div>
+      <div
+        className="visitor-catch-up-bar"
+        role="progressbar"
+        aria-label="Earlier visits added"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={percent}
+      >
+        <span style={style} />
+      </div>
+      <span className="visitor-catch-up-detail">
+        {formatVisitorCount(progress.processed)} of {formatVisitorCount(progress.total)} visits, {remaining}. The numbers below fill in as it goes.
+      </span>
+    </div>
+  );
+}
+
 type VisitorStatsCardProps = {
   activeScope: VisitorStatsScope;
   error: string | null;
   loading: boolean;
   stats: VisitorStatsSummary | null;
+  status: VisitorAnalyticsStatus | null;
   onRefresh: () => void;
   onScopeChange: (scope: VisitorStatsScope) => void;
 };
@@ -1295,12 +1348,15 @@ function VisitorStatsCard({
   error,
   loading,
   stats,
+  status,
   onRefresh,
   onScopeChange,
 }: VisitorStatsCardProps) {
   const scopeStats = stats?.scopes[activeScope] ?? null;
   const maxPageVisits = Math.max(1, ...(scopeStats?.pages.map((page) => page.visits) ?? [0]));
   const trendPeriods = scopeStats?.periods ?? [];
+  const displayedError = error ?? status?.error ?? null;
+  const waitingForNumbers = loading || Boolean(status?.refreshing);
 
   return (
     <section className="panel-card panel-card-visitors">
@@ -1338,16 +1394,22 @@ function VisitorStatsCard({
         ))}
       </div>
 
-      {error ? <p className="error-text">{error}</p> : null}
+      {displayedError ? <p className="error-text">{displayedError}</p> : null}
+      {status?.catchingUp ? <VisitorCatchUpProgress progress={status.catchingUp} /> : null}
 
       <div className="visitor-stats-scroll">
         {!stats || !scopeStats ? (
-          <p className="muted-caption">{loading ? "Loading analytics..." : "No analytics recorded yet."}</p>
+          displayedError && !waitingForNumbers ? null : (
+            <p className="muted-caption">{waitingForNumbers ? "Loading analytics..." : "No analytics recorded yet."}</p>
+          )
         ) : (
           <>
             <div className="visitor-chart-wrap">
               <div className="visitor-section-heading">
                 <h3>{VISITOR_STATS_TREND_LABELS[activeScope]}</h3>
+                <span title={formatStatusTimestamp(stats.computedAt)}>
+                  {loading ? "Refreshing..." : `Updated ${formatStatusTimestamp(stats.computedAt)}`}
+                </span>
               </div>
               <div className="visitor-sparkline-grid">
                 <VisitorSparklineCard
@@ -1610,6 +1672,7 @@ export function AdminSettingsPanel() {
   const [performanceStatsError, setPerformanceStatsError] = useState<string | null>(null);
 
   const [visitorStats, setVisitorStats] = useState<VisitorStatsSummary | null>(null);
+  const [visitorStatsStatus, setVisitorStatsStatus] = useState<VisitorAnalyticsStatus | null>(null);
   const [visitorStatsLoading, setVisitorStatsLoading] = useState(true);
   const [visitorStatsError, setVisitorStatsError] = useState<string | null>(null);
   const [visitorStatsScope, setVisitorStatsScope] = useState<VisitorStatsScope>("allTime");
@@ -1640,6 +1703,7 @@ export function AdminSettingsPanel() {
   /** Set once the admin asks for the Markdown cache status; it is never loaded before that. */
   const markdownCacheStatusRequestedRef = useRef(false);
   const performanceStatsRequestRef = useRef(0);
+  const visitorStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
     letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
@@ -1715,12 +1779,30 @@ export function AdminSettingsPanel() {
     setPerformanceStatsLoading(false);
   }, []);
 
-  const refreshVisitorStats = useCallback(async () => {
-    setVisitorStatsLoading(true);
-    setVisitorStatsError(null);
+  /**
+   * Loads the analytics numbers. Only the newest request may update the card, so a slow older
+   * response never replaces newer numbers. Background polls (`silent`) leave the refresh button
+   * alone, and numbers already shown stay until newer ones arrive.
+   */
+  const refreshVisitorStats = useCallback(async ({ refresh = false, silent = false }: { refresh?: boolean; silent?: boolean } = {}) => {
+    const requestId = visitorStatsRequestRef.current + 1;
+    visitorStatsRequestRef.current = requestId;
+    if (!silent) {
+      setVisitorStatsLoading(true);
+      setVisitorStatsError(null);
+    }
 
-    const result = await loadVisitorStatsResult();
-    setVisitorStats(result.stats);
+    const result = await loadVisitorStatsResult(refresh);
+    if (visitorStatsRequestRef.current !== requestId) {
+      return;
+    }
+
+    if (result.result) {
+      if (result.result.stats) {
+        setVisitorStats(result.result.stats);
+      }
+      setVisitorStatsStatus(result.result.status);
+    }
     setVisitorStatsError(result.error);
     setVisitorStatsLoading(false);
   }, []);
@@ -2413,6 +2495,21 @@ export function AdminSettingsPanel() {
       window.clearInterval(intervalId);
     };
   }, [loadError, loading, refreshPerformanceStats]);
+
+  useEffect(() => {
+    const catchingUp = Boolean(visitorStatsStatus?.catchingUp);
+    if (!catchingUp && !visitorStatsStatus?.refreshing) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      void refreshVisitorStats({ silent: true });
+    }, catchingUp ? VISITOR_STATS_CATCH_UP_POLL_MS : VISITOR_STATS_PENDING_POLL_MS);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [refreshVisitorStats, visitorStatsStatus]);
 
   useEffect(() => {
     if (!autoSaveReadyRef.current) {
@@ -3383,8 +3480,9 @@ export function AdminSettingsPanel() {
             error={visitorStatsError}
             loading={visitorStatsLoading}
             stats={visitorStats}
+            status={visitorStatsStatus}
             onRefresh={() => {
-              void refreshVisitorStats();
+              void refreshVisitorStats({ refresh: true });
             }}
             onScopeChange={setVisitorStatsScope}
           />

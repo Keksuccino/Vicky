@@ -23,8 +23,10 @@ import {
   type MarkdownHeading,
   type ModeratorAccount,
   type PerformanceStatsSnapshot,
+  type VisitorAnalyticsStatus,
   type VisitorStatsPage,
   type VisitorStatsPeriod,
+  type VisitorStatsResult,
   type VisitorStatsScopeData,
   type VisitorStatsSummary,
 } from "@/components/types";
@@ -677,11 +679,13 @@ function normalizeVisitorStatsScopeData(source: unknown, fallbackLabel: string):
 }
 
 function normalizeVisitorStatsSummary(source: unknown): VisitorStatsSummary {
-  const payload = asRecord(asRecord(source).stats ?? source);
+  const payload = asRecord(source);
   const scopes = asRecord(payload.scopes);
+  const updatedAt = asString(payload.updatedAt).trim() || new Date(0).toISOString();
 
   return {
-    updatedAt: asString(payload.updatedAt).trim() || new Date(0).toISOString(),
+    updatedAt,
+    computedAt: asString(payload.computedAt).trim() || updatedAt,
     scopes: {
       allTime: normalizeVisitorStatsScopeData(scopes.allTime, "All time"),
       daily: normalizeVisitorStatsScopeData(scopes.daily, "Today"),
@@ -1308,9 +1312,32 @@ export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatu
   return normalizeDomainSslRuntimeStatus(response);
 }
 
-export async function fetchAdminVisitorStats(): Promise<VisitorStatsSummary> {
-  const response = await requestJson<unknown>("/api/admin/visitors");
-  return normalizeVisitorStatsSummary(response);
+function normalizeVisitorAnalyticsStatus(source: unknown): VisitorAnalyticsStatus {
+  const payload = asRecord(source);
+  const catchingUp = payload.catchingUp ? asRecord(payload.catchingUp) : null;
+  const total = catchingUp ? Math.max(0, Math.round(asNumber(catchingUp.total, 0))) : 0;
+  const etaSeconds = catchingUp ? asNumber(catchingUp.etaSeconds, Number.NaN) : Number.NaN;
+
+  return {
+    catchingUp: catchingUp
+      ? {
+          processed: Math.min(total, Math.max(0, Math.round(asNumber(catchingUp.processed, 0)))),
+          total,
+          etaSeconds: Number.isFinite(etaSeconds) ? Math.max(0, Math.round(etaSeconds)) : null,
+        }
+      : null,
+    refreshing: asBoolean(payload.refreshing, false),
+    error: asString(payload.error).trim() || null,
+  };
+}
+
+/** Loads the analytics numbers; `refresh` asks the server to read them again when they are older than a moment. */
+export async function fetchAdminVisitorStats({ refresh = false }: { refresh?: boolean } = {}): Promise<VisitorStatsResult> {
+  const response = asRecord(await requestJson<unknown>(refresh ? "/api/admin/visitors?refresh=1" : "/api/admin/visitors"));
+  return {
+    stats: response.stats ? normalizeVisitorStatsSummary(response.stats) : null,
+    status: normalizeVisitorAnalyticsStatus(response.status),
+  };
 }
 
 export async function fetchAdminPerformanceStats(): Promise<PerformanceStatsSnapshot> {

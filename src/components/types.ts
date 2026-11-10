@@ -97,7 +97,20 @@ export type VisitorStatsScopeData = {
 
 export type VisitorStatsSummary = {
   updatedAt: string;
+  computedAt: string;
   scopes: Record<VisitorStatsScope, VisitorStatsScopeData>;
+};
+
+export type VisitorAnalyticsStatus = {
+  /** Set while stored visits are still being added to the numbers. */
+  catchingUp: { processed: number; total: number; etaSeconds: number | null } | null;
+  refreshing: boolean;
+  error: string | null;
+};
+
+export type VisitorStatsResult = {
+  stats: VisitorStatsSummary | null;
+  status: VisitorAnalyticsStatus;
 };
 
 export type PerformanceMemoryStats = {
