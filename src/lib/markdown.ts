@@ -67,7 +67,9 @@ export const extractHeadings = (markdown: string): MarkdownHeading[] => {
 };
 
 export const parseMarkdownDocument = (markdown: string): ParsedMarkdownDocument => {
-  const parsed = matter(markdown ?? "");
+  // Passing options, even empty ones, keeps gray-matter from caching every parsed input in its
+  // module-level `matter.cache`, which would otherwise retain each page version forever.
+  const parsed = matter(markdown ?? "", {});
 
   const title = typeof parsed.data.title === "string" ? parsed.data.title.trim() : "";
   const description = typeof parsed.data.description === "string" ? parsed.data.description.trim() : "";
