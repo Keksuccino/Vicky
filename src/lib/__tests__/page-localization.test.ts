@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  loadGitHubLocalizationStatusIndex: vi.fn(),
+  loadGitHubLocalizationStatuses: vi.fn(),
   requestOpenRouterChatCompletion: vi.fn(),
   saveGitHubLocalizedDoc: vi.fn(),
   enqueueGitHubLocalizationUpload: vi.fn(),
@@ -13,7 +13,7 @@ vi.mock("@/lib/openrouter", () => ({
 
 vi.mock("@/lib/github-localization", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/github-localization")>()),
-  loadGitHubLocalizationStatusIndex: mocks.loadGitHubLocalizationStatusIndex,
+  loadGitHubLocalizationStatuses: mocks.loadGitHubLocalizationStatuses,
 }));
 
 vi.mock("@/lib/github-localization-saves", () => ({
@@ -24,6 +24,7 @@ vi.mock("@/lib/github-localization-upload-queue", () => ({
   enqueueGitHubLocalizationUpload: mocks.enqueueGitHubLocalizationUpload,
 }));
 
+import { parseMarkdownDocument } from "../markdown";
 import {
   translatePageLocalizations,
   type PageLocalizationTranslationEvent,
@@ -52,7 +53,7 @@ const language: AutoTranslateLanguage = {
 const sourcePage: GitHubDocPage = {
   path: "home.md",
   slug: "home",
-  sha: "source-sha",
+  sha: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
   title: "Home",
   description: "Welcome page.",
   content: "## Hello\n\nWelcome to the docs.",
@@ -103,7 +104,7 @@ const createDeferred = <T>() => {
 describe("page localization translations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.loadGitHubLocalizationStatusIndex.mockResolvedValue(new Map());
+    mocks.loadGitHubLocalizationStatuses.mockResolvedValue(new Map());
     mocks.saveGitHubLocalizedDoc.mockResolvedValue({
       localizedRepoPath: "localizations/de/home.md",
       page: sourcePage,
@@ -139,7 +140,7 @@ describe("page localization translations", () => {
       type: "page-success",
     });
     expect(events.find((event) => event.type === "prepared")).toMatchObject({
-      statuses: [{ languageCode: "de", currentPages: 0, missingPages: 1, outdatedPages: 0, totalPages: 1 }],
+      statuses: [{ languageCode: "de", currentPages: 0, missingPages: 1, outdatedPages: 0, totalPages: 1, unrecordedPages: 0 }],
       type: "prepared",
     });
   });
@@ -157,6 +158,8 @@ describe("page localization translations", () => {
     await translatePageLocalizations({ apiKey: "openrouter-key", config, languages: [language], localizationPath: "localizations", mode: "missing-and-outdated", model: "openai/gpt-5.4-mini", onEvent: (event) => events.push(event), origin: "https://docs.example.com", queueUploads: true, siteTitle: "Vicky Docs", sourcePages: [sourcePage] });
 
     expect(events.find((event) => event.type === "upload-success")).toMatchObject({ type: "upload-success", previousStatus: "missing" });
+    const queuedMarkdown = (mocks.enqueueGitHubLocalizationUpload.mock.calls[0]?.[0] as { input: { markdown: string } }).input.markdown;
+    expect(parseMarkdownDocument(queuedMarkdown)).toMatchObject({ title: "Startseite", sourceBlobSha: sourcePage.sha });
   });
 
   it("skips a page after ten retries and keeps the batch result usable", async () => {

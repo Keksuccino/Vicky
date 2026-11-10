@@ -37,15 +37,22 @@ type MarkdownFields = Pick<GitHubDocPage, "title" | "description" | "content" | 
 
 const isNotFoundError = (error: unknown): boolean => gitHubErrorStatus(error) === 404;
 
-/** Serializes a localized document from the input, falling back to the given fields for anything it omits. */
-const serializeLocalizedMarkdown = (input: Omit<SaveGitHubDocInput, "path" | "slug">, fallback: MarkdownFields): string => {
+/**
+ * Serializes a localized document from the input, falling back to the given fields for anything
+ * it omits. Unmanaged front-matter keys and the recorded source version come from the Markdown
+ * sent, or else from the translation being replaced.
+ */
+const serializeLocalizedMarkdown = (input: Omit<SaveGitHubDocInput, "path" | "slug">, fallback: MarkdownFields, existingMarkdown?: string): string => {
   const base = input.markdown !== undefined ? parseMarkdownDocument(input.markdown) : fallback;
-  const markdown = serializeMarkdownDocument({
-    title: input.title ?? base.title,
-    description: input.description ?? base.description,
-    content: input.content ?? base.content,
-    includeInPlaintextExport: input.includeInPlaintextExport ?? base.includeInPlaintextExport,
-  });
+  const markdown = serializeMarkdownDocument(
+    {
+      title: input.title ?? base.title,
+      description: input.description ?? base.description,
+      content: input.content ?? base.content,
+      includeInPlaintextExport: input.includeInPlaintextExport ?? base.includeInPlaintextExport,
+    },
+    input.markdown ?? existingMarkdown,
+  );
 
   if (!parseMarkdownDocument(markdown).content.trim()) {
     throw badRequest("Localized document content cannot be empty.");
@@ -97,7 +104,7 @@ export const saveGitHubLocalizedDoc = async ({
     }
   }
 
-  const markdown = serializeLocalizedMarkdown(input, existing ? parseMarkdownDocument(existing.markdown) : resolvedSourcePage);
+  const markdown = serializeLocalizedMarkdown(input, existing ? parseMarkdownDocument(existing.markdown) : resolvedSourcePage, existing?.markdown);
   const writeResult = await getGitHubClient(config).repos.createOrUpdateFileContents({
     owner: config.owner,
     repo: config.repo,

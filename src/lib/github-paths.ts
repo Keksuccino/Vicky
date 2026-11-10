@@ -5,6 +5,11 @@ import { badRequest } from "@/lib/http";
 /** Repository path rules shared by every GitHub docs reader and writer. */
 export const markdownExtensionRegex = /\.(md|mdx)$/i;
 
+const GIT_OBJECT_SHA_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
+
+/** A Git object ID as GitHub reports it: lowercase SHA-1 (or SHA-256) hex. */
+export const isGitObjectSha = (value: unknown): value is string => typeof value === "string" && GIT_OBJECT_SHA_PATTERN.test(value);
+
 const normalizeSlashes = (value: string): string => value.replace(/\\+/g, "/").replace(/\/+/g, "/");
 
 export const normalizePathValue = (value: string): string => {

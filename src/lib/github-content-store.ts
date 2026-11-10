@@ -10,15 +10,16 @@ import {
   readPrivateJsonFile,
   writePrivateJsonFile,
 } from "@/lib/github-docs-cache-files";
-import { isGitObjectSha, listPersistedRepoIndexBlobShas } from "@/lib/github-repo-index";
+import { isGitObjectSha } from "@/lib/github-paths";
+import { listPersistedRepoIndexBlobShas } from "@/lib/github-repo-index";
 import { badRequest, notFound } from "@/lib/http";
 import { parseMarkdownDocument } from "@/lib/markdown";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type { GitHubRuntimeConfig, MarkdownHeading, ParsedMarkdownDocument } from "@/lib/types";
 
 const BLOB_RECORD_VERSION = 1;
-/** Bump when `parseMarkdownDocument` changes its output, so stored blobs are parsed again. */
-const MARKDOWN_PARSE_VERSION = 1;
+/** Bump when `parseMarkdownDocument` changes its output, so stored blobs are parsed again (from their stored Markdown, without a download). */
+const MARKDOWN_PARSE_VERSION = 2;
 /** In-memory budget for blobs outside the published docs; page objects keep their own blobs alive. */
 const BLOB_MEMORY_BUDGET_BYTES = 32 * 1024 * 1024;
 const CONTENT_HASH_PATTERN = /^[a-f0-9]{32}$/;
@@ -32,8 +33,8 @@ export type GitHubBlobRecord = ParsedMarkdownDocument & {
   sha: string;
 };
 
-/** What lists of pages (sidebar titles, cache status) need from a blob, without its body. */
-export type GitHubBlobSummary = Pick<GitHubBlobRecord, "contentHash" | "title">;
+/** What lists of pages (sidebar titles, cache status, translation status) need from a blob, without its body. */
+export type GitHubBlobSummary = Pick<GitHubBlobRecord, "contentHash" | "sourceBlobSha" | "title">;
 
 type PersistedBlobRecord = Omit<GitHubBlobRecord, "content"> & {
   content?: string;
@@ -91,9 +92,16 @@ export const parseGitHubBlobRecord = (sha: string, markdown: string, byteLength 
     includeInPlaintextExport: parsed.includeInPlaintextExport,
     markdown,
     sha,
+    ...(parsed.sourceBlobSha ? { sourceBlobSha: parsed.sourceBlobSha } : {}),
     title: parsed.title,
   };
 };
+
+const toSummary = (record: GitHubBlobRecord): GitHubBlobSummary => ({
+  contentHash: record.contentHash,
+  ...(record.sourceBlobSha ? { sourceBlobSha: record.sourceBlobSha } : {}),
+  title: record.title,
+});
 
 const toPersistedRecord = (record: GitHubBlobRecord): PersistedBlobRecord => {
   const contentStart = record.markdown.length - record.content.length;
@@ -109,6 +117,7 @@ const toPersistedRecord = (record: GitHubBlobRecord): PersistedBlobRecord => {
     markdown: record.markdown,
     parseVersion: MARKDOWN_PARSE_VERSION,
     sha: record.sha,
+    ...(record.sourceBlobSha ? { sourceBlobSha: record.sourceBlobSha } : {}),
     title: record.title,
     version: BLOB_RECORD_VERSION,
   };
@@ -134,6 +143,7 @@ const fromPersistedRecord = (value: unknown, sha: string): { record: GitHubBlobR
     typeof source.title === "string" &&
     typeof source.description === "string" &&
     typeof source.includeInPlaintextExport === "boolean" &&
+    (source.sourceBlobSha === undefined || isGitObjectSha(source.sourceBlobSha)) &&
     Array.isArray(source.headings) &&
     source.headings.every(isHeading) &&
     (typeof source.content === "string" || (typeof source.contentStart === "number" && source.contentStart >= 0 && source.contentStart <= source.markdown.length));
@@ -152,15 +162,20 @@ const fromPersistedRecord = (value: unknown, sha: string): { record: GitHubBlobR
       includeInPlaintextExport: source.includeInPlaintextExport as boolean,
       markdown: source.markdown,
       sha,
+      ...(source.sourceBlobSha ? { sourceBlobSha: source.sourceBlobSha } : {}),
       title: source.title as string,
     },
   };
 };
 
-const rememberSummary = (record: GitHubBlobRecord): void => {
-  if (!storeState.summaries.has(record.sha)) {
-    storeState.summaries.set(record.sha, { contentHash: record.contentHash, title: record.title });
+const rememberSummary = (record: GitHubBlobRecord): GitHubBlobSummary => {
+  const known = storeState.summaries.get(record.sha);
+  if (known) {
+    return known;
   }
+  const summary = toSummary(record);
+  storeState.summaries.set(record.sha, summary);
+  return summary;
 };
 
 const rememberRecord = (record: GitHubBlobRecord): GitHubBlobRecord => {
@@ -277,8 +292,7 @@ export const loadStoredGitHubBlobSummaries = async (shas: Iterable<string>, base
 
     reads.push(readRecordFromDisk(baseDir, sha).then((record) => {
       if (record) {
-        rememberSummary(record);
-        summaries.set(sha, { contentHash: record.contentHash, title: record.title });
+        summaries.set(sha, rememberSummary(record));
       }
     }));
   }

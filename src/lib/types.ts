@@ -207,6 +207,8 @@ export interface ParsedMarkdownDocument {
   content: string;
   headings: MarkdownHeading[];
   includeInPlaintextExport: boolean;
+  /** Blob SHA of the source page version a translation was made from, when it records one. */
+  sourceBlobSha?: string;
 }
 
 export interface GitHubDocTreeItem {

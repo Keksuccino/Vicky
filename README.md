@@ -59,7 +59,7 @@ Vicky keeps GitHub traffic small and predictable, so a busy site stays far below
 - **Visitors never wait for a refresh.** When the refresh interval (`Docs cache TTL` in the admin settings) passes, Vicky keeps serving the current pages and refreshes in the background. **Refresh docs** in the admin panel does the same: the site keeps answering while new pages are fetched, then switches to them at once. Pages deleted on GitHub disappear with the next refresh.
 - **Saving in the editor updates the local copy immediately**, so the saved page is live without fetching it back from GitHub. Translations saved by the translation job work the same way.
 - **Translated pages cost nothing after their first view.** Translations come from the same local copy; a translated page is downloaded at most once, and later views (also after a restart) make no GitHub request. The first time a language's sidebar or search is used, its remaining translations are downloaded once in the background, while the sidebar shows source titles for the pages still on their way.
-- **Missing or outdated translations fall back to the source page.** A translation counts as outdated when its source page was changed after it; only the translation job creates or updates translations.
+- **Missing or outdated translations fall back to the source page.** Every translation the job writes records the exact version of the source page it was made from (`sourceBlobSha`, see [Front Matter](#front-matter)), so it counts as outdated exactly when that page has changed since. Translations without that record count as outdated when their source page was committed after them. Only the translation job creates or updates translations.
 - **The Markdown HTML cache card loads on request** and never downloads page content or contacts GitHub to show its status.
 - **After a restart**, pages are served from the local copy right away; the first refresh normally costs a single request.
 - **One shared GitHub client** caps concurrent requests, times out stalled ones, retries temporary failures with backoff, and honours GitHub's rate-limit responses. When the hourly quota is used up, Vicky stops sending requests until GitHub's reset time and reports when docs can be loaded again.
@@ -184,6 +184,19 @@ Vicky supports:
 - GitHub-style alerts such as `> [!NOTE]`, `> [!TIP]`, `> [!WARNING]`
 - additional alert aliases: `INFO`, `SUCCESS`, `ERROR`
 - automatic normalization of root-relative docs links to `/docs/...`
+
+# Front Matter
+
+Pages can start with a YAML front-matter block. Vicky reads these keys:
+
+| Key | Meaning |
+| --- | --- |
+| `title` | Page title in the sidebar, search, and page header |
+| `description` | Short summary shown under the title and used for page metadata |
+| `excludeFromAiPlaintext` | `true` keeps the page out of `/docs.txt` and the AI chat context |
+| `sourceBlobSha` | In translations only: the Git blob SHA of the source page version the translation was made from. The translation job writes it; a translation is current while it matches the source page. It is never shown on the page. |
+
+Saving a page in the editor (or a translation through the job) changes only these keys. Any other key you add, comments, and their formatting stay exactly as written.
 
 # Available Scripts
 

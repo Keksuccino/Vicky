@@ -16,7 +16,7 @@ import {
   refreshGitHubDocsCache,
   saveGitHubDoc,
 } from "@/lib/github";
-import { loadGitHubLocalizationStatusIndex } from "@/lib/github-localization";
+import { loadGitHubLocalizationStatuses } from "@/lib/github-localization";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake-github-api";
@@ -239,6 +239,15 @@ describe("GitHub docs source loading", () => {
     expect(fake.requests.slice(2).map((request) => request.kind)).toEqual(["tree"]);
   });
 
+  it("keeps front-matter keys an author added when the editor saves a page", async () => {
+    fake.setFile("docs/home.md", "---\ntitle: Home\nnav_order: 2\ndate: 2024-01-01\n---\nWelcome home\n");
+    const config = createConfig();
+
+    await saveGitHubDoc(config, { path: "home.md", title: "Home page", description: "Start here", content: "Welcome back" });
+
+    expect(fake.files.get("docs/home.md")?.toString("utf8")).toBe("---\ntitle: Home page\nnav_order: 2\ndate: 2024-01-01\ndescription: Start here\n---\nWelcome back\n");
+  });
+
   it("keeps every loader within the global request cap", async () => {
     for (let index = 0; index < 40; index += 1) {
       fake.setFile(`docs/bulk/page-${index}.md`, page(`Bulk ${index}`, `Body ${index}`));
@@ -250,7 +259,7 @@ describe("GitHub docs source loading", () => {
     const sourceLoad = listMarkdownDocsTreePagesWithTitles(config);
     const statusLoad = sourceLoad.then(({ pages }) =>
       Promise.all([
-        loadGitHubLocalizationStatusIndex({ config, language: { code: "de" }, localizationPath: "localizations", sourcePages: pages }),
+        loadGitHubLocalizationStatuses({ config, languageCodes: ["de"], localizationPath: "localizations", sourcePages: pages }),
         refreshGitHubDocsCache(config),
         ...pages.slice(0, 10).map((entry) => loadGitHubDoc(config, { slug: `${entry.slug}-draft` }).catch(() => null)),
       ]),

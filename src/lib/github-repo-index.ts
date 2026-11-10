@@ -9,11 +9,10 @@ import {
   sourceCacheFilePath,
   writePrivateJsonFile,
 } from "@/lib/github-docs-cache-files";
-import { markdownExtensionRegex } from "@/lib/github-paths";
+import { isGitObjectSha, markdownExtensionRegex } from "@/lib/github-paths";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 const REPO_INDEX_VERSION = 1;
-const GIT_OBJECT_SHA_PATTERN = /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/;
 
 export type GitHubRepoIndexFile = {
   sha: string;
@@ -56,8 +55,6 @@ type PersistedRepoIndex = {
   treeSha?: string;
   version: typeof REPO_INDEX_VERSION;
 };
-
-export const isGitObjectSha = (value: unknown): value is string => typeof value === "string" && GIT_OBJECT_SHA_PATTERN.test(value);
 
 const addMarkdownFiles = (files: Map<string, GitHubRepoIndexFile>, nodes: GitTreeNode[], prefix: string): void => {
   for (const node of nodes) {

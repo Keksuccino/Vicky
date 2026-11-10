@@ -394,12 +394,16 @@ export const saveGitHubDoc = async (config: GitHubRuntimeConfig, input: SaveGitH
     baseIncludeInPlaintextExport = parsedExisting.includeInPlaintextExport;
   }
 
-  const markdown = serializeMarkdownDocument({
-    title: input.title ?? baseTitle,
-    description: input.description ?? baseDescription,
-    content: input.content ?? baseContent,
-    includeInPlaintextExport: input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
-  });
+  // Front-matter keys the editor does not manage come from the Markdown sent, or else the file being replaced.
+  const markdown = serializeMarkdownDocument(
+    {
+      title: input.title ?? baseTitle,
+      description: input.description ?? baseDescription,
+      content: input.content ?? baseContent,
+      includeInPlaintextExport: input.includeInPlaintextExport ?? baseIncludeInPlaintextExport,
+    },
+    input.markdown ?? (existingMarkdown || undefined),
+  );
 
   const record = parseGitHubBlobRecord("", markdown);
   if (!record.content.trim()) {
