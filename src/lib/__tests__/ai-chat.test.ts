@@ -15,6 +15,7 @@ import {
   deleteAiChatConversation,
   deserializeAiChatState,
   getAiChatWelcomeText,
+  NEW_CONVERSATION_TITLE,
   restoreAiChatConversationsWithSettings,
 } from "../ai-chat-client";
 
@@ -57,7 +58,10 @@ describe("ai chat system prompt", () => {
 
 describe("ai chat persisted state", () => {
   it("renders the welcome template with the configured assistant name", () => {
-    expect(getAiChatWelcomeText("Vicky", DEFAULT_AI_CHAT_WELCOME_MESSAGE)).toContain("Hi, I'm Vicky!");
+    const welcome = getAiChatWelcomeText("Vicky-test-name", DEFAULT_AI_CHAT_WELCOME_MESSAGE);
+
+    expect(welcome).toContain("Vicky-test-name");
+    expect(welcome).not.toContain(AI_CHAT_ASSISTANT_NAME_PLACEHOLDER);
   });
 
   it("keeps the active conversation available after compaction", () => {
@@ -228,7 +232,7 @@ describe("ai chat persisted state", () => {
 
     expect(deleted.conversations).toHaveLength(1);
     expect(deleted.conversations[0]?.id).toBe(deleted.activeConversationId);
-    expect(deleted.conversations[0]?.title).toBe("New chat");
+    expect(deleted.conversations[0]?.title).toBe(NEW_CONVERSATION_TITLE);
     expect(deleted.conversations[0]?.messages[0]?.text).toBe("Welcome back, Vicky.");
   });
 });

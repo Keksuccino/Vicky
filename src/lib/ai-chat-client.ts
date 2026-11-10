@@ -97,6 +97,9 @@ export const createWelcomeMessage = (
   };
 };
 
+/** Title of a conversation until its first user message names it. */
+export const NEW_CONVERSATION_TITLE = "New chat";
+
 export const createEmptyConversation = (
   assistantName = DEFAULT_AI_CHAT_ASSISTANT_NAME,
   welcomeMessage = DEFAULT_AI_CHAT_WELCOME_MESSAGE,
@@ -105,7 +108,7 @@ export const createEmptyConversation = (
 
   return {
     id: createId(),
-    title: "New chat",
+    title: NEW_CONVERSATION_TITLE,
     createdAt,
     updatedAt: createdAt,
     messages: [createWelcomeMessage(assistantName, welcomeMessage)],
@@ -137,7 +140,7 @@ export const createAssistantMessage = (
 export const deriveConversationTitle = (messages: AiChatMessage[]): string => {
   const firstUserMessage = messages.find((message) => message.role === "user");
   if (!firstUserMessage) {
-    return "New chat";
+    return NEW_CONVERSATION_TITLE;
   }
 
   const firstLine = firstUserMessage.text.trim().split(/\r?\n/, 1)[0] ?? "";
@@ -151,7 +154,7 @@ export const deriveConversationTitle = (messages: AiChatMessage[]): string => {
       : `${firstUserMessage.attachmentNames.length} uploaded images`;
   }
 
-  return "New chat";
+  return NEW_CONVERSATION_TITLE;
 };
 
 const toPersistedMessage = (message: AiChatMessage): PersistedAiChatMessage => ({

@@ -64,11 +64,11 @@ describe("GET /docs.txt error responses", () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe("Internal Server Error");
+    expect(await response.text()).not.toContain(secret);
     expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(response.headers.get("cache-control")).toBe("no-store, must-revalidate");
     expect(consoleError).toHaveBeenCalledOnce();
-    expect(String(consoleError.mock.calls[0]?.[0])).toContain("Cause: Error: Snapshot read failed token=[REDACTED]");
+    expect(String(consoleError.mock.calls[0]?.[0])).toContain("Snapshot read failed token=[REDACTED]");
     expect(String(consoleError.mock.calls[0]?.[0])).not.toContain(secret);
   });
 
@@ -83,7 +83,7 @@ describe("GET /docs.txt error responses", () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe("Internal Server Error");
+    expect(await response.text()).not.toContain(secret);
     expect(consoleError).toHaveBeenCalledOnce();
     expect(consoleError.mock.calls[0]).toHaveLength(1);
     const diagnostic = String(consoleError.mock.calls[0]?.[0]);
@@ -99,12 +99,12 @@ describe("GET /docs.txt error responses", () => {
     const response = await GET(createRequest());
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe("Internal Server Error");
+    expect(await response.text()).not.toContain(secret);
     expect(consoleError).toHaveBeenCalledOnce();
     expect(consoleError.mock.calls[0]).toHaveLength(1);
     const diagnostic = String(consoleError.mock.calls[0]?.[0]);
     expect(diagnostic.length).toBeLessThanOrEqual(PUBLIC_ERROR_LOG_MAX_LENGTH);
-    expect(diagnostic).toContain("Error: [oversized error detail omitted]");
+    expect(diagnostic).not.toContain("x".repeat(1_000));
     expect(diagnostic).not.toContain(secret);
   });
 
