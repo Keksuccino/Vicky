@@ -58,11 +58,15 @@ const createConfig = (cacheEpoch: string): GitHubRuntimeConfig => ({ owner: "own
 
 describe("public GitHub document reads", () => {
   const previousSnapshotDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
+  const previousMarkdownDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
+  const previousTranslationDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
   let tempDir = "";
 
   beforeEach(async () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-public-docs-"));
-    process.env.WIKI_DOCS_SNAPSHOT_DIR = tempDir;
+    process.env.WIKI_DOCS_SNAPSHOT_DIR = path.join(tempDir, "snapshots");
+    process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
+    process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
     docsPageCache.clear();
     docsSnapshotCache.clear();
     docsTreeCache.clear();
@@ -77,10 +81,16 @@ describe("public GitHub document reads", () => {
   });
 
   afterEach(async () => {
-    if (previousSnapshotDir === undefined) {
-      delete process.env.WIKI_DOCS_SNAPSHOT_DIR;
-    } else {
-      process.env.WIKI_DOCS_SNAPSHOT_DIR = previousSnapshotDir;
+    for (const [name, value] of [
+      ["WIKI_DOCS_SNAPSHOT_DIR", previousSnapshotDir],
+      ["WIKI_MARKDOWN_CACHE_DIR", previousMarkdownDir],
+      ["WIKI_TRANSLATION_CACHE_DIR", previousTranslationDir],
+    ] as const) {
+      if (value === undefined) {
+        delete process.env[name];
+      } else {
+        process.env[name] = value;
+      }
     }
     docsPageCache.clear();
     docsSnapshotCache.clear();

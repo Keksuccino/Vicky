@@ -372,7 +372,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
   }
 }
 
-export async function verifyInheritedRuntimeOwnerLease(environment = process.env, cwd = process.cwd(), pid = process.pid) {
+export async function verifyInheritedRuntimeOwnerLease(environment = process.env, cwd = process.cwd(), pid = process.pid, parentPid = process.ppid) {
   validateRuntimeTopology(environment);
   const expectedOwnerId = String(environment[RUNTIME_OWNER_ID_ENV] ?? "").trim();
   if (!expectedOwnerId) {
@@ -406,7 +406,11 @@ export async function verifyInheritedRuntimeOwnerLease(environment = process.env
 
   const rawAssignment = await readOptionalTextFile(assignmentFilePath);
   const assignment = rawAssignment === null ? null : parseAssignmentRecord(rawAssignment);
-  if (!assignment || assignment.ownerId !== expectedOwnerId || assignment.pid !== pid || assignment.ownerRecordSha256 !== ownerRecordHash(raw)) {
+  // `next start` serves from the assigned child itself, but `next dev` serves from a worker
+  // that the assigned Next CLI process forks (and re-forks after config changes). Accept
+  // exactly the assigned process or its direct child; never the launcher's other children.
+  const isAssignedProcessOrItsWorker = assignment !== null && (assignment.pid === pid || assignment.pid === parentPid);
+  if (!assignment || assignment.ownerId !== expectedOwnerId || !isAssignedProcessOrItsWorker || assignment.ownerRecordSha256 !== ownerRecordHash(raw)) {
     throw new RuntimeTopologyError(`The inherited runtime child assignment does not match ${assignmentFilePath}. Refusing to start without an exclusive child handoff.`);
   }
 }

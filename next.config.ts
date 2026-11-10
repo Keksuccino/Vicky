@@ -11,6 +11,9 @@ const wikiJsCompatibilityRedirects = [
 ];
 
 const nextConfig: NextConfig = {
+  // Keep `next dev` from writing its managed rules block into AGENTS.md / CLAUDE.md
+  // whenever an AI coding agent starts the dev server.
+  agentRules: false,
   serverExternalPackages: ["better-sqlite3"],
   turbopack: {},
   webpack(config, { dev, isServer }) {

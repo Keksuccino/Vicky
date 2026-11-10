@@ -81,13 +81,17 @@ describe("runtime topology", () => {
     expect(environment[RUNTIME_OWNER_ID_ENV]).toBe(lease.id);
     const immutableOwnerRaw = await readFile(layout.ownerFilePath, "utf8");
     expect(JSON.parse(immutableOwnerRaw)).toMatchObject({ ownerId: lease.id, hostname: "host-a", pid: 101, topology: SUPPORTED_RUNTIME_TOPOLOGY });
-    await verifyInheritedRuntimeOwnerLease(environment, cwd, 101);
-    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 202)).rejects.toThrow("child assignment does not match");
+    await verifyInheritedRuntimeOwnerLease(environment, cwd, 101, 1);
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 202, 101)).rejects.toThrow("child assignment does not match");
 
     await lease.assignProcess(202);
     expect(await readFile(layout.ownerFilePath, "utf8")).toBe(immutableOwnerRaw);
     expect(JSON.parse(await readFile(layout.assignmentFilePath, "utf8"))).toMatchObject({ ownerId: lease.id, pid: 202, topology: SUPPORTED_RUNTIME_TOPOLOGY });
-    await verifyInheritedRuntimeOwnerLease(environment, cwd, 202);
+    await verifyInheritedRuntimeOwnerLease(environment, cwd, 202, 101);
+    // `next dev` serves from a worker forked by the assigned CLI process.
+    await verifyInheritedRuntimeOwnerLease(environment, cwd, 303, 202);
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 303, 101)).rejects.toThrow("child assignment does not match");
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 404, 303)).rejects.toThrow("child assignment does not match");
 
     await lease.release();
     leases.splice(leases.indexOf(lease), 1);

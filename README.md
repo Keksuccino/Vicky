@@ -103,8 +103,6 @@ npm run dev
 - Docs site: `http://localhost:3000/`
 - Editor: `http://localhost:3000/editor`
 
-If you run the repo from `/mnt/<drive>/...` inside WSL, `npm run dev` automatically switches Next.js to a polling-based watcher so hot reload stays reliable.
-
 # First-Time Setup
 
 1. Sign in at `/admin/login` with username `admin` and the password from `ADMIN_PASSWORD`.
