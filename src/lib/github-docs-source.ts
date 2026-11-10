@@ -260,10 +260,10 @@ const finishSourceChange = async (
   baseDir: string,
 ): Promise<void> => {
   if (previous) {
-    await clearDerivedGitHubDocsCache(config, { snapshots: { previous, next } });
+    await clearDerivedGitHubDocsCache(config, { baseDir, snapshots: { previous, next } });
   } else {
-    // Without earlier pages there is nothing to compare; translation and render entries are
-    // keyed by source content, so only in-memory derivations need rebuilding.
+    // Without earlier pages there is nothing to compare; rendered entries are keyed by content,
+    // so only in-memory derivations need rebuilding.
     clearDerivedGitHubDocsMemory(config);
   }
 

@@ -40,7 +40,7 @@ It gives you:
 - Docs content lives in your configured GitHub repository.
 - App settings live in `data/wiki-store.json` by default.
 - SSL certificates and runtime SSL status live in `data/ssl/` by default.
-- Rendered Markdown HTML cache files live in `data/markdown-cache/` by default.
+- Rendered Markdown HTML cache files live in `data/markdown-cache/` by default, with an index of them, so the admin card and cache clears never open the cached pages.
 - The local copy of the docs repository lives in `data/docs-cache/` by default: an index of every Markdown file with its Git blob SHA, the Markdown blobs themselves (stored once per content, already parsed), and per-file "last updated" commit data. See [How Vicky Talks to GitHub](#how-vicky-talks-to-github).
 - Translations live only in your repository. Files of the translation cache Vicky no longer keeps (`data/translation-cache/`, or the directory `WIKI_TRANSLATION_CACHE_DIR` names) are deleted at startup.
 - Login rate-limit state lives in `data/login-rate-limit.sqlite` by default. A legacy `data/login-rate-limit.json` is migrated once and retained untouched.

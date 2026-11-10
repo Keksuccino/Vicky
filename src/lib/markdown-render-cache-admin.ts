@@ -20,8 +20,8 @@ import {
   getPersistentRenderedMarkdownCacheDir,
   getRenderedMarkdownCacheLastMutation,
   listPersistentRenderedMarkdownCacheEntries,
+  hasPersistentRenderedMarkdown,
   recordRenderedMarkdownCacheMutation,
-  readPersistentRenderedMarkdownMetadata,
   writePersistentRenderedMarkdown,
   type RenderedMarkdownCacheMutation,
 } from "@/lib/markdown-render-cache-store";
@@ -340,9 +340,9 @@ export const warmMarkdownRenderCache = async ({
   const baseDir = getGitHubDocsCacheDir();
   const { pages, variants } = await buildMarkdownRenderCacheVariants({ config, store });
   const isCachedOnDisk = async (cacheKey: string): Promise<boolean> => {
-    const persisted = await readPersistentRenderedMarkdownMetadata(cacheKey);
+    const persisted = await hasPersistentRenderedMarkdown(cacheKey);
     assertGitHubCacheAccess(access);
-    return Boolean(persisted);
+    return persisted;
   };
   const missingVariants: MarkdownRenderCacheVariant[] = [];
 

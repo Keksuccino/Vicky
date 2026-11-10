@@ -264,6 +264,18 @@ describe("GitHub localizations from the repository index", () => {
     expect(treeNames((await loadCompleteTree("de")).data)).toEqual({ "guide/usage": "Usage", home: "Home" });
   });
 
+  it("drops the rendered HTML of translations that changed or disappeared on GitHub and keeps every other entry", async () => {
+    await warmMarkdownRenderCache({ config, store });
+    await expect(createMarkdownRenderCacheStatus({ config, store })).resolves.toMatchObject({ cachedVariants: 6, currentSourceEntries: 6, staleEntries: 0 });
+
+    fake.setFile("localizations/de/home.md", page("Startseite", "Willkommen zurück"));
+    fake.deleteFile("localizations/fr/home.md");
+    await refreshGitHubDocsCache(config);
+
+    // The new German home page is rendered on its next view; nothing unservable is left behind.
+    await expect(createMarkdownRenderCacheStatus({ config, store })).resolves.toMatchObject({ totalVariants: 5, cachedVariants: 4, currentSourceEntries: 4, staleEntries: 0 });
+  });
+
   it("answers the first sidebar of a language at once and fills in translated titles from one background load", async () => {
     const first = await loadDocsTreeForLanguage({ config, requestedLanguageCode: "de", store });
 
