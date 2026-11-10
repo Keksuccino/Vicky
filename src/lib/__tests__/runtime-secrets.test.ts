@@ -11,6 +11,10 @@ const STRONG_SECRETS = Object.freeze({
 
 const explicitTestEnvironment = () => ({ VITEST: "true", VICKY_AUTOMATED_TEST_RUN: "vitest" });
 
+/** Matches a validation error that reports the issue `code` for exactly `secretNames`. */
+const validationIssue = (code: string, ...secretNames: string[]) =>
+  expect.objectContaining({ name: "RuntimeSecretValidationError", issues: expect.arrayContaining([expect.objectContaining({ code, secretNames })]) });
+
 describe("runtime secret validation", () => {
   it("accepts independent random secrets and a strong passphrase", () => {
     expect(validateRuntimeSecrets(STRONG_SECRETS)).toEqual(STRONG_SECRETS);
@@ -31,7 +35,7 @@ describe("runtime secret validation", () => {
 
   it("does not trust NODE_ENV=test by itself", () => {
     expect(() => validateRuntimeSecrets({ NODE_ENV: "test" })).toThrow(RuntimeSecretValidationError);
-    expect(() => getRuntimeSecret("AUTH_JWT_SECRET", { NODE_ENV: "test" })).toThrow("AUTH_JWT_SECRET is missing");
+    expect(() => getRuntimeSecret("AUTH_JWT_SECRET", { NODE_ENV: "test" })).toThrow(validationIssue("MISSING", "AUTH_JWT_SECRET"));
   });
 
   it.each([
@@ -52,13 +56,13 @@ describe("runtime secret validation", () => {
     ["ENCRYPTION_SECRET", "test-encryption-secret"],
   ])("rejects placeholder %s values", (secretName, placeholder) => {
     const environment = { ...STRONG_SECRETS, [secretName]: placeholder };
-    expect(() => validateRuntimeSecrets(environment)).toThrow(`${secretName} uses a documented or common placeholder`);
+    expect(() => validateRuntimeSecrets(environment)).toThrow(validationIssue("PLACEHOLDER", secretName));
   });
 
   it("rejects short and predictable values", () => {
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, AUTH_JWT_SECRET: "short" })).toThrow("AUTH_JWT_SECRET must contain at least 32 characters");
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ENCRYPTION_SECRET: "abababababababababababababababab" })).toThrow("ENCRYPTION_SECRET is too predictable");
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: "aaaaaaaaaaaaaa" })).toThrow("ADMIN_PASSWORD is too predictable");
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, AUTH_JWT_SECRET: "short" })).toThrow(validationIssue("TOO_SHORT", "AUTH_JWT_SECRET"));
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ENCRYPTION_SECRET: "abababababababababababababababab" })).toThrow(validationIssue("PREDICTABLE", "ENCRYPTION_SECRET"));
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: "aaaaaaaaaaaaaa" })).toThrow(validationIssue("PREDICTABLE", "ADMIN_PASSWORD"));
   });
 
   it("accepts the configured admin password limits and rejects values the login API cannot accept", () => {
@@ -70,9 +74,9 @@ describe("runtime secret validation", () => {
 
     expect(validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: maximumCharactersPassword }).ADMIN_PASSWORD).toBe(maximumCharactersPassword);
     expect(validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: maximumBytesPassword }).ADMIN_PASSWORD).toBe(maximumBytesPassword);
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${maximumCharactersPassword}x` })).toThrow(`ADMIN_PASSWORD must contain at most ${AUTH_PASSWORD_MAX_CHARACTERS} characters`);
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${maximumBytesPassword}x` })).toThrow(`ADMIN_PASSWORD must not exceed ${AUTH_PASSWORD_MAX_UTF8_BYTES} UTF-8 bytes`);
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${STRONG_SECRETS.ADMIN_PASSWORD}\ud800` })).toThrow("ADMIN_PASSWORD must contain well-formed Unicode");
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${maximumCharactersPassword}x` })).toThrow(validationIssue("TOO_LONG", "ADMIN_PASSWORD"));
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${maximumBytesPassword}x` })).toThrow(validationIssue("TOO_MANY_BYTES", "ADMIN_PASSWORD"));
+    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, ADMIN_PASSWORD: `${STRONG_SECRETS.ADMIN_PASSWORD}\ud800` })).toThrow(validationIssue("MALFORMED_UNICODE", "ADMIN_PASSWORD"));
   });
 
   it("rejects reused values without including them in the error", () => {
@@ -84,20 +88,22 @@ describe("runtime secret validation", () => {
       error = caught;
     }
 
-    expect(error).toBeInstanceOf(RuntimeSecretValidationError);
-    expect(String(error)).toContain("AUTH_JWT_SECRET and ENCRYPTION_SECRET must use different values");
+    expect(error).toEqual(validationIssue("REUSED", "AUTH_JWT_SECRET", "ENCRYPTION_SECRET"));
     expect(String(error)).not.toContain(reusedValue);
+    expect(JSON.stringify((error as RuntimeSecretValidationError).issues)).not.toContain(reusedValue);
   });
 
   it("never includes invalid values in actionable errors", () => {
     const invalidValue = "private-private-private-private-private";
-    expect(() => validateRuntimeSecrets({ ...STRONG_SECRETS, AUTH_JWT_SECRET: invalidValue })).toThrow(RuntimeSecretValidationError);
-
+    let error;
     try {
       validateRuntimeSecrets({ ...STRONG_SECRETS, AUTH_JWT_SECRET: invalidValue });
-    } catch (error) {
-      expect(String(error)).not.toContain(invalidValue);
-      expect(String(error)).toContain("Generate independent secrets before starting Vicky");
+    } catch (caught) {
+      error = caught;
     }
+
+    expect(error).toBeInstanceOf(RuntimeSecretValidationError);
+    expect(String(error)).not.toContain(invalidValue);
+    expect(JSON.stringify((error as RuntimeSecretValidationError).issues)).not.toContain(invalidValue);
   });
 });

@@ -119,7 +119,7 @@ describe("page localization background jobs", () => {
 
     expect(job.phase).toBe("queued");
     await vi.waitFor(() => expect(getLatestPageLocalizationJob()?.phase).toBe("uploading"));
-    expect(getLatestPageLocalizationJob()?.logs.at(-1)).toMatchObject({ level: "error", message: "GitHub upload failed for home in German (de)." });
+    expect(getLatestPageLocalizationJob()?.logs.at(-1)).toMatchObject({ level: "error", languageCode: "de", path: "home.md", slug: "home" });
 
     result.resolve({
       totalPages: 1,

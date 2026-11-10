@@ -103,7 +103,7 @@ export const assertDedicatedPrivateDirectory = (directoryPath) => {
   const normalizedResolvedPath = normalizeProtectedPath(resolvedPath);
   const normalizedRealPath = realPath ? normalizeProtectedPath(realPath) : null;
   if (resolvedPath === path.parse(resolvedPath).root || PROTECTED_PRIVATE_DIRECTORIES.has(normalizedResolvedPath) || Boolean(normalizedRealPath && PROTECTED_PRIVATE_DIRECTORIES.has(normalizedRealPath))) {
-    throw new Error(`Refusing to change permissions on shared, system, or root directory ${resolvedPath}; configure a dedicated runtime directory below it.`);
+    throw Object.assign(new Error(`Refusing to change permissions on shared, system, or root directory ${resolvedPath}; configure a dedicated runtime directory below it.`), { code: "SHARED_DIRECTORY" });
   }
 };
 

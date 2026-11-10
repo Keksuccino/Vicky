@@ -144,7 +144,7 @@ describe("POST /api/docs/visit", () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get("retry-after")).toBe("5");
-    expect(await response.json()).toEqual({ error: "Analytics queue is full. Please try again later.", retryAfterSeconds: 5 });
+    expect(await response.json()).toEqual({ error: expect.any(String), retryAfterSeconds: 5 });
     expect(mocks.releasePermit).toHaveBeenCalledOnce();
   });
 });

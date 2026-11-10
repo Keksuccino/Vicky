@@ -78,7 +78,7 @@ describe("GitHub deletion invalidation", () => {
     fake.deleteFile("localizations/de/private.md");
     await refreshGitHubDocsCache(config);
 
-    await expect(loadGitHubDoc(config, { slug: "private" })).rejects.toThrow("Document not found");
+    await expect(loadGitHubDoc(config, { slug: "private" })).rejects.toMatchObject({ status: 404 });
     await expect(loadPublicGitHubDoc(config, { slug: "private" })).rejects.toMatchObject({ status: 404 });
     await expect(searchDocsCorpus(config, "secret")).resolves.toEqual([]);
     await expect(listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(config)}|`)).resolves.toEqual([]);
@@ -97,7 +97,7 @@ describe("GitHub deletion invalidation", () => {
     fake.setFile("docs/private.md", "---\ntitle: New\n---\n\nNewly authorized content");
     releaseBlobs();
 
-    await expect(oldRead).rejects.toThrow(/authorization changed/i);
+    await expect(oldRead).rejects.toMatchObject({ status: 409 });
     await expect(readPersistentGitHubRepoIndex(previousConfig, path.join(tempDir, "docs-cache"))).resolves.toBeNull();
     const newlyAuthorizedPage = await loadGitHubDoc(nextConfig, { slug: "private" }, { bypassCache: true });
     expect(newlyAuthorizedPage.content).toContain("Newly authorized content");
@@ -125,7 +125,7 @@ describe("GitHub deletion invalidation", () => {
       request.kind === "put-contents" ? new Response(JSON.stringify({ message: "GitHub rejected the write" }), { status: 422, headers: { "content-type": "application/json" } }) : undefined,
     );
 
-    await expect(saveGitHubDoc(config, { path: "home.md", content: "Rejected content" })).rejects.toThrow("GitHub rejected");
+    await expect(saveGitHubDoc(config, { path: "home.md", content: "Rejected content" })).rejects.toMatchObject({ status: 422 });
 
     await expect(listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(config)}|`)).resolves.toHaveLength(1);
     await expect(loadGitHubDoc(config, { slug: "home" })).resolves.toMatchObject({ content: "Public home" });

@@ -31,8 +31,8 @@ afterEach(async () => {
 
 describe.skipIf(process.platform === "win32")("runtime file security", () => {
   it("refuses to chmod shared or root directories", async () => {
-    await expect(ensurePrivateDirectory(os.tmpdir())).rejects.toThrow("dedicated runtime directory");
-    await expect(ensurePrivateDirectory(path.parse(process.cwd()).root)).rejects.toThrow("dedicated runtime directory");
+    await expect(ensurePrivateDirectory(os.tmpdir())).rejects.toMatchObject({ code: "SHARED_DIRECTORY" });
+    await expect(ensurePrivateDirectory(path.parse(process.cwd()).root)).rejects.toMatchObject({ code: "SHARED_DIRECTORY" });
   });
 
   it("rejects a symlink alias to a broad operating-system directory", async () => {
@@ -42,7 +42,7 @@ describe.skipIf(process.platform === "win32")("runtime file security", () => {
     const before = await stat(broadDirectory);
     await symlink(broadDirectory, aliasPath, "dir");
 
-    await expect(ensurePrivateDirectory(aliasPath)).rejects.toThrow("shared, system, or root directory");
+    await expect(ensurePrivateDirectory(aliasPath)).rejects.toMatchObject({ code: "SHARED_DIRECTORY" });
     const after = await stat(broadDirectory);
     expect(after.mode).toBe(before.mode);
     expect(after.mtimeMs).toBe(before.mtimeMs);
@@ -154,7 +154,7 @@ describe("runtime directory classification", () => {
     const broadDirectory = process.platform === "win32" ? path.dirname(os.homedir()) : process.platform === "darwin" ? "/Users" : "/var/lib";
     const before = await stat(broadDirectory);
 
-    await expect(ensurePrivateDirectory(broadDirectory)).rejects.toThrow("shared, system, or root directory");
+    await expect(ensurePrivateDirectory(broadDirectory)).rejects.toMatchObject({ code: "SHARED_DIRECTORY" });
     const after = await stat(broadDirectory);
     expect(after.mode).toBe(before.mode);
     expect(after.mtimeMs).toBe(before.mtimeMs);

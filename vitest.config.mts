@@ -9,6 +9,10 @@ export default defineConfig({
     env: {
       VICKY_AUTOMATED_TEST_RUN: "vitest",
     },
+    // Keeps every runtime path out of the project's real data/ directory, blocks network access,
+    // and unmounts rendered components after each test (see src/test/vitest-setup.ts).
+    globalSetup: ["./src/test/vitest-global-setup.ts"],
+    setupFiles: ["./src/test/vitest-setup.ts"],
   },
   resolve: {
     alias: {

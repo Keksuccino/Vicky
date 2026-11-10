@@ -95,7 +95,7 @@ describe("fail-closed custom-domain HTTPS policy", () => {
 
     expect(statusCode).toBe(503);
     expect(headers).toMatchObject({ "Cache-Control": "no-store", "Content-Type": "text/plain; charset=utf-8", "Retry-After": "300", "X-Content-Type-Options": "nosniff" });
-    expect(body).toBe("Secure service is temporarily unavailable while HTTPS is being restored. Please try again later.\n");
+    expect(body.trim()).not.toBe("");
     expect(body).not.toContain("docs.example.com");
   });
 

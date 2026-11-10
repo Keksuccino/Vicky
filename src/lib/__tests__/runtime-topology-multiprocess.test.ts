@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveRuntimeStorageLayout, RUNTIME_TOPOLOGY_ENV, SUPPORTED_RUNTIME_TOPOLOGY } from "@/lib/runtime-topology.mjs";
 
-type Outcome = { type: "acquired" | "rejected"; message?: string; pid: number };
+type Outcome = { type: "acquired" | "rejected"; code?: string | null; pid: number };
 type WorkerMessage = { type: "ready" | "released" } | Outcome;
 
 const CONTENDER_COUNT = 32;
@@ -112,6 +112,6 @@ describe("runtime owner multiprocess exclusion", () => {
     expect(outcomes.filter((outcome) => outcome.type === "acquired")).toHaveLength(0);
     expect(outcomes.filter((outcome) => outcome.type === "rejected")).toHaveLength(CONTENDER_COUNT);
     expect(await readFile(ownerFilePath, "utf8")).toBe(staleRaw);
-    expect(outcomes.every((outcome) => outcome.message?.includes("never automatically reclaims"))).toBe(true);
+    expect(outcomes.every((outcome) => outcome.code === "OWNER_EXISTS")).toBe(true);
   }, 30_000);
 });

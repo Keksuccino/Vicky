@@ -3955,7 +3955,7 @@ export function AdminSettingsPanel() {
                   {unrecordedTranslationCount > 0 || activeTranslationMode === "source-versions" ? (
                     <button
                       type="button"
-                      className="btn btn-secondary"
+                      className="btn btn-secondary translation-record-source-versions"
                       disabled={activeTranslationMode !== null}
                       onClick={() => {
                         void recordSourceVersions();

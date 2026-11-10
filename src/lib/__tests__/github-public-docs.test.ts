@@ -54,7 +54,7 @@ describe("public GitHub document reads", () => {
     releaseTree();
     const results = await Promise.allSettled(reads);
 
-    expect(results.every((result) => result.status === "rejected" && result.reason instanceof Error && /not found/i.test(result.reason.message))).toBe(true);
+    expect(results.every((result) => result.status === "rejected" && (result.reason as { status?: number }).status === 404)).toBe(true);
     expect(fake.count("tree")).toBe(1);
     expect(fake.count("blob")).toBe(1);
     expect(fake.count("contents")).toBe(0);
@@ -78,7 +78,7 @@ describe("public GitHub document reads", () => {
 
   it("keeps authenticated direct reads separate from public index authorization", async () => {
     const config = createConfig("admin-direct-read-separation");
-    await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toThrow(/not found/i);
+    await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toMatchObject({ status: 404 });
     expect(fake.count("contents")).toBe(0);
 
     fake.setFile("docs/draft.md", "---\ntitle: Draft\n---\n\nEditor draft");
@@ -86,12 +86,12 @@ describe("public GitHub document reads", () => {
     expect(draft.slug).toBe("draft");
     expect(draft.content).toContain("Editor draft");
     expect(fake.requests.filter((request) => request.kind === "contents").map((request) => request.target)).toEqual(["docs/draft.md"]);
-    await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toThrow(/not found/i);
+    await expect(loadPublicGitHubDoc(config, { slug: "draft" })).rejects.toMatchObject({ status: 404 });
   });
 
   it("serves a page created by an authenticated save right away, despite an earlier public miss", async () => {
     const config = createConfig("save-invalidates-public-miss");
-    await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).rejects.toThrow(/not found/i);
+    await expect(loadPublicGitHubDoc(config, { slug: "new-page" })).rejects.toMatchObject({ status: 404 });
     expect(fake.count("contents")).toBe(0);
 
     await saveGitHubDoc(config, { slug: "new-page", content: "Newly created content" });
@@ -103,7 +103,7 @@ describe("public GitHub document reads", () => {
 
   it("finds a page added on GitHub right after the refresh that indexes it", async () => {
     const config = createConfig("refresh-finds-new-page");
-    await expect(loadPublicGitHubDoc(config, { slug: "added" })).rejects.toThrow(/not found/i);
+    await expect(loadPublicGitHubDoc(config, { slug: "added" })).rejects.toMatchObject({ status: 404 });
 
     fake.setFile("docs/added.md", "---\ntitle: Added\n---\nAdded later");
     await refreshGitHubDocsCache(config);

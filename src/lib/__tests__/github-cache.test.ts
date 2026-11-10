@@ -97,7 +97,7 @@ describe("GitHub docs cache invalidation", () => {
 
     await transitionGitHubRuntimeCaches(previousConfig, nextConfig);
 
-    expect(() => assertGitHubRuntimeConfigActive(previousConfig)).toThrow(/authorization changed/i);
+    expect(() => assertGitHubRuntimeConfigActive(previousConfig)).toThrow(expect.objectContaining({ status: 409 }));
     expect(() => assertGitHubRuntimeConfigActive(nextConfig)).not.toThrow();
     expect(await listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(previousConfig)}|`)).toHaveLength(0);
   });

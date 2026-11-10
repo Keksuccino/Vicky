@@ -57,7 +57,7 @@ describe("encryption", () => {
   it("throws on invalid payload format", () => {
     process.env.ENCRYPTION_SECRET = "L8yQ3kV7pN1xW6mF9rT2cD5hJ0sB4zAaEeUi";
 
-    expect(() => decryptSecret("invalid-value")).toThrow("Encrypted payload format is invalid.");
+    expect(() => decryptSecret("invalid-value")).toThrow(expect.objectContaining({ code: "INVALID_PAYLOAD" }));
   });
 
   it("throws outside tests when secret is missing", () => {
@@ -66,7 +66,7 @@ describe("encryption", () => {
     delete process.env.VICKY_AUTOMATED_TEST_RUN;
     mutableEnv.NODE_ENV = "development";
 
-    expect(() => encryptSecret("abc")).toThrow("ENCRYPTION_SECRET is missing");
+    expect(() => encryptSecret("abc")).toThrow(expect.objectContaining({ issues: [expect.objectContaining({ code: "MISSING", secretNames: ["ENCRYPTION_SECRET"] })] }));
   });
 
   it("throws in production when secret is missing", () => {
@@ -75,6 +75,6 @@ describe("encryption", () => {
     delete process.env.VICKY_AUTOMATED_TEST_RUN;
     mutableEnv.NODE_ENV = "production";
 
-    expect(() => encryptSecret("abc")).toThrow("ENCRYPTION_SECRET is missing");
+    expect(() => encryptSecret("abc")).toThrow(expect.objectContaining({ issues: [expect.objectContaining({ code: "MISSING", secretNames: ["ENCRYPTION_SECRET"] })] }));
   });
 });

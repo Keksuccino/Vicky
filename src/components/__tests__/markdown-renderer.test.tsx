@@ -86,9 +86,8 @@ describe("MarkdownRenderer", () => {
   });
 
   it("renders copy buttons only for fenced code blocks", () => {
-    render(<MarkdownRenderer content={"```ts\nconst value = 42;\n```\n\nInline `const quick = true` code."} />);
+    const { container } = render(<MarkdownRenderer content={"```ts\nconst value = 42;\n```\n\nInline `const quick = true` code."} />);
 
-    const copyButtons = screen.getAllByRole("button", { name: /copy code/i });
-    expect(copyButtons).toHaveLength(1);
+    expect(container.querySelectorAll("button.markdown-code-copy-button")).toHaveLength(1);
   });
 });

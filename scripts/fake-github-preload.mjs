@@ -6,10 +6,12 @@
 // See TESTING_GUIDELINES.md.
 import { appendFileSync, readFileSync } from "node:fs";
 import http from "node:http";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { isMainThread } from "node:worker_threads";
 
 import { createFakeGitHub } from "../src/lib/__tests__/fixtures/fake-github-api.ts";
+import { findRuntimePathsInDataDirectory } from "../src/test/runtime-data-guard.mjs";
 
 const SAMPLE_SEED = [
   { path: "docs/home.md", content: "---\ntitle: Home\n---\n\nWelcome to the docs.\n" },
@@ -35,6 +37,16 @@ const syntheticContent = (repoPath, size) => {
 // contact GitHub or OpenRouter, and a second control endpoint could not bind its port: only the
 // main thread installs the fakes.
 if (isMainThread) {
+  // The server reads its runtime paths after loading the env files, and `.env.local` points some
+  // of them at data/. Load the same files now (values already set are kept, as the server keeps
+  // them) and refuse to start a harness server that could write into the developer's real data.
+  createRequire(import.meta.url)("@next/env").loadEnvConfig(process.cwd(), process.env.NODE_ENV === "development");
+  const pathsInData = findRuntimePathsInDataDirectory();
+  if (pathsInData.length > 0) {
+    console.error(`[fake-github] Refusing to start: these runtime paths are inside the project's data/ directory:\n  ${pathsInData.join("\n  ")}\nPoint every runtime path variable at a temporary directory (see TESTING_GUIDELINES.md).`);
+    process.exit(1);
+  }
+
   // Entries are committed in order, one commit each, so a later entry for a source page makes
   // earlier translations of it outdated.
   const seed = process.env.FAKE_GITHUB_SEED ? JSON.parse(readFileSync(process.env.FAKE_GITHUB_SEED, "utf8")) : SAMPLE_SEED;

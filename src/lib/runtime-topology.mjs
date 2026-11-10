@@ -26,23 +26,32 @@ const OBSOLETE_TRANSLATION_CACHE_FILE_PATTERN = /^[a-f0-9]{64}\.json(\.\d+\.\d+\
 const defaultPath = (cwd, ...segments) => path.join(cwd, ...segments);
 const configuredPath = (value, fallback, cwd, variableName) => {
   if (value !== undefined && !String(value).trim()) {
-    throw new RuntimeTopologyError(`${variableName} must not be empty when configured.`);
+    throw new RuntimeTopologyError(`${variableName} must not be empty when configured.`, "EMPTY_PATH");
   }
   return path.resolve(cwd, value ?? fallback);
 };
 const configuredTrimmedPath = (value, fallback, cwd, variableName) => {
   if (value !== undefined && !String(value).trim()) {
-    throw new RuntimeTopologyError(`${variableName} must not be empty when configured.`);
+    throw new RuntimeTopologyError(`${variableName} must not be empty when configured.`, "EMPTY_PATH");
   }
   return path.resolve(cwd, value?.trim() || fallback);
 };
 const isMissingPathError = (error) => typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
 const ownerRecordHash = (raw) => createHash("sha256").update(raw).digest("hex");
 
+/**
+ * `code` names the refused condition (for example `OWNER_EXISTS` or `ASSIGNMENT_MISMATCH`), so
+ * callers and tests can tell the cases apart without depending on the wording of `message`.
+ */
 export class RuntimeTopologyError extends Error {
-  constructor(message) {
+  /**
+   * @param {string} message
+   * @param {string} code
+   */
+  constructor(message, code) {
     super(message);
     this.name = "RuntimeTopologyError";
+    this.code = code;
   }
 }
 
@@ -53,7 +62,7 @@ export function validateRuntimeTopology(environment = process.env) {
   }
 
   const received = configured ? ` Received ${JSON.stringify(configured)}.` : "";
-  throw new RuntimeTopologyError(`${RUNTIME_TOPOLOGY_ENV} must be set to ${JSON.stringify(SUPPORTED_RUNTIME_TOPOLOGY)}.${received} Vicky does not provide multi-process or multi-host coordination.`);
+  throw new RuntimeTopologyError(`${RUNTIME_TOPOLOGY_ENV} must be set to ${JSON.stringify(SUPPORTED_RUNTIME_TOPOLOGY)}.${received} Vicky does not provide multi-process or multi-host coordination.`, "UNSUPPORTED_TOPOLOGY");
 }
 
 export function resolveRuntimeStorageLayout(environment = process.env, cwd = process.cwd()) {
@@ -283,7 +292,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
   validateRuntimeTopology(environment);
 
   if (getOwnerState()) {
-    throw new RuntimeTopologyError("This process already owns a Vicky runtime lease.");
+    throw new RuntimeTopologyError("This process already owns a Vicky runtime lease.", "LEASE_ALREADY_HELD");
   }
 
   const cwd = options.cwd ?? process.cwd();
@@ -295,7 +304,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
 
   const existingAssignment = await readOptionalTextFile(layout.assignmentFilePath);
   if (existingAssignment !== null) {
-    throw new RuntimeTopologyError(`Refusing to start because the runtime child-assignment file still exists at ${layout.assignmentFilePath}. Vicky never automatically removes ownership artifacts after an ungraceful stop. Verify that every former Vicky process is terminated, then remove only ${layout.ownerFilePath} and ${layout.assignmentFilePath} before restarting.`);
+    throw new RuntimeTopologyError(`Refusing to start because the runtime child-assignment file still exists at ${layout.assignmentFilePath}. Vicky never automatically removes ownership artifacts after an ungraceful stop. Verify that every former Vicky process is terminated, then remove only ${layout.ownerFilePath} and ${layout.assignmentFilePath} before restarting.`, "STALE_ASSIGNMENT");
   }
 
   const record = {
@@ -316,14 +325,14 @@ export async function acquireRuntimeOwnerLease(options = {}) {
 
     const raw = await readOptionalTextFile(layout.ownerFilePath);
     const owner = raw === null ? null : parseOwnerRecord(raw);
-    throw new RuntimeTopologyError(`Refusing to start because ${layout.ownerFilePath} is held by ${ownerDescription(owner)}. Vicky supports exactly one application process on one local runtime volume and never automatically reclaims an existing owner record. Verify that every former Vicky process is terminated, then remove only ${layout.ownerFilePath} and ${layout.assignmentFilePath} before restarting.`);
+    throw new RuntimeTopologyError(`Refusing to start because ${layout.ownerFilePath} is held by ${ownerDescription(owner)}. Vicky supports exactly one application process on one local runtime volume and never automatically reclaims an existing owner record. Verify that every former Vicky process is terminated, then remove only ${layout.ownerFilePath} and ${layout.assignmentFilePath} before restarting.`, "OWNER_EXISTS");
   }
 
   // A child assignment without its owner is always stale. Check again after the
   // exclusive owner create so even a concurrent manual filesystem change fails closed.
   if (await readOptionalTextFile(layout.assignmentFilePath) !== null) {
     await removeOwnerFileIfOwned(layout.ownerFilePath, record.ownerId);
-    throw new RuntimeTopologyError(`Refusing to start because the runtime child-assignment file appeared at ${layout.assignmentFilePath}. Verify that every former Vicky process is terminated, then remove only ${layout.ownerFilePath} and ${layout.assignmentFilePath} before restarting.`);
+    throw new RuntimeTopologyError(`Refusing to start because the runtime child-assignment file appeared at ${layout.assignmentFilePath}. Verify that every former Vicky process is terminated, then remove only ${layout.ownerFilePath} and ${layout.assignmentFilePath} before restarting.`, "STALE_ASSIGNMENT");
   }
 
   let released = false;
@@ -353,7 +362,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
     ownerFilePath: layout.ownerFilePath,
     async assignProcess(pid) {
       if (released) {
-        throw new RuntimeTopologyError("Cannot assign a released Vicky runtime lease.");
+        throw new RuntimeTopologyError("Cannot assign a released Vicky runtime lease.", "LEASE_RELEASED");
       }
       if (!Number.isSafeInteger(pid) || pid <= 0) {
         throw new TypeError("Runtime owner PID must be a positive integer.");
@@ -362,7 +371,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
       const rawOwnerBeforeAssignment = await readOptionalTextFile(layout.ownerFilePath);
       const ownerBeforeAssignment = rawOwnerBeforeAssignment === null ? null : parseOwnerRecord(rawOwnerBeforeAssignment);
       if (!ownerBeforeAssignment || ownerBeforeAssignment.ownerId !== record.ownerId || ownerBeforeAssignment.pid !== initialPid) {
-        throw new RuntimeTopologyError(`Cannot assign the Next.js child because runtime ownership at ${layout.ownerFilePath} is missing or no longer matches this launcher. The owner record was not overwritten.`);
+        throw new RuntimeTopologyError(`Cannot assign the Next.js child because runtime ownership at ${layout.ownerFilePath} is missing or no longer matches this launcher. The owner record was not overwritten.`, "OWNER_MISMATCH");
       }
 
       const assignment = {
@@ -379,7 +388,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
         await writeRecordExclusive(layout.assignmentFilePath, assignment);
       } catch (error) {
         if (error?.code === "EEXIST") {
-          throw new RuntimeTopologyError(`Cannot assign the Next.js child because ${layout.assignmentFilePath} already exists. The owner record was not overwritten.`);
+          throw new RuntimeTopologyError(`Cannot assign the Next.js child because ${layout.assignmentFilePath} already exists. The owner record was not overwritten.`, "ASSIGNMENT_EXISTS");
         }
         throw error;
       }
@@ -387,7 +396,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
       const rawOwnerAfterAssignment = await readOptionalTextFile(layout.ownerFilePath);
       const ownerAfterAssignment = rawOwnerAfterAssignment === null ? null : parseOwnerRecord(rawOwnerAfterAssignment);
       if (!ownerAfterAssignment || ownerAfterAssignment.ownerId !== record.ownerId || ownerAfterAssignment.pid !== initialPid || rawOwnerAfterAssignment !== rawOwnerBeforeAssignment) {
-        throw new RuntimeTopologyError(`Runtime ownership at ${layout.ownerFilePath} changed while assigning the Next.js child. Refusing the handoff without overwriting the owner record.`);
+        throw new RuntimeTopologyError(`Runtime ownership at ${layout.ownerFilePath} changed while assigning the Next.js child. Refusing the handoff without overwriting the owner record.`, "OWNER_CHANGED");
       }
     },
     async release() {
@@ -418,7 +427,7 @@ export async function verifyInheritedRuntimeOwnerLease(environment = process.env
   validateRuntimeTopology(environment);
   const expectedOwnerId = String(environment[RUNTIME_OWNER_ID_ENV] ?? "").trim();
   if (!expectedOwnerId) {
-    throw new RuntimeTopologyError("No runtime owner lease was inherited. Start Vicky through npm run dev, npm run start, or npm run start:next.");
+    throw new RuntimeTopologyError("No runtime owner lease was inherited. Start Vicky through npm run dev, npm run start, or npm run start:next.", "LEASE_NOT_INHERITED");
   }
 
   if (!Number.isSafeInteger(pid) || pid <= 0) {
@@ -433,14 +442,14 @@ export async function verifyInheritedRuntimeOwnerLease(environment = process.env
     raw = await readFile(/*turbopackIgnore: true*/ ownerFilePath, "utf8");
   } catch (error) {
     if (isMissingPathError(error)) {
-      throw new RuntimeTopologyError(`The inherited runtime owner file is missing: ${ownerFilePath}`);
+      throw new RuntimeTopologyError(`The inherited runtime owner file is missing: ${ownerFilePath}`, "OWNER_MISSING");
     }
     throw error;
   }
 
   const owner = parseOwnerRecord(raw);
   if (!owner || owner.ownerId !== expectedOwnerId) {
-    throw new RuntimeTopologyError(`The inherited runtime owner lease does not match ${ownerFilePath}. Refusing to start without exclusive runtime ownership.`);
+    throw new RuntimeTopologyError(`The inherited runtime owner lease does not match ${ownerFilePath}. Refusing to start without exclusive runtime ownership.`, "OWNER_MISMATCH");
   }
   if (owner.pid === pid) {
     return;
@@ -453,7 +462,7 @@ export async function verifyInheritedRuntimeOwnerLease(environment = process.env
   // exactly the assigned process or its direct child; never the launcher's other children.
   const isAssignedProcessOrItsWorker = assignment !== null && (assignment.pid === pid || assignment.pid === parentPid);
   if (!assignment || assignment.ownerId !== expectedOwnerId || !isAssignedProcessOrItsWorker || assignment.ownerRecordSha256 !== ownerRecordHash(raw)) {
-    throw new RuntimeTopologyError(`The inherited runtime child assignment does not match ${assignmentFilePath}. Refusing to start without an exclusive child handoff.`);
+    throw new RuntimeTopologyError(`The inherited runtime child assignment does not match ${assignmentFilePath}. Refusing to start without an exclusive child handoff.`, "ASSIGNMENT_MISMATCH");
   }
 }
 
@@ -467,7 +476,7 @@ export async function waitForRuntimeOwnerAssignment(environment = process.env, c
   validateRuntimeTopology(environment);
   const expectedOwnerId = String(environment[RUNTIME_OWNER_ID_ENV] ?? "").trim();
   if (!expectedOwnerId) {
-    throw new RuntimeTopologyError("No runtime owner lease was inherited. Start Vicky through a supported npm launcher.");
+    throw new RuntimeTopologyError("No runtime owner lease was inherited. Start Vicky through a supported npm launcher.", "LEASE_NOT_INHERITED");
   }
   if (!Number.isSafeInteger(pid) || pid <= 0) {
     throw new TypeError("Runtime owner PID must be a positive integer.");
@@ -487,14 +496,14 @@ export async function waitForRuntimeOwnerAssignment(environment = process.env, c
       raw = await readFile(/*turbopackIgnore: true*/ ownerFilePath, "utf8");
     } catch (error) {
       if (isMissingPathError(error)) {
-        throw new RuntimeTopologyError(`The runtime owner file disappeared before child handoff: ${ownerFilePath}`);
+        throw new RuntimeTopologyError(`The runtime owner file disappeared before child handoff: ${ownerFilePath}`, "OWNER_MISSING");
       }
       throw error;
     }
 
     const owner = parseOwnerRecord(raw);
     if (!owner || owner.ownerId !== expectedOwnerId) {
-      throw new RuntimeTopologyError(`Runtime ownership changed before child handoff at ${ownerFilePath}.`);
+      throw new RuntimeTopologyError(`Runtime ownership changed before child handoff at ${ownerFilePath}.`, "OWNER_CHANGED");
     }
     const rawAssignment = await readOptionalTextFile(assignmentFilePath);
     if (rawAssignment !== null) {
@@ -503,7 +512,7 @@ export async function waitForRuntimeOwnerAssignment(environment = process.env, c
       // fully written. Treat that construction window as closed, not as a bad handoff.
       // A complete record for another lease or PID is immediately terminal.
       if (assignment && (assignment.ownerId !== expectedOwnerId || assignment.pid !== pid || assignment.ownerRecordSha256 !== ownerRecordHash(raw))) {
-        throw new RuntimeTopologyError(`Runtime child assignment at ${assignmentFilePath} does not match this child process.`);
+        throw new RuntimeTopologyError(`Runtime child assignment at ${assignmentFilePath} does not match this child process.`, "ASSIGNMENT_MISMATCH");
       }
       if (assignment) {
         return;
@@ -512,7 +521,7 @@ export async function waitForRuntimeOwnerAssignment(environment = process.env, c
     }
     if (Date.now() >= deadline) {
       const detail = sawIncompleteAssignment ? "complete its child assignment" : `assign child PID ${pid}`;
-      throw new RuntimeTopologyError(`Timed out waiting for runtime owner ${owner.ownerId} to ${detail} at ${assignmentFilePath}.`);
+      throw new RuntimeTopologyError(`Timed out waiting for runtime owner ${owner.ownerId} to ${detail} at ${assignmentFilePath}.`, "HANDOFF_TIMEOUT");
     }
     await wait(pollMs);
   }

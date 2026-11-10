@@ -12,6 +12,7 @@ import { createAdminCredentialFingerprint } from "@/lib/session-security";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 const tempDirs: string[] = [];
+const previousStorePath = process.env.WIKI_STORE_FILE_PATH;
 const previousMarkdownCacheDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
 const previousSnapshotCacheDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
 const previousDocsCacheDir = process.env.WIKI_DOCS_CACHE_DIR;
@@ -42,7 +43,11 @@ const importStore = async (storePath: string): Promise<typeof import("@/lib/stor
 };
 
 afterEach(async () => {
-  delete process.env.WIKI_STORE_FILE_PATH;
+  if (previousStorePath === undefined) {
+    delete process.env.WIKI_STORE_FILE_PATH;
+  } else {
+    process.env.WIKI_STORE_FILE_PATH = previousStorePath;
+  }
   if (previousMarkdownCacheDir === undefined) {
     delete process.env.WIKI_MARKDOWN_CACHE_DIR;
   } else {

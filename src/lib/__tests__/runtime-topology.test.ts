@@ -47,13 +47,13 @@ afterEach(async () => {
 describe("runtime topology", () => {
   it("requires the one explicitly supported topology", () => {
     expect(validateRuntimeTopology(environmentFor())).toBe(SUPPORTED_RUNTIME_TOPOLOGY);
-    expect(() => validateRuntimeTopology(environmentFor(null))).toThrow(`${RUNTIME_TOPOLOGY_ENV} must be set`);
-    expect(() => validateRuntimeTopology(environmentFor("multi-process"))).toThrow("does not provide multi-process or multi-host coordination");
+    expect(() => validateRuntimeTopology(environmentFor(null))).toThrow(expect.objectContaining({ code: "UNSUPPORTED_TOPOLOGY" }));
+    expect(() => validateRuntimeTopology(environmentFor("multi-process"))).toThrow(expect.objectContaining({ code: "UNSUPPORTED_TOPOLOGY" }));
   });
 
   it("rejects an explicitly empty runtime path before touching its parent", async () => {
     const cwd = await createTempDir();
-    expect(() => resolveRuntimeStorageLayout({ ...environmentFor(), WIKI_STORE_FILE_PATH: "" }, cwd)).toThrow("WIKI_STORE_FILE_PATH must not be empty");
+    expect(() => resolveRuntimeStorageLayout({ ...environmentFor(), WIKI_STORE_FILE_PATH: "" }, cwd)).toThrow(expect.objectContaining({ code: "EMPTY_PATH" }));
   });
 
   it("rejects any broad directory in the complete layout before creating the owner or data directory", async () => {
@@ -63,7 +63,7 @@ describe("runtime topology", () => {
     const environment = { ...environmentFor(), WIKI_MARKDOWN_CACHE_DIR: broadDirectory };
     const layout = resolveRuntimeStorageLayout(environment, cwd);
 
-    await expect(acquireRuntimeOwnerLease({ cwd, environment })).rejects.toThrow("shared, system, or root directory");
+    await expect(acquireRuntimeOwnerLease({ cwd, environment })).rejects.toMatchObject({ code: "SHARED_DIRECTORY" });
     const after = await stat(broadDirectory);
     expect(after.mode).toBe(before.mode);
     expect(after.mtimeMs).toBe(before.mtimeMs);
@@ -82,7 +82,7 @@ describe("runtime topology", () => {
     const immutableOwnerRaw = await readFile(layout.ownerFilePath, "utf8");
     expect(JSON.parse(immutableOwnerRaw)).toMatchObject({ ownerId: lease.id, hostname: "host-a", pid: 101, topology: SUPPORTED_RUNTIME_TOPOLOGY });
     await verifyInheritedRuntimeOwnerLease(environment, cwd, 101, 1);
-    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 202, 101)).rejects.toThrow("child assignment does not match");
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 202, 101)).rejects.toMatchObject({ code: "ASSIGNMENT_MISMATCH" });
 
     await lease.assignProcess(202);
     expect(await readFile(layout.ownerFilePath, "utf8")).toBe(immutableOwnerRaw);
@@ -90,8 +90,8 @@ describe("runtime topology", () => {
     await verifyInheritedRuntimeOwnerLease(environment, cwd, 202, 101);
     // `next dev` serves from a worker forked by the assigned CLI process.
     await verifyInheritedRuntimeOwnerLease(environment, cwd, 303, 202);
-    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 303, 101)).rejects.toThrow("child assignment does not match");
-    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 404, 303)).rejects.toThrow("child assignment does not match");
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 303, 101)).rejects.toMatchObject({ code: "ASSIGNMENT_MISMATCH" });
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd, 404, 303)).rejects.toMatchObject({ code: "ASSIGNMENT_MISMATCH" });
 
     await lease.release();
     leases.splice(leases.indexOf(lease), 1);
@@ -207,7 +207,7 @@ describe("runtime topology", () => {
     await writeOwner(ownerFilePath, { schemaVersion: 1, topology: SUPPORTED_RUNTIME_TOPOLOGY, ownerId: "old-owner", hostname: "host-a", pid: 303, startedAt: "2026-08-18T00:00:00.000Z" });
     const staleRaw = await readFile(ownerFilePath, "utf8");
 
-    await expect(acquireRuntimeOwnerLease({ cwd, environment, hostname: "host-a", pid: 404 })).rejects.toThrow("never automatically reclaims");
+    await expect(acquireRuntimeOwnerLease({ cwd, environment, hostname: "host-a", pid: 404 })).rejects.toMatchObject({ code: "OWNER_EXISTS" });
     expect(await readFile(ownerFilePath, "utf8")).toBe(staleRaw);
 
     await rm(ownerFilePath);
@@ -228,7 +228,7 @@ describe("runtime topology", () => {
       const environment = environmentFor();
       const { ownerFilePath } = resolveRuntimeStorageLayout(environment, cwd);
       await writeOwner(ownerFilePath, testCase.owner);
-      await expect(acquireRuntimeOwnerLease({ cwd, environment, hostname: "host-a", pid: 707 })).rejects.toThrow(testCase.name === "malformed" ? "unreadable owner record" : "Refusing to start");
+      await expect(acquireRuntimeOwnerLease({ cwd, environment, hostname: "host-a", pid: 707 })).rejects.toMatchObject({ code: "OWNER_EXISTS" });
       await expect(readFile(ownerFilePath, "utf8")).resolves.toContain(testCase.name === "malformed" ? "unexpected" : String(testCase.owner.ownerId));
     }
   });
@@ -240,7 +240,7 @@ describe("runtime topology", () => {
     const missingLease = await acquireRuntimeOwnerLease({ cwd: missingCwd, environment: missingEnvironment, hostname: "host-a", pid: 801 });
     leases.push(missingLease);
     await rm(missingLayout.ownerFilePath);
-    await expect(missingLease.assignProcess(802)).rejects.toThrow("missing or no longer matches");
+    await expect(missingLease.assignProcess(802)).rejects.toMatchObject({ code: "OWNER_MISMATCH" });
     await expect(stat(missingLayout.assignmentFilePath)).rejects.toMatchObject({ code: "ENOENT" });
     await missingLease.release();
     leases.splice(leases.indexOf(missingLease), 1);
@@ -252,7 +252,7 @@ describe("runtime topology", () => {
     leases.push(changedLease);
     await writeOwner(changedLayout.ownerFilePath, { schemaVersion: 1, topology: SUPPORTED_RUNTIME_TOPOLOGY, ownerId: "replacement-owner", hostname: "host-b", pid: 804, startedAt: "2026-08-18T00:00:00.000Z" });
     const replacementRaw = await readFile(changedLayout.ownerFilePath, "utf8");
-    await expect(changedLease.assignProcess(805)).rejects.toThrow("missing or no longer matches");
+    await expect(changedLease.assignProcess(805)).rejects.toMatchObject({ code: "OWNER_MISMATCH" });
     expect(await readFile(changedLayout.ownerFilePath, "utf8")).toBe(replacementRaw);
     await expect(stat(changedLayout.assignmentFilePath)).rejects.toMatchObject({ code: "ENOENT" });
     await changedLease.release();
@@ -266,7 +266,7 @@ describe("runtime topology", () => {
     const immutableOwnerRaw = await readFile(assignedLayout.ownerFilePath, "utf8");
     await writeAssignment(assignedLayout.assignmentFilePath, { schemaVersion: 1, topology: SUPPORTED_RUNTIME_TOPOLOGY, ownerId: "different-owner", pid: 807, assignedAt: "2026-08-18T00:00:00.000Z" });
     const existingAssignmentRaw = await readFile(assignedLayout.assignmentFilePath, "utf8");
-    await expect(assignedLease.assignProcess(808)).rejects.toThrow("already exists");
+    await expect(assignedLease.assignProcess(808)).rejects.toMatchObject({ code: "ASSIGNMENT_EXISTS" });
     expect(await readFile(assignedLayout.ownerFilePath, "utf8")).toBe(immutableOwnerRaw);
     expect(await readFile(assignedLayout.assignmentFilePath, "utf8")).toBe(existingAssignmentRaw);
   });
@@ -277,7 +277,7 @@ describe("runtime topology", () => {
     const layout = resolveRuntimeStorageLayout(environment, cwd);
     await writeAssignment(layout.assignmentFilePath, { unexpected: true });
 
-    await expect(acquireRuntimeOwnerLease({ cwd, environment })).rejects.toThrow("child-assignment file still exists");
+    await expect(acquireRuntimeOwnerLease({ cwd, environment })).rejects.toMatchObject({ code: "STALE_ASSIGNMENT" });
     await expect(stat(layout.ownerFilePath)).rejects.toMatchObject({ code: "ENOENT" });
     await expect(readFile(layout.assignmentFilePath, "utf8")).resolves.toContain("unexpected");
   });
@@ -285,11 +285,11 @@ describe("runtime topology", () => {
   it("rejects a missing or mismatched inherited owner nonce", async () => {
     const cwd = await createTempDir();
     const environment = environmentFor();
-    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd)).rejects.toThrow("No runtime owner lease was inherited");
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd)).rejects.toMatchObject({ code: "LEASE_NOT_INHERITED" });
 
     const { ownerFilePath } = resolveRuntimeStorageLayout(environment, cwd);
     environment[RUNTIME_OWNER_ID_ENV] = "expected-owner";
     await writeOwner(ownerFilePath, { schemaVersion: 1, topology: SUPPORTED_RUNTIME_TOPOLOGY, ownerId: "different-owner", hostname: "host-a", pid: 808, startedAt: "2026-08-18T00:00:00.000Z" });
-    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd)).rejects.toThrow("does not match");
+    await expect(verifyInheritedRuntimeOwnerLease(environment, cwd)).rejects.toMatchObject({ code: "OWNER_MISMATCH" });
   });
 });

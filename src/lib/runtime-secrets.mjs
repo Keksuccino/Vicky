@@ -70,7 +70,18 @@ const PLACEHOLDER_PATTERNS = Object.freeze([
   /^(?:thisis|thisisa)(?:long|strong|random|secure|admin|auth|jwt|encryption|session)*(?:password|secret|token|key|value)$/,
 ]);
 
-const normalizeForPlaceholderCheck = (value) => value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
+/**
+ * One validation problem. `code` (`MISSING`, `WHITESPACE`, `TOO_SHORT`, `TOO_LONG`,
+ * `TOO_MANY_BYTES`, `MALFORMED_UNICODE`, `PLACEHOLDER`, `PREDICTABLE`, or `REUSED`) and
+ * `secretNames` identify it; `message` is the operator-facing explanation. None contains a value.
+ *
+ * @param {string} code
+ * @param {string[]} secretNames
+ * @param {string} message
+ */
+const issue = (code, secretNames, message) => Object.freeze({ code, secretNames: Object.freeze(secretNames), message });
+
+const normalizeForPlaceholderCheck =(value) => value.normalize("NFKC").toLowerCase().replace(/[^a-z0-9]/g, "");
 
 const calculateCharacterEntropyBits = (value) => {
   const characters = Array.from(value);
@@ -129,39 +140,39 @@ const validateSecretValue = (secretName, resolved) => {
   const issues = [];
   const policy = SECRET_POLICIES[secretName];
   if (!resolved.value) {
-    issues.push(`${secretName} is missing. Set it to a unique value with at least ${policy.minimumLength} characters.`);
+    issues.push(issue("MISSING", [secretName], `${secretName} is missing. Set it to a unique value with at least ${policy.minimumLength} characters.`));
     return issues;
   }
 
   if (resolved.hasSurroundingWhitespace) {
-    issues.push(`${secretName} has leading or trailing whitespace. Remove it so deployments interpret the value consistently.`);
+    issues.push(issue("WHITESPACE", [secretName], `${secretName} has leading or trailing whitespace. Remove it so deployments interpret the value consistently.`));
   }
 
   const characters = Array.from(resolved.value);
   const distinctCharacters = new Set(characters).size;
   if (characters.length < policy.minimumLength) {
-    issues.push(`${secretName} must contain at least ${policy.minimumLength} characters.`);
+    issues.push(issue("TOO_SHORT", [secretName], `${secretName} must contain at least ${policy.minimumLength} characters.`));
   }
 
   if (policy.maximumCharacters && characters.length > policy.maximumCharacters) {
-    issues.push(`${secretName} must contain at most ${policy.maximumCharacters} characters.`);
+    issues.push(issue("TOO_LONG", [secretName], `${secretName} must contain at most ${policy.maximumCharacters} characters.`));
   }
 
   if (policy.maximumUtf8Bytes && getUtf8ByteLength(resolved.value) > policy.maximumUtf8Bytes) {
-    issues.push(`${secretName} must not exceed ${policy.maximumUtf8Bytes} UTF-8 bytes.`);
+    issues.push(issue("TOO_MANY_BYTES", [secretName], `${secretName} must not exceed ${policy.maximumUtf8Bytes} UTF-8 bytes.`));
   }
 
   if (!isWellFormedUnicode(resolved.value)) {
-    issues.push(`${secretName} must contain well-formed Unicode.`);
+    issues.push(issue("MALFORMED_UNICODE", [secretName], `${secretName} must contain well-formed Unicode.`));
   }
 
   const normalizedPlaceholderCandidate = normalizeForPlaceholderCheck(resolved.value);
   if (COMMON_PLACEHOLDERS.has(normalizedPlaceholderCandidate) || PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(normalizedPlaceholderCandidate))) {
-    issues.push(`${secretName} uses a documented or common placeholder. Generate a new deployment-specific value.`);
+    issues.push(issue("PLACEHOLDER", [secretName], `${secretName} uses a documented or common placeholder. Generate a new deployment-specific value.`));
   }
 
   if (distinctCharacters < policy.minimumDistinctCharacters || calculateCharacterEntropyBits(resolved.value) < policy.minimumEntropyBits || isRepeatedPattern(resolved.value)) {
-    issues.push(`${secretName} is too predictable. Use a random value or a long, unique passphrase with more character variety.`);
+    issues.push(issue("PREDICTABLE", [secretName], `${secretName} is too predictable. Use a random value or a long, unique passphrase with more character variety.`));
   }
 
   return issues;
@@ -180,7 +191,7 @@ const findUniquenessIssues = (resolvedValues) => {
       const rightName = RUNTIME_SECRET_NAMES[rightIndex];
       const rightValue = resolvedValues[rightName].value;
       if (rightValue && leftValue.normalize("NFKC").toLowerCase() === rightValue.normalize("NFKC").toLowerCase()) {
-        issues.push(`${leftName} and ${rightName} must use different values.`);
+        issues.push(issue("REUSED", [leftName, rightName], `${leftName} and ${rightName} must use different values.`));
       }
     }
   }
@@ -190,7 +201,7 @@ const findUniquenessIssues = (resolvedValues) => {
 
 export class RuntimeSecretValidationError extends Error {
   constructor(issues) {
-    super(`Invalid runtime secret configuration:\n${issues.map((issue) => `- ${issue}`).join("\n")}\nGenerate independent secrets before starting Vicky; no secret values were logged.`);
+    super(`Invalid runtime secret configuration:\n${issues.map((entry) => `- ${entry.message}`).join("\n")}\nGenerate independent secrets before starting Vicky; no secret values were logged.`);
     this.name = "RuntimeSecretValidationError";
     this.issues = Object.freeze([...issues]);
   }

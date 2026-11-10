@@ -13,7 +13,7 @@ process.on("message", async (message) => {
       lease = await acquireRuntimeOwnerLease({ cwd: runtimeDirectory, environment, hostname: "stress-host", pid: process.pid });
       await send({ type: "acquired", pid: process.pid });
     } catch (error) {
-      await send({ type: "rejected", message: error instanceof Error ? error.message : String(error), pid: process.pid });
+      await send({ type: "rejected", code: error?.code ?? null, pid: process.pid });
       process.disconnect?.();
     }
     return;

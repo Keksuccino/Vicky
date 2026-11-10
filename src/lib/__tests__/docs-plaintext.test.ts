@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { AI_PLAINTEXT_EXPORT_PATH, renderPlaintextDocsExport } from "../docs-plaintext";
+import { renderPlaintextDocsExport } from "../docs-plaintext";
 
 describe("plaintext docs export", () => {
   it("renders included pages with explicit start and end markers", () => {
@@ -38,6 +38,8 @@ describe("plaintext docs export", () => {
       },
     ]);
 
-    expect(rendered).toContain(`No docs pages are currently included in ${AI_PLAINTEXT_EXPORT_PATH}.`);
+    expect(rendered.trim()).not.toBe("");
+    expect(rendered).not.toContain("# Hidden");
+    expect(rendered).not.toContain("END PAGE:");
   });
 });

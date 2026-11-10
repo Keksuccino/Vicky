@@ -4,6 +4,9 @@ import { getRuntimeSecret } from "@/lib/runtime-secrets.mjs";
 
 const ENCRYPTION_PREFIX = "enc:v1";
 
+/** Thrown for a stored value that is not an `enc:v1` payload; `code` tells it apart from a failed decryption. */
+const invalidPayloadError = (): Error => Object.assign(new Error("Encrypted payload format is invalid."), { code: "INVALID_PAYLOAD" });
+
 const getKey = (): Buffer => createHash("sha256").update(getRuntimeSecret("ENCRYPTION_SECRET"), "utf8").digest();
 
 export const encryptSecret = (plainText: string): string => {
@@ -30,14 +33,14 @@ export const decryptSecret = (payload: string | null | undefined): string => {
   }
 
   if (!payload.startsWith(`${ENCRYPTION_PREFIX}:`)) {
-    throw new Error("Encrypted payload format is invalid.");
+    throw invalidPayloadError();
   }
 
   const encodedParts = payload.slice(ENCRYPTION_PREFIX.length + 1).split(":");
   const [ivB64, authTagB64, encryptedB64] = encodedParts;
 
   if (encodedParts.length !== 3 || !ivB64 || !authTagB64 || !encryptedB64) {
-    throw new Error("Encrypted payload format is invalid.");
+    throw invalidPayloadError();
   }
 
   const decipher = createDecipheriv("aes-256-gcm", getKey(), Buffer.from(ivB64, "base64url"));

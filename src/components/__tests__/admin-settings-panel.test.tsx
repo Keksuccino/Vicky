@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, waitFor } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AdminSettings, DomainSslRuntimeStatus } from "@/components/types";
 
@@ -66,6 +66,16 @@ vi.mock("@/components/api", () => ({
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
   updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
 }));
+
+/** Waits until `selector` matches inside `container` and returns the element. */
+const findElement = async <T extends Element>(container: HTMLElement, selector: string): Promise<T> => {
+  let element: T | null = null;
+  await waitFor(() => {
+    element = container.querySelector<T>(selector);
+    expect(element).not.toBeNull();
+  }, { timeout: 3_000 });
+  return element as unknown as T;
+};
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -345,11 +355,6 @@ describe("AdminSettingsPanel", () => {
     startAdminMarkdownCacheWarmJobMock.mockResolvedValue(RUNNING_WARM_JOB);
   });
 
-  // A panel left mounted keeps polling and would answer the next test's queries.
-  afterEach(() => {
-    cleanup();
-  });
-
   it("starts warming the Markdown cache in the background and follows its progress until it finishes", async () => {
     fetchAdminMarkdownCacheWarmJobMock.mockResolvedValueOnce(null).mockResolvedValue({ ...RUNNING_WARM_JOB, status: "completed", phase: "finished", processedVariants: 4, renderedVariants: 4, etaSeconds: null });
 
@@ -400,8 +405,8 @@ describe("AdminSettingsPanel", () => {
     requestAdminSourceVersionRecordingMock.mockResolvedValue({ ...finishedJob, id: "source-versions", status: "running", phase: "checking", mode: "source-versions", finishedAt: null });
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
 
-    render(<AdminSettingsPanel />);
-    const recordButton = await screen.findByRole("button", { name: "Record Source Versions" }, { timeout: 3_000 });
+    const { container } = render(<AdminSettingsPanel />);
+    const recordButton = await findElement<HTMLButtonElement>(container, ".translation-record-source-versions");
 
     fireEvent.click(recordButton);
     expect(confirm).toHaveBeenCalledTimes(1);
@@ -410,7 +415,7 @@ describe("AdminSettingsPanel", () => {
     fetchAdminLanguageTranslationStatusMock.mockResolvedValue({ statuses: [{ ...germanStatus, unrecordedPages: 0 }], job: { ...finishedJob, id: "source-versions", mode: "source-versions" }, jobState: "current", updatedAt: "2026-03-10T12:02:00.000Z" });
     fireEvent.click(recordButton);
     await waitFor(() => expect(requestAdminSourceVersionRecordingMock).toHaveBeenCalledWith(3));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Record Source Versions|Recording/ })).toBeNull());
+    await waitFor(() => expect(container.querySelector(".translation-record-source-versions")).toBeNull());
     confirm.mockRestore();
   });
 
@@ -456,9 +461,9 @@ describe("AdminSettingsPanel", () => {
       .mockImplementationOnce(() => firstSave.promise)
       .mockImplementationOnce(() => secondSave.promise);
 
-    render(<AdminSettingsPanel />);
+    const { container } = render(<AdminSettingsPanel />);
 
-    const siteTitleInput = (await screen.findByRole("textbox", { name: /^Site title\b/ })) as HTMLInputElement;
+    const siteTitleInput = await findElement<HTMLInputElement>(container, "#site-title");
 
     fireEvent.change(siteTitleInput, {
       target: { value: "Vicky Docs 1" },
@@ -508,9 +513,9 @@ describe("AdminSettingsPanel", () => {
       tokenConfigured: true,
     });
 
-    render(<AdminSettingsPanel />);
+    const { container } = render(<AdminSettingsPanel />);
 
-    const tokenInput = (await screen.findByLabelText(/^GitHub token\b/)) as HTMLInputElement;
+    const tokenInput = await findElement<HTMLInputElement>(container, "#github-token");
 
     fireEvent.change(tokenInput, {
       target: { value: "ghp_saved" },
@@ -521,7 +526,7 @@ describe("AdminSettingsPanel", () => {
       expect(tokenInput.value).toBe("");
     });
 
-    const siteTitleInput = screen.getByRole("textbox", { name: /^Site title\b/ }) as HTMLInputElement;
+    const siteTitleInput = container.querySelector<HTMLInputElement>("#site-title")!;
     fireEvent.change(siteTitleInput, {
       target: { value: "Vicky Docs without secret resend" },
     });
