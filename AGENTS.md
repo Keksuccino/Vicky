@@ -92,7 +92,7 @@
 - API routes:
   - `src/app/api/**/route.ts`
 - Proxy guards (Next.js `proxy` convention, Node.js runtime):
-  - `proxy.ts`
+  - `src/proxy.ts`
 
 ## API Surface (Current)
 - Public:
@@ -151,7 +151,7 @@ Useful URLs:
 
 ## Auth/Security Rules
 - Admin session cookie: `vicky_admin_session`.
-- Protected server paths are guarded both by the proxy (`proxy.ts`) and route checks.
+- Protected server paths are guarded both by the proxy (`src/proxy.ts`) and route checks.
 - Admin/editor pages perform server-side auth checks to avoid unauthorized content flash.
 - Login endpoint includes IP-based rate limiting, temporary block windows, durable JSON persistence, and an in-memory fallback when persistence is unavailable.
 - `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, and `ENCRYPTION_SECRET` have test-only fallbacks; local development and production must configure real values.

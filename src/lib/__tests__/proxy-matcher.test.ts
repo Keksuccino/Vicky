@@ -1,7 +1,7 @@
 import { unstable_doesMiddlewareMatch } from "next/experimental/testing/server";
 import { describe, expect, it } from "vitest";
 
-import { config } from "../../../proxy";
+import { config } from "../../proxy";
 
 // Next 16 still names this testing helper after middleware; it evaluates the proxy matcher the same way.
 const runsProxy = (path: string): boolean => unstable_doesMiddlewareMatch({ config, url: `http://localhost${path}` });

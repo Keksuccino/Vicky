@@ -4,7 +4,7 @@ import "next/dist/server/node-environment-baseline";
 import { adapter } from "next/dist/server/web/adapter";
 import { describe, expect, it } from "vitest";
 
-import { proxy } from "../../../proxy";
+import { proxy } from "../../proxy";
 
 // Headers a visitor, a proxy, or an attacker may send. None of them may reach the Location header.
 const FORWARDED_HEADERS = { host: "docs.example.com", "x-forwarded-host": "attacker.example", "x-forwarded-proto": "http" };
