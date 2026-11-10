@@ -2282,6 +2282,31 @@ html[data-color-mode="custom"] .translation-language-cache-status-partial {
   color: var(--success);
 }
 
+/* A language fetched for the first time: the pill fills from the left with its download progress. */
+.translation-language-cache-status-progress {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  font-variant-numeric: tabular-nums;
+}
+
+.translation-language-cache-status-progress::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: color-mix(in srgb, var(--accent-surface) 34%, transparent);
+  transform: scaleX(var(--translation-status-progress, 0));
+  transform-origin: left center;
+  transition: transform 320ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .translation-language-cache-status-progress::before {
+    transition: none;
+  }
+}
+
 .translation-language-remove,
 .translation-language-request {
   --btn-size: 2.5rem;

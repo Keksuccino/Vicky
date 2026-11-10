@@ -211,7 +211,17 @@ export type AdminLanguageTranslationCacheStatus = {
   totalPages: number;
   /** Current translations that do not record their source version yet. */
   unrecordedPages: number;
+  /** Translations whose state is not known until the server fetched them for the first time. */
+  pendingPages: number;
+  /** Blob downloads of that first fetch while it runs (overview only). */
+  loading: { downloaded: number; total: number } | null;
   sourceLanguage: boolean;
+};
+
+export type AdminTranslationOverview = {
+  statuses: AdminLanguageTranslationCacheStatus[];
+  /** The saved localization directory the statuses were computed for. */
+  localizationPath: string;
 };
 
 export type AdminMarkdownCacheLanguageStatus = {

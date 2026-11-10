@@ -130,6 +130,7 @@
   - `GET /api/admin/performance`
   - `POST /api/admin/translations/request`
   - `POST /api/admin/translations/status`
+  - `GET /api/admin/translations/overview`
   - `POST /api/admin/translations/source-versions`
   - `GET /api/admin/visitors`
 

@@ -21,6 +21,7 @@ import {
   createAdminModerator,
   deleteAdminModerator,
   fetchAdminDomainSslStatus,
+  fetchAdminLanguageTranslationOverview,
   fetchAdminLanguageTranslationStatus,
   fetchAdminMarkdownCacheStatus,
   fetchAdminMarkdownCacheWarmJob,
@@ -118,6 +119,8 @@ const VISITOR_STATS_CATCH_UP_POLL_MS = 2_000;
 const VISITOR_STATS_PENDING_POLL_MS = 1_000;
 const TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS = 650;
 const TRANSLATION_CACHE_STATUS_POLL_MS = 4_000;
+/** How often the card asks again while a language's translations are fetched for the first time. */
+const TRANSLATION_OVERVIEW_POLL_MS = 1_500;
 const MARKDOWN_CACHE_WARM_JOB_POLL_MS = 1_000;
 const PERFORMANCE_REFRESH_INTERVAL_MS = 60_000;
 
@@ -442,10 +445,10 @@ type MarkdownCacheStatusLoadResult =
   | { error: null; status: AdminMarkdownCacheStatus }
   | { error: string; status: null };
 
-const loadVisitorStatsResult = async (refresh: boolean): Promise<VisitorStatsLoadResult> => {
+const loadVisitorStatsResult = async (refresh: boolean, signal: AbortSignal): Promise<VisitorStatsLoadResult> => {
   try {
     return {
-      result: await fetchAdminVisitorStats({ refresh }),
+      result: await fetchAdminVisitorStats({ refresh, signal }),
       error: null,
     };
   } catch (error) {
@@ -456,10 +459,10 @@ const loadVisitorStatsResult = async (refresh: boolean): Promise<VisitorStatsLoa
   }
 };
 
-const loadPerformanceStatsResult = async (): Promise<PerformanceStatsLoadResult> => {
+const loadPerformanceStatsResult = async (signal: AbortSignal): Promise<PerformanceStatsLoadResult> => {
   try {
     return {
-      stats: await fetchAdminPerformanceStats(),
+      stats: await fetchAdminPerformanceStats({ signal }),
       error: null,
     };
   } catch (error) {
@@ -470,10 +473,10 @@ const loadPerformanceStatsResult = async (): Promise<PerformanceStatsLoadResult>
   }
 };
 
-const loadMarkdownCacheStatusResult = async (): Promise<MarkdownCacheStatusLoadResult> => {
+const loadMarkdownCacheStatusResult = async (signal: AbortSignal): Promise<MarkdownCacheStatusLoadResult> => {
   try {
     return {
-      status: await fetchAdminMarkdownCacheStatus(),
+      status: await fetchAdminMarkdownCacheStatus({ signal }),
       error: null,
     };
   } catch (error) {
@@ -1628,22 +1631,40 @@ const createTranslationCacheStatusMap = (
   return output;
 };
 
+/** A language whose translations the server is still fetching for the first time, so its counts are not final. */
+const isTranslationStatusPending = (status: AdminLanguageTranslationCacheStatus | undefined): boolean =>
+  Boolean(status && !status.sourceLanguage && (status.loading || status.pendingPages > 0));
+
+/** Progress of that first fetch: its blob downloads, or null while only commit dates are being looked up. */
+const getTranslationStatusProgressPercent = (status: AdminLanguageTranslationCacheStatus): number | null =>
+  status.loading && status.loading.total > 0 ? progressPercent(status.loading.downloaded, status.loading.total) : null;
+
 const getTranslationCacheStatusTone = (
   status: AdminLanguageTranslationCacheStatus | undefined,
 ): TranslationCacheStatusTone => {
-  if (!status) {
+  if (!status || isTranslationStatusPending(status)) {
     return "loading";
   }
 
-  if (status.totalPages === 0 || (status.currentPages ?? status.cachedPages) >= status.totalPages) {
+  if (status.totalPages === 0 || status.currentPages >= status.totalPages) {
     return "complete";
   }
 
-  return (status.currentPages ?? status.cachedPages) === 0 ? "empty" : "partial";
+  return status.currentPages === 0 ? "empty" : "partial";
 };
 
-const getTranslationCacheStatusLabel = (status: AdminLanguageTranslationCacheStatus | undefined): string =>
-  status ? `${status.currentPages ?? status.cachedPages}/${status.totalPages}` : "...";
+const getTranslationCacheStatusLabel = (status: AdminLanguageTranslationCacheStatus | undefined): string => {
+  if (!status) {
+    return "...";
+  }
+
+  if (isTranslationStatusPending(status)) {
+    const percent = getTranslationStatusProgressPercent(status);
+    return percent === null ? "..." : `${percent}%`;
+  }
+
+  return `${status.currentPages}/${status.totalPages}`;
+};
 
 const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheStatus | undefined): string => {
   if (!status) {
@@ -1651,13 +1672,23 @@ const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheS
   }
 
   if (status.sourceLanguage) {
-    return "Source language";
+    return `Source language: all ${formatVisitorCount(status.totalPages)} page${status.totalPages === 1 ? "" : "s"} are written in it`;
   }
 
-  return `${status.currentPages ?? status.cachedPages}/${status.totalPages} current, ${status.missingPages ?? 0} missing, ${
-    status.outdatedPages ?? 0
-  } outdated`;
+  if (isTranslationStatusPending(status)) {
+    const loading = status.loading;
+    if (loading && loading.total > 0 && loading.downloaded < loading.total) {
+      return `Fetching this language's translations from GitHub for the first time: ${formatVisitorCount(loading.downloaded)} of ${formatVisitorCount(loading.total)} files`;
+    }
+    return "Checking on GitHub when this language's translations were last changed";
+  }
+
+  return `${status.currentPages}/${status.totalPages} current, ${status.missingPages} missing, ${status.outdatedPages} outdated`;
 };
+
+/** What the localization overview depends on: the localization directory and the language codes. */
+const translationOverviewSignature = (settings: AdminSettings): string =>
+  JSON.stringify([normalizeLocalizationPath(settings.autoTranslateLocalizationPath), settings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code))]);
 
 const formatStatusTimestamp = (value: string): string => {
   const parsed = new Date(value);
@@ -1701,6 +1732,8 @@ export function AdminSettingsPanel() {
   const [translationCacheStatuses, setTranslationCacheStatuses] = useState<
     Record<string, AdminLanguageTranslationCacheStatus>
   >({});
+  /** Localization directory the shown statuses belong to; they are hidden while the panel shows another one. */
+  const [translationStatusesLocalizationPath, setTranslationStatusesLocalizationPath] = useState<string | null>(null);
   const [translationCacheStatusLoading, setTranslationCacheStatusLoading] = useState(false);
   const [translationCacheStatusError, setTranslationCacheStatusError] = useState<string | null>(null);
 
@@ -1744,8 +1777,12 @@ export function AdminSettingsPanel() {
   const autoSaveQueuedRef = useRef(false);
   const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
   const lastSavedSnapshotRef = useRef<string | null>(null);
-  const translationCacheStatusRequestRef = useRef(0);
-  const translationCacheStatusInFlightRef = useRef(false);
+  const lifetimeControllerRef = useRef<AbortController | null>(null);
+  const translationJobStatusInFlightRef = useRef(false);
+  const translationOverviewRequestRef = useRef(0);
+  /** Translation settings of the latest overview request, to fetch it again after a save changes them. */
+  const translationOverviewSignatureRef = useRef<string | null>(null);
+  const translationStatusesPendingRef = useRef(false);
   const translationJobRef = useRef<AdminTranslationJobSnapshot | null>(null);
   const translationLogRef = useRef<HTMLDivElement | null>(null);
   const lastTranslationJobStatusRef = useRef<AdminTranslationJobSnapshot["status"] | null>(null);
@@ -1770,21 +1807,11 @@ export function AdminSettingsPanel() {
     () => createThemePreviewStyle("dark", themeCustomization),
     [themeCustomization],
   );
-  const translationCacheStatusSignature = useMemo(
-    () =>
-      JSON.stringify({
-        model: settings.autoTranslateOpenRouterModel.trim(),
-        localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
-        languages: settings.autoTranslateLanguages.map((language) => ({
-          code: normalizeAutoTranslateLanguageCode(language.code),
-          name: language.name.trim(),
-        })),
-      }),
-    [settings.autoTranslateLanguages, settings.autoTranslateLocalizationPath, settings.autoTranslateOpenRouterModel],
-  );
   const activeTranslationMode = translationJob?.status === "running" ? translationJob.mode : translationBulkAction;
   const translationLogEntries = translationJob?.logs ?? [];
-  /** Current translations that do not record their source version yet, as the latest job reported them. */
+  /** Whether a language's translations are still being fetched for the first time; the overview is polled meanwhile. */
+  const translationStatusesPending = useMemo(() => Object.values(translationCacheStatuses).some(isTranslationStatusPending), [translationCacheStatuses]);
+  /** Current translations that do not record their source version yet, as the overview or a running job reports them. */
   const unrecordedTranslationCount = useMemo(
     () =>
       settings.autoTranslateLanguages.reduce(
@@ -1795,41 +1822,69 @@ export function AdminSettingsPanel() {
     [settings.autoTranslateLanguages, translationCacheStatuses],
   );
 
+  /**
+   * Aborted when the panel unmounts: every read the panel starts passes this signal, so its
+   * requests stop, and every request checks it before updating state, writes included (those run
+   * to completion, since the server may already be applying them). Server-side jobs keep running.
+   */
+  const lifetimeSignal = useCallback((): AbortSignal => (lifetimeControllerRef.current ??= new AbortController()).signal, []);
+
+  useEffect(() => {
+    const controller = lifetimeControllerRef.current ?? new AbortController();
+    lifetimeControllerRef.current = controller;
+    return () => {
+      controller.abort();
+      lifetimeControllerRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    translationStatusesPendingRef.current = translationStatusesPending;
+  }, [translationStatusesPending]);
+
   const trackTranslationJob = useCallback((job: AdminTranslationJobSnapshot | null): void => {
     translationJobRef.current = job;
     setTranslationJob(job);
   }, []);
 
   const refreshSslStatus = useCallback(async () => {
+    const signal = lifetimeSignal();
     setSslStatusLoading(true);
     setSslStatusError(null);
 
     try {
-      const status = await fetchAdminDomainSslStatus();
-      setSslStatus(status);
+      const status = await fetchAdminDomainSslStatus({ signal });
+      if (!signal.aborted) {
+        setSslStatus(status);
+      }
     } catch (error) {
-      setSslStatus(null);
-      setSslStatusError(formatApiError(error));
+      if (!signal.aborted) {
+        setSslStatus(null);
+        setSslStatusError(formatApiError(error));
+      }
     } finally {
-      setSslStatusLoading(false);
+      if (!signal.aborted) {
+        setSslStatusLoading(false);
+      }
     }
-  }, []);
+  }, [lifetimeSignal]);
 
   const refreshPerformanceStats = useCallback(async () => {
+    const signal = lifetimeSignal();
     const requestId = performanceStatsRequestRef.current + 1;
     performanceStatsRequestRef.current = requestId;
     setPerformanceStatsLoading(true);
     setPerformanceStatsError(null);
 
-    const result = await loadPerformanceStatsResult();
-    if (performanceStatsRequestRef.current !== requestId) {
+    const result = await loadPerformanceStatsResult(signal);
+    if (signal.aborted || performanceStatsRequestRef.current !== requestId) {
       return;
     }
 
     setPerformanceStats(result.stats);
     setPerformanceStatsError(result.error);
     setPerformanceStatsLoading(false);
-  }, []);
+  }, [lifetimeSignal]);
 
   /**
    * Loads the analytics numbers. Only the newest request may update the card, so a slow older
@@ -1837,6 +1892,7 @@ export function AdminSettingsPanel() {
    * alone, and numbers already shown stay until newer ones arrive.
    */
   const refreshVisitorStats = useCallback(async ({ refresh = false, silent = false }: { refresh?: boolean; silent?: boolean } = {}) => {
+    const signal = lifetimeSignal();
     const requestId = visitorStatsRequestRef.current + 1;
     visitorStatsRequestRef.current = requestId;
     if (!silent) {
@@ -1844,8 +1900,8 @@ export function AdminSettingsPanel() {
       setVisitorStatsError(null);
     }
 
-    const result = await loadVisitorStatsResult(refresh);
-    if (visitorStatsRequestRef.current !== requestId) {
+    const result = await loadVisitorStatsResult(refresh, signal);
+    if (signal.aborted || visitorStatsRequestRef.current !== requestId) {
       return;
     }
 
@@ -1857,7 +1913,7 @@ export function AdminSettingsPanel() {
     }
     setVisitorStatsError(result.error);
     setVisitorStatsLoading(false);
-  }, []);
+  }, [lifetimeSignal]);
 
   const resetModeratorEditor = useCallback(() => {
     setEditingModeratorId(null);
@@ -1867,6 +1923,7 @@ export function AdminSettingsPanel() {
   }, []);
 
   const handleCreateModerator = useCallback(async () => {
+    const signal = lifetimeSignal();
     setModeratorSaving(true);
     setModeratorError(null);
 
@@ -1875,16 +1932,23 @@ export function AdminSettingsPanel() {
         username: moderatorUsername,
         password: moderatorPassword,
       });
+      if (signal.aborted) {
+        return;
+      }
       setModerators((prev) => [...prev, created].sort((left, right) => left.username.localeCompare(right.username)));
       setModeratorUsername("");
       setModeratorPassword("");
       setShowModeratorPassword(false);
     } catch (error) {
-      setModeratorError(formatApiError(error));
+      if (!signal.aborted) {
+        setModeratorError(formatApiError(error));
+      }
     } finally {
-      setModeratorSaving(false);
+      if (!signal.aborted) {
+        setModeratorSaving(false);
+      }
     }
-  }, [moderatorPassword, moderatorUsername]);
+  }, [lifetimeSignal, moderatorPassword, moderatorUsername]);
 
   const handleUpdateModerator = useCallback(
     async (account: ModeratorAccount) => {
@@ -1908,11 +1972,15 @@ export function AdminSettingsPanel() {
         return;
       }
 
+      const signal = lifetimeSignal();
       setModeratorActionId(account.id);
       setModeratorError(null);
 
       try {
         const updated = await updateAdminModerator(account.id, payload);
+        if (signal.aborted) {
+          return;
+        }
         setModerators((prev) =>
           prev
             .map((moderator) => (moderator.id === account.id ? updated : moderator))
@@ -1920,32 +1988,44 @@ export function AdminSettingsPanel() {
         );
         resetModeratorEditor();
       } catch (error) {
-        setModeratorError(formatApiError(error));
+        if (!signal.aborted) {
+          setModeratorError(formatApiError(error));
+        }
       } finally {
-        setModeratorActionId(null);
+        if (!signal.aborted) {
+          setModeratorActionId(null);
+        }
       }
     },
-    [editingModeratorPassword, editingModeratorUsername, resetModeratorEditor],
+    [editingModeratorPassword, editingModeratorUsername, lifetimeSignal, resetModeratorEditor],
   );
 
   const handleDeleteModerator = useCallback(
     async (account: ModeratorAccount) => {
+      const signal = lifetimeSignal();
       setModeratorActionId(account.id);
       setModeratorError(null);
 
       try {
         await deleteAdminModerator(account.id);
+        if (signal.aborted) {
+          return;
+        }
         setModerators((prev) => prev.filter((moderator) => moderator.id !== account.id));
         if (editingModeratorId === account.id) {
           resetModeratorEditor();
         }
       } catch (error) {
-        setModeratorError(formatApiError(error));
+        if (!signal.aborted) {
+          setModeratorError(formatApiError(error));
+        }
       } finally {
-        setModeratorActionId(null);
+        if (!signal.aborted) {
+          setModeratorActionId(null);
+        }
       }
     },
-    [editingModeratorId, resetModeratorEditor],
+    [editingModeratorId, lifetimeSignal, resetModeratorEditor],
   );
 
   const createSaveSnapshot = useCallback(
@@ -1957,6 +2037,79 @@ export function AdminSettingsPanel() {
   );
 
   const getLatestSaveSnapshot = useCallback((): string => createSaveSnapshot(latestSettingsRef.current), [createSaveSnapshot]);
+
+  /** Shows statuses computed for the localization directory the panel has saved; `merge` keeps the other languages. */
+  const applyTranslationStatuses = useCallback((statuses: AdminLanguageTranslationCacheStatus[], localizationPath: string, merge: boolean) => {
+    const currentSettings = latestSettingsRef.current;
+    const path = normalizeLocalizationPath(localizationPath);
+    if (path !== normalizeLocalizationPath(currentSettings.autoTranslateLocalizationPath)) {
+      return;
+    }
+
+    const currentLanguageCodes = new Set(currentSettings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code)));
+    const applicable = createTranslationCacheStatusMap(statuses.filter((status) => currentLanguageCodes.has(translationCacheStatusKey(status.languageCode))));
+    setTranslationCacheStatuses((current) => (merge ? { ...current, ...applicable } : applicable));
+    setTranslationStatusesLocalizationPath(path);
+  }, []);
+
+  /**
+   * Loads the status of every saved language without a job, from the server's repository index
+   * and stored summaries. Only the newest request may update the card, and a running job keeps
+   * the floor: it reports its languages live and the overview is loaded again once it finished.
+   */
+  const refreshTranslationOverview = useCallback(async () => {
+    const signal = lifetimeSignal();
+    const requestId = translationOverviewRequestRef.current + 1;
+    translationOverviewRequestRef.current = requestId;
+    translationOverviewSignatureRef.current = translationOverviewSignature(latestSettingsRef.current);
+    setTranslationCacheStatusLoading(true);
+    setTranslationCacheStatusError(null);
+
+    try {
+      const overview = await fetchAdminLanguageTranslationOverview({ signal });
+      if (!signal.aborted && translationOverviewRequestRef.current === requestId && translationJobRef.current?.status !== "running") {
+        applyTranslationStatuses(overview.statuses, overview.localizationPath, false);
+      }
+    } catch (error) {
+      if (!signal.aborted && translationOverviewRequestRef.current === requestId) {
+        setTranslationCacheStatusError(formatApiError(error));
+      }
+    } finally {
+      if (!signal.aborted && translationOverviewRequestRef.current === requestId) {
+        setTranslationCacheStatusLoading(false);
+      }
+    }
+  }, [applyTranslationStatuses, lifetimeSignal]);
+
+  /** Reads the latest translation job of the server; while it runs, its statuses follow its uploads. */
+  const refreshTranslationJobStatus = useCallback(async () => {
+    if (translationJobStatusInFlightRef.current) {
+      return;
+    }
+
+    const signal = lifetimeSignal();
+    translationJobStatusInFlightRef.current = true;
+    try {
+      const runtimeStatus = await fetchAdminLanguageTranslationStatus(translationJobRef.current?.id, { signal });
+      if (signal.aborted) {
+        return;
+      }
+
+      if (runtimeStatus.job?.status === "running") {
+        applyTranslationStatuses(runtimeStatus.statuses, runtimeStatus.job.localizationPath, true);
+      }
+      if (runtimeStatus.jobState === "unknown") {
+        trackTranslationJob(null);
+        setTranslationRequestStatus({ tone: "warning", message: "Translation job status is no longer available. The server may have restarted or replaced its in-process job snapshot." });
+      } else {
+        trackTranslationJob(runtimeStatus.job);
+      }
+    } catch {
+      // The next poll asks again; without a running job nothing waits for this answer.
+    } finally {
+      translationJobStatusInFlightRef.current = false;
+    }
+  }, [applyTranslationStatuses, lifetimeSignal, trackTranslationJob]);
 
   const persistLatestSettings = useCallback(async () => {
     if (!autoSaveReadyRef.current) {
@@ -1994,6 +2147,7 @@ export function AdminSettingsPanel() {
       return;
     }
 
+    const signal = lifetimeSignal();
     autoSaveInFlightRef.current = true;
     setSettingsSaving(true);
     setSaveError(null);
@@ -2003,6 +2157,9 @@ export function AdminSettingsPanel() {
         draft.customDomain !== lastSavedDomainRef.current.customDomain ||
         draft.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
       const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft));
+      if (signal.aborted) {
+        return;
+      }
       const persistedSettings: AdminSettings = {
         ...saved,
         githubToken: "",
@@ -2043,21 +2200,29 @@ export function AdminSettingsPanel() {
         setAutoTranslateFieldErrors(validateAutoTranslateFields(persistedSettings));
       }
 
+      // The overview reads the saved languages and directory, so it is loaded again once they changed.
+      if (translationOverviewSignatureRef.current !== null && translationOverviewSignature(persistedSettings) !== translationOverviewSignatureRef.current) {
+        void refreshTranslationOverview();
+      }
       if (shouldRefreshSslStatus) {
         await refreshSslStatus();
       }
     } catch (error) {
-      setSaveError(formatApiError(error));
+      if (!signal.aborted) {
+        setSaveError(formatApiError(error));
+      }
     } finally {
       autoSaveInFlightRef.current = false;
-      setSettingsSaving(false);
+      if (!signal.aborted) {
+        setSettingsSaving(false);
+      }
 
       if (autoSaveQueuedRef.current) {
         autoSaveQueuedRef.current = false;
         void persistLatestSettings();
       }
     }
-  }, [createSaveSnapshot, getLatestSaveSnapshot, refreshSslStatus, setThemeSettings]);
+  }, [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, refreshSslStatus, refreshTranslationOverview, setThemeSettings]);
 
   const clearSavedSecret = useCallback(
     async (target: ClearSecretTarget) => {
@@ -2075,6 +2240,7 @@ export function AdminSettingsPanel() {
         return;
       }
 
+      const signal = lifetimeSignal();
       const snapshot = getLatestSaveSnapshot();
       autoSaveInFlightRef.current = true;
       setSettingsSaving(true);
@@ -2084,6 +2250,9 @@ export function AdminSettingsPanel() {
       try {
         const saved =
           target === "githubToken" ? await clearAdminGitHubToken() : await clearAdminOpenRouterApiKey();
+        if (signal.aborted) {
+          return;
+        }
         const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
         const latestSettings = latestSettingsRef.current;
         const nextSettings: AdminSettings = hasNewerLocalChanges
@@ -2120,11 +2289,15 @@ export function AdminSettingsPanel() {
           setAutoTranslateFieldErrors(validateAutoTranslateFields(nextSettings));
         }
       } catch (error) {
-        setSaveError(formatApiError(error));
+        if (!signal.aborted) {
+          setSaveError(formatApiError(error));
+        }
       } finally {
         autoSaveInFlightRef.current = false;
-        setSettingsSaving(false);
-        setClearingSecret(null);
+        if (!signal.aborted) {
+          setSettingsSaving(false);
+          setClearingSecret(null);
+        }
 
         if (autoSaveQueuedRef.current) {
           autoSaveQueuedRef.current = false;
@@ -2132,64 +2305,19 @@ export function AdminSettingsPanel() {
         }
       }
     },
-    [createSaveSnapshot, getLatestSaveSnapshot, persistLatestSettings, setThemeSettings],
+    [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, persistLatestSettings, setThemeSettings],
   );
 
-  const refreshTranslationCacheStatuses = useCallback(async () => {
-    if (translationCacheStatusInFlightRef.current) {
-      return;
-    }
-
-    translationCacheStatusInFlightRef.current = true;
-    const requestId = translationCacheStatusRequestRef.current + 1;
-    translationCacheStatusRequestRef.current = requestId;
-    setTranslationCacheStatusLoading(true);
-    setTranslationCacheStatusError(null);
-
-    try {
-      const requestedJobId = translationJobRef.current?.id;
-      const runtimeStatus = await fetchAdminLanguageTranslationStatus(requestedJobId);
-
-      if (translationCacheStatusRequestRef.current !== requestId) {
-        return;
-      }
-
-      const currentSettings = latestSettingsRef.current;
-      const currentLanguageCodes = new Set(currentSettings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code)));
-      const statusesMatchCurrentPath = runtimeStatus.job && normalizeLocalizationPath(runtimeStatus.job.localizationPath) === normalizeLocalizationPath(currentSettings.autoTranslateLocalizationPath);
-      const applicableStatuses = statusesMatchCurrentPath ? runtimeStatus.statuses.filter((status) => currentLanguageCodes.has(translationCacheStatusKey(status.languageCode))) : [];
-      if (applicableStatuses.length > 0) {
-        setTranslationCacheStatuses((current) => ({ ...current, ...createTranslationCacheStatusMap(applicableStatuses) }));
-      }
-
-      if (runtimeStatus.jobState === "unknown") {
-        trackTranslationJob(null);
-        setTranslationRequestStatus({ tone: "warning", message: "Translation job status is no longer available. The server may have restarted or replaced its in-process job snapshot." });
-      } else {
-        trackTranslationJob(runtimeStatus.job);
-      }
-    } catch (error) {
-      if (translationCacheStatusRequestRef.current === requestId) {
-        setTranslationCacheStatusError(formatApiError(error));
-      }
-    } finally {
-      translationCacheStatusInFlightRef.current = false;
-
-      if (translationCacheStatusRequestRef.current === requestId) {
-        setTranslationCacheStatusLoading(false);
-      }
-    }
-  }, [trackTranslationJob]);
-
   const refreshMarkdownCacheStatus = useCallback(async () => {
+    const signal = lifetimeSignal();
     markdownCacheStatusRequestedRef.current = true;
     const requestId = markdownCacheStatusRequestRef.current + 1;
     markdownCacheStatusRequestRef.current = requestId;
     setMarkdownCacheStatusLoading(true);
     setMarkdownCacheStatusError(null);
 
-    const result = await loadMarkdownCacheStatusResult();
-    if (markdownCacheStatusRequestRef.current !== requestId) {
+    const result = await loadMarkdownCacheStatusResult(signal);
+    if (signal.aborted || markdownCacheStatusRequestRef.current !== requestId) {
       return;
     }
 
@@ -2197,7 +2325,7 @@ export function AdminSettingsPanel() {
     setMarkdownCacheStatus((current) => result.status ?? current);
     setMarkdownCacheStatusError(result.error);
     setMarkdownCacheStatusLoading(false);
-  }, []);
+  }, [lifetimeSignal]);
 
   /** Keeps a Markdown cache status the admin has opened up to date after changes that affect it. */
   const refreshRequestedMarkdownCacheStatus = useCallback(() => {
@@ -2213,8 +2341,9 @@ export function AdminSettingsPanel() {
 
     if (previousStatus === "running" && nextStatus && nextStatus !== "running") {
       refreshRequestedMarkdownCacheStatus();
+      void refreshTranslationOverview();
     }
-  }, [refreshRequestedMarkdownCacheStatus, translationJob?.status]);
+  }, [refreshRequestedMarkdownCacheStatus, refreshTranslationOverview, translationJob?.status]);
 
   useEffect(() => {
     const logElement = translationLogRef.current;
@@ -2232,30 +2361,42 @@ export function AdminSettingsPanel() {
 
   /** Reads the latest warm job; the server answers from memory, so the card can poll it while it runs. */
   const refreshMarkdownCacheWarmJob = useCallback(async () => {
+    const signal = lifetimeSignal();
     try {
-      trackMarkdownCacheWarmJob(await fetchAdminMarkdownCacheWarmJob());
+      const job = await fetchAdminMarkdownCacheWarmJob({ signal });
+      if (!signal.aborted) {
+        trackMarkdownCacheWarmJob(job);
+      }
     } catch {
       // The next poll tries again; a job that is gone for good is no longer shown once polling stops.
     }
-  }, [trackMarkdownCacheWarmJob]);
+  }, [lifetimeSignal, trackMarkdownCacheWarmJob]);
 
   const cacheMissingMarkdownHtml = useCallback(async () => {
+    const signal = lifetimeSignal();
     setStartingMarkdownCacheWarm(true);
     setMarkdownCacheActionMessage(null);
     setMarkdownCacheStatusError(null);
 
     try {
       await persistLatestSettings();
-      trackMarkdownCacheWarmJob(await startAdminMarkdownCacheWarmJob());
+      const job = await startAdminMarkdownCacheWarmJob();
+      if (!signal.aborted) {
+        trackMarkdownCacheWarmJob(job);
+      }
     } catch (error) {
-      setMarkdownCacheActionMessage({
-        tone: "error",
-        text: formatApiError(error),
-      });
+      if (!signal.aborted) {
+        setMarkdownCacheActionMessage({
+          tone: "error",
+          text: formatApiError(error),
+        });
+      }
     } finally {
-      setStartingMarkdownCacheWarm(false);
+      if (!signal.aborted) {
+        setStartingMarkdownCacheWarm(false);
+      }
     }
-  }, [persistLatestSettings, trackMarkdownCacheWarmJob]);
+  }, [lifetimeSignal, persistLatestSettings, trackMarkdownCacheWarmJob]);
 
   useEffect(() => {
     const job = markdownCacheWarmJob;
@@ -2273,6 +2414,7 @@ export function AdminSettingsPanel() {
       return;
     }
 
+    const signal = lifetimeSignal();
     setClearingMarkdownCacheAll(true);
     setMarkdownCacheActionMessage(null);
     setMarkdownCacheStatusError(null);
@@ -2280,6 +2422,9 @@ export function AdminSettingsPanel() {
     try {
       await persistLatestSettings();
       const { result, status } = await clearAdminMarkdownCache();
+      if (signal.aborted) {
+        return;
+      }
       setMarkdownCacheStatus(status);
       setMarkdownCacheActionMessage({
         tone: "success",
@@ -2288,14 +2433,18 @@ export function AdminSettingsPanel() {
         }.`,
       });
     } catch (error) {
-      setMarkdownCacheActionMessage({
-        tone: "error",
-        text: formatApiError(error),
-      });
+      if (!signal.aborted) {
+        setMarkdownCacheActionMessage({
+          tone: "error",
+          text: formatApiError(error),
+        });
+      }
     } finally {
-      setClearingMarkdownCacheAll(false);
+      if (!signal.aborted) {
+        setClearingMarkdownCacheAll(false);
+      }
     }
-  }, [persistLatestSettings]);
+  }, [lifetimeSignal, persistLatestSettings]);
 
   const clearMarkdownCacheForPage = useCallback(
     async (page: AdminMarkdownCachePageStatus) => {
@@ -2303,6 +2452,7 @@ export function AdminSettingsPanel() {
         return;
       }
 
+      const signal = lifetimeSignal();
       setClearingMarkdownCacheSlug(page.slug);
       setMarkdownCacheActionMessage(null);
       setMarkdownCacheStatusError(null);
@@ -2310,6 +2460,9 @@ export function AdminSettingsPanel() {
       try {
         await persistLatestSettings();
         const { result, status } = await clearAdminMarkdownCache(page.slug);
+        if (signal.aborted) {
+          return;
+        }
         setMarkdownCacheStatus(status);
         setMarkdownCacheActionMessage({
           tone: "success",
@@ -2318,18 +2471,23 @@ export function AdminSettingsPanel() {
           } for ${page.title}.`,
         });
       } catch (error) {
-        setMarkdownCacheActionMessage({
-          tone: "error",
-          text: formatApiError(error),
-        });
+        if (!signal.aborted) {
+          setMarkdownCacheActionMessage({
+            tone: "error",
+            text: formatApiError(error),
+          });
+        }
       } finally {
-        setClearingMarkdownCacheSlug(null);
+        if (!signal.aborted) {
+          setClearingMarkdownCacheSlug(null);
+        }
       }
     },
-    [persistLatestSettings],
+    [lifetimeSignal, persistLatestSettings],
   );
 
   const refreshDocsCache = useCallback(async () => {
+    const signal = lifetimeSignal();
     setRefreshingDocs(true);
     setDocsRefreshMessage(null);
     setDocsRefreshError(null);
@@ -2337,17 +2495,24 @@ export function AdminSettingsPanel() {
     try {
       await persistLatestSettings();
       const result = await refreshAdminDocsCache();
+      if (signal.aborted) {
+        return;
+      }
       setDocsRefreshMessage(
         `Fetched ${formatVisitorCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
       );
-      void refreshTranslationCacheStatuses();
+      void refreshTranslationOverview();
       refreshRequestedMarkdownCacheStatus();
     } catch (error) {
-      setDocsRefreshError(formatApiError(error));
+      if (!signal.aborted) {
+        setDocsRefreshError(formatApiError(error));
+      }
     } finally {
-      setRefreshingDocs(false);
+      if (!signal.aborted) {
+        setRefreshingDocs(false);
+      }
     }
-  }, [persistLatestSettings, refreshRequestedMarkdownCacheStatus, refreshTranslationCacheStatuses]);
+  }, [lifetimeSignal, persistLatestSettings, refreshRequestedMarkdownCacheStatus, refreshTranslationOverview]);
 
   const requestLanguageTranslations = useCallback(
     async (language: AutoTranslateLanguage) => {
@@ -2370,6 +2535,7 @@ export function AdminSettingsPanel() {
         return;
       }
 
+      const signal = lifetimeSignal();
       setRequestedTranslationLanguageCodes((prev) => {
         const next = new Set(prev);
         next.add(code.toLowerCase());
@@ -2385,23 +2551,30 @@ export function AdminSettingsPanel() {
           languages: [{ name, code, icon, enabled: language.enabled !== false }],
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
+        if (signal.aborted) {
+          return;
+        }
         trackTranslationJob(job);
         lastTranslationJobStatusRef.current = job.status;
-        void refreshTranslationCacheStatuses();
+        void refreshTranslationJobStatus();
       } catch (error) {
-        setTranslationRequestStatus({
-          tone: "error",
-          message: formatApiError(error),
-        });
+        if (!signal.aborted) {
+          setTranslationRequestStatus({
+            tone: "error",
+            message: formatApiError(error),
+          });
+        }
       } finally {
-        setRequestedTranslationLanguageCodes((prev) => {
-          const next = new Set(prev);
-          next.delete(code.toLowerCase());
-          return next;
-        });
+        if (!signal.aborted) {
+          setRequestedTranslationLanguageCodes((prev) => {
+            const next = new Set(prev);
+            next.delete(code.toLowerCase());
+            return next;
+          });
+        }
       }
     },
-    [persistLatestSettings, refreshTranslationCacheStatuses, settings.autoTranslateLocalizationPath, trackTranslationJob],
+    [lifetimeSignal, persistLatestSettings, refreshTranslationJobStatus, settings.autoTranslateLocalizationPath, trackTranslationJob],
   );
 
   const requestBulkTranslations = useCallback(
@@ -2422,6 +2595,7 @@ export function AdminSettingsPanel() {
         return;
       }
 
+      const signal = lifetimeSignal();
       setTranslationBulkAction(mode);
       setTranslationRequestStatus(null);
 
@@ -2432,21 +2606,29 @@ export function AdminSettingsPanel() {
           languages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
           localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
         });
+        if (signal.aborted) {
+          return;
+        }
         trackTranslationJob(job);
         lastTranslationJobStatusRef.current = job.status;
-        void refreshTranslationCacheStatuses();
+        void refreshTranslationJobStatus();
       } catch (error) {
-        setTranslationRequestStatus({
-          tone: "error",
-          message: formatApiError(error),
-        });
+        if (!signal.aborted) {
+          setTranslationRequestStatus({
+            tone: "error",
+            message: formatApiError(error),
+          });
+        }
       } finally {
-        setTranslationBulkAction(null);
+        if (!signal.aborted) {
+          setTranslationBulkAction(null);
+        }
       }
     },
     [
+      lifetimeSignal,
       persistLatestSettings,
-      refreshTranslationCacheStatuses,
+      refreshTranslationJobStatus,
       settings.autoTranslateLanguages,
       settings.autoTranslateLocalizationPath,
       trackTranslationJob,
@@ -2469,26 +2651,35 @@ export function AdminSettingsPanel() {
       return;
     }
 
+    const signal = lifetimeSignal();
     setTranslationBulkAction("source-versions");
     setTranslationRequestStatus(null);
 
     try {
       await persistLatestSettings();
       const job = await requestAdminSourceVersionRecording(count);
+      if (signal.aborted) {
+        return;
+      }
       trackTranslationJob(job);
       lastTranslationJobStatusRef.current = job.status;
-      void refreshTranslationCacheStatuses();
+      void refreshTranslationJobStatus();
     } catch (error) {
-      setTranslationRequestStatus({
-        tone: "error",
-        message: formatApiError(error),
-      });
+      if (!signal.aborted) {
+        setTranslationRequestStatus({
+          tone: "error",
+          message: formatApiError(error),
+        });
+      }
     } finally {
-      setTranslationBulkAction(null);
+      if (!signal.aborted) {
+        setTranslationBulkAction(null);
+      }
     }
   }, [
+    lifetimeSignal,
     persistLatestSettings,
-    refreshTranslationCacheStatuses,
+    refreshTranslationJobStatus,
     settings.githubBranch,
     settings.githubOwner,
     settings.githubRepo,
@@ -2505,7 +2696,6 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    setTranslationCacheStatuses({});
     let requested = false;
     const refreshOnceVisible = () => {
       if (requested || document.visibilityState === "hidden") {
@@ -2513,7 +2703,8 @@ export function AdminSettingsPanel() {
       }
 
       requested = true;
-      void refreshTranslationCacheStatuses();
+      void refreshTranslationJobStatus();
+      void refreshTranslationOverview();
     };
 
     const timeoutId = window.setTimeout(refreshOnceVisible, TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS);
@@ -2523,15 +2714,23 @@ export function AdminSettingsPanel() {
       window.clearTimeout(timeoutId);
       document.removeEventListener("visibilitychange", refreshOnceVisible);
     };
-  }, [loadError, loading, refreshTranslationCacheStatuses, translationCacheStatusSignature]);
+  }, [loadError, loading, refreshTranslationJobStatus, refreshTranslationOverview]);
 
   useEffect(() => {
     if (loading || loadError || translationJob?.status !== "running") {
       return;
     }
 
-    return startJobStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_CACHE_STATUS_POLL_MS, isJobRunning: () => translationJobRef.current?.status === "running", onPoll: refreshTranslationCacheStatuses, windowTarget: window });
-  }, [loadError, loading, refreshTranslationCacheStatuses, translationJob?.id, translationJob?.status]);
+    return startJobStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_CACHE_STATUS_POLL_MS, isJobRunning: () => translationJobRef.current?.status === "running", onPoll: refreshTranslationJobStatus, windowTarget: window });
+  }, [loadError, loading, refreshTranslationJobStatus, translationJob?.id, translationJob?.status]);
+
+  useEffect(() => {
+    if (loading || loadError || !translationStatusesPending) {
+      return;
+    }
+
+    return startJobStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_OVERVIEW_POLL_MS, isJobRunning: () => translationStatusesPendingRef.current, onPoll: refreshTranslationOverview, windowTarget: window });
+  }, [loadError, loading, refreshTranslationOverview, translationStatusesPending]);
 
   useEffect(() => {
     if (loading || loadError || markdownCacheWarmJob?.status !== "running") {
@@ -2580,6 +2779,8 @@ export function AdminSettingsPanel() {
 
   useEffect(() => {
     let isActive = true;
+    const signal = lifetimeSignal();
+    const isCurrent = (): boolean => isActive && !signal.aborted;
 
     const run = async () => {
       setLoading(true);
@@ -2590,7 +2791,10 @@ export function AdminSettingsPanel() {
       setVisitorStatsError(null);
 
       try {
-        const currentUser = await getCurrentUser();
+        const currentUser = await getCurrentUser({ signal });
+        if (!isCurrent()) {
+          return;
+        }
         if (!currentUser) {
           router.replace("/admin/login");
           return;
@@ -2602,10 +2806,10 @@ export function AdminSettingsPanel() {
         }
 
         const [loadedSettings, loadedModerators] = await Promise.all([
-          fetchAdminSettings(),
-          fetchAdminModerators(),
+          fetchAdminSettings({ signal }),
+          fetchAdminModerators({ signal }),
         ]);
-        if (!isActive) {
+        if (!isCurrent()) {
           return;
         }
 
@@ -2630,13 +2834,13 @@ export function AdminSettingsPanel() {
         // A warm job keeps running while the admin is away; show its progress again.
         void refreshMarkdownCacheWarmJob();
       } catch (error) {
-        if (isActive) {
+        if (isCurrent()) {
           setLoadError(formatApiError(error));
           setPerformanceStatsLoading(false);
           setVisitorStatsLoading(false);
         }
       } finally {
-        if (isActive) {
+        if (isCurrent()) {
           setLoading(false);
         }
       }
@@ -2648,7 +2852,7 @@ export function AdminSettingsPanel() {
       isActive = false;
       autoSaveReadyRef.current = false;
     };
-  }, [createSaveSnapshot, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings]);
+  }, [createSaveSnapshot, lifetimeSignal, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;
@@ -2829,17 +3033,24 @@ export function AdminSettingsPanel() {
                     className="btn"
                     disabled={testingConnection}
                     onClick={async () => {
+                      const signal = lifetimeSignal();
                       setTestingConnection(true);
                       setConnectionMessage(null);
                       setConnectionError(null);
 
                       try {
-                        const message = await testAdminConnection(settings);
-                        setConnectionMessage(message);
+                        const message = await testAdminConnection(settings, { signal });
+                        if (!signal.aborted) {
+                          setConnectionMessage(message);
+                        }
                       } catch (error) {
-                        setConnectionError(formatApiError(error));
+                        if (!signal.aborted) {
+                          setConnectionError(formatApiError(error));
+                        }
                       } finally {
-                        setTestingConnection(false);
+                        if (!signal.aborted) {
+                          setTestingConnection(false);
+                        }
                       }
                     }}
                   >
@@ -3999,9 +4210,12 @@ export function AdminSettingsPanel() {
                       (normalizedLanguageCode
                         ? requestedTranslationLanguageCodes.has(normalizedLanguageCode.toLowerCase())
                         : false);
-                    const translationCacheStatus = normalizedLanguageCode
-                      ? translationCacheStatuses[translationCacheStatusKey(normalizedLanguageCode)]
-                      : undefined;
+                    const translationCacheStatus =
+                      normalizedLanguageCode && translationStatusesLocalizationPath === normalizeLocalizationPath(settings.autoTranslateLocalizationPath)
+                        ? translationCacheStatuses[translationCacheStatusKey(normalizedLanguageCode)]
+                        : undefined;
+                    const translationStatusProgress =
+                      translationCacheStatus && isTranslationStatusPending(translationCacheStatus) ? getTranslationStatusProgressPercent(translationCacheStatus) : null;
                     const translationCacheStatusTone = getTranslationCacheStatusTone(translationCacheStatus);
                     const translationCacheStatusLabel = getTranslationCacheStatusLabel(translationCacheStatus);
                     const translationCacheStatusTooltip =
@@ -4131,9 +4345,20 @@ export function AdminSettingsPanel() {
 
                         <div className="translation-language-actions">
                           <span
-                            className={`translation-language-cache-status translation-language-cache-status-${translationCacheStatusTone} ui-tooltip`}
+                            className={`translation-language-cache-status translation-language-cache-status-${translationCacheStatusTone}${
+                              translationStatusProgress === null ? "" : " translation-language-cache-status-progress"
+                            } ui-tooltip`}
                             data-ui-tooltip={translationCacheStatusTooltip}
                             aria-label={translationCacheStatusTooltip}
+                            {...(translationStatusProgress === null
+                              ? {}
+                              : {
+                                  role: "progressbar",
+                                  "aria-valuemin": 0,
+                                  "aria-valuemax": 100,
+                                  "aria-valuenow": translationStatusProgress,
+                                  style: { "--translation-status-progress": translationStatusProgress / 100 } as CSSProperties,
+                                })}
                           >
                             {translationCacheStatusLabel}
                           </span>

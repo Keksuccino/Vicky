@@ -11,6 +11,7 @@ import {
   type AiChatReply,
   type AuthUser,
   type AutoTranslateLanguage,
+  type AdminTranslationOverview,
   type AdminTranslationRequestResult,
   type AdminTranslationRuntimeStatus,
   type DocPage,
@@ -51,6 +52,9 @@ import {
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 
 type JsonRecord = Record<string, unknown>;
+
+/** `signal` cancels the request; a cancelled request rejects with the signal's `AbortError` as is. */
+type RequestOptions = { signal?: AbortSignal };
 
 export type RawDocTreeItem = {
   path: string;
@@ -260,6 +264,9 @@ async function requestJson<T>(input: string, init?: RequestInit): Promise<T> {
       },
     });
   } catch (error: unknown) {
+    if (init?.signal?.aborted) {
+      throw error;
+    }
     const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     throw new ApiError(`Request to ${input} could not be completed. ${message}`, 0, error);
   }
@@ -871,6 +878,16 @@ function normalizeAdminTranslationRuntimeStatus(source: unknown): AdminTranslati
   };
 }
 
+function normalizeTranslationLoading(source: unknown): AdminLanguageTranslationCacheStatus["loading"] {
+  if (!source || typeof source !== "object") {
+    return null;
+  }
+
+  const payload = asRecord(source);
+  const total = Math.max(0, Math.round(asNumber(payload.total, 0)));
+  return { downloaded: Math.min(total, Math.max(0, Math.round(asNumber(payload.downloaded, 0)))), total };
+}
+
 function normalizeAdminLanguageTranslationCacheStatuses(source: unknown): AdminLanguageTranslationCacheStatus[] {
   const rawStatuses = asRecord(source).statuses;
   if (!Array.isArray(rawStatuses)) {
@@ -895,6 +912,8 @@ function normalizeAdminLanguageTranslationCacheStatuses(source: unknown): AdminL
         outdatedPages: Math.max(0, Math.round(asNumber(payload.outdatedPages, 0))),
         totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
         unrecordedPages: Math.max(0, Math.round(asNumber(payload.unrecordedPages, 0))),
+        pendingPages: Math.max(0, Math.round(asNumber(payload.pendingPages, 0))),
+        loading: normalizeTranslationLoading(payload.loading),
         sourceLanguage: asBoolean(payload.sourceLanguage, false),
       };
     })
@@ -1186,9 +1205,9 @@ export async function searchDocs(query: string, signal?: AbortSignal, languageCo
   return normalizeSearchResults(response);
 }
 
-export async function getCurrentUser(): Promise<AuthUser | null> {
+export async function getCurrentUser(options?: RequestOptions): Promise<AuthUser | null> {
   try {
-    const response = await requestJson<unknown>("/api/auth/me");
+    const response = await requestJson<unknown>("/api/auth/me", options);
     const payload = asRecord(response);
     if (!asBoolean(payload.authenticated, false)) {
       return null;
@@ -1221,13 +1240,13 @@ export async function logout(): Promise<void> {
   await requestJson("/api/auth/logout", { method: "POST" });
 }
 
-export async function fetchAdminSettings(): Promise<AdminSettings> {
-  const response = await requestJson<unknown>("/api/admin/settings");
+export async function fetchAdminSettings(options?: RequestOptions): Promise<AdminSettings> {
+  const response = await requestJson<unknown>("/api/admin/settings", options);
   return normalizeSettings(response);
 }
 
-export async function fetchAdminModerators(): Promise<ModeratorAccount[]> {
-  const response = await requestJson<unknown>("/api/admin/moderators");
+export async function fetchAdminModerators(options?: RequestOptions): Promise<ModeratorAccount[]> {
+  const response = await requestJson<unknown>("/api/admin/moderators", options);
   return normalizeModeratorAccounts(response);
 }
 
@@ -1264,8 +1283,8 @@ export async function deleteAdminModerator(id: string): Promise<void> {
   await requestJson(`/api/admin/moderators/${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
-export async function fetchAdminDomainSslStatus(): Promise<DomainSslRuntimeStatus> {
-  const response = await requestJson<unknown>("/api/admin/domain-status");
+export async function fetchAdminDomainSslStatus(options?: RequestOptions): Promise<DomainSslRuntimeStatus> {
+  const response = await requestJson<unknown>("/api/admin/domain-status", options);
   return normalizeDomainSslRuntimeStatus(response);
 }
 
@@ -1289,21 +1308,21 @@ function normalizeVisitorAnalyticsStatus(source: unknown): VisitorAnalyticsStatu
 }
 
 /** Loads the analytics numbers; `refresh` asks the server to read them again when they are older than a moment. */
-export async function fetchAdminVisitorStats({ refresh = false }: { refresh?: boolean } = {}): Promise<VisitorStatsResult> {
-  const response = asRecord(await requestJson<unknown>(refresh ? "/api/admin/visitors?refresh=1" : "/api/admin/visitors"));
+export async function fetchAdminVisitorStats({ refresh = false, signal }: { refresh?: boolean } & RequestOptions = {}): Promise<VisitorStatsResult> {
+  const response = asRecord(await requestJson<unknown>(refresh ? "/api/admin/visitors?refresh=1" : "/api/admin/visitors", { signal }));
   return {
     stats: response.stats ? normalizeVisitorStatsSummary(response.stats) : null,
     status: normalizeVisitorAnalyticsStatus(response.status),
   };
 }
 
-export async function fetchAdminPerformanceStats(): Promise<PerformanceStatsSnapshot> {
-  const response = await requestJson<unknown>("/api/admin/performance");
+export async function fetchAdminPerformanceStats(options?: RequestOptions): Promise<PerformanceStatsSnapshot> {
+  const response = await requestJson<unknown>("/api/admin/performance", options);
   return normalizePerformanceStats(response);
 }
 
-export async function fetchAdminMarkdownCacheStatus(): Promise<AdminMarkdownCacheStatus> {
-  const response = await requestJson<unknown>("/api/admin/markdown-cache");
+export async function fetchAdminMarkdownCacheStatus(options?: RequestOptions): Promise<AdminMarkdownCacheStatus> {
+  const response = await requestJson<unknown>("/api/admin/markdown-cache", options);
   return normalizeAdminMarkdownCacheStatus(response);
 }
 
@@ -1318,8 +1337,8 @@ export async function startAdminMarkdownCacheWarmJob(): Promise<AdminMarkdownCac
 }
 
 /** The latest Markdown HTML cache job of the server process, or `null` when none ran. */
-export async function fetchAdminMarkdownCacheWarmJob(): Promise<AdminMarkdownCacheWarmJob | null> {
-  return normalizeAdminMarkdownCacheWarmJob(await requestJson<unknown>("/api/admin/markdown-cache/warm"));
+export async function fetchAdminMarkdownCacheWarmJob(options?: RequestOptions): Promise<AdminMarkdownCacheWarmJob | null> {
+  return normalizeAdminMarkdownCacheWarmJob(await requestJson<unknown>("/api/admin/markdown-cache/warm", options));
 }
 
 export async function clearAdminMarkdownCache(slug?: string): Promise<{
@@ -1487,13 +1506,23 @@ export async function requestAdminSourceVersionRecording(expectedFiles: number):
   return job;
 }
 
-export async function fetchAdminLanguageTranslationStatus(jobId?: string): Promise<AdminTranslationRuntimeStatus> {
+export async function fetchAdminLanguageTranslationStatus(jobId?: string, options?: RequestOptions): Promise<AdminTranslationRuntimeStatus> {
   const response = await requestJson<unknown>("/api/admin/translations/status", {
+    ...options,
     method: "POST",
     body: JSON.stringify(jobId ? { jobId } : {}),
   });
 
   return normalizeAdminTranslationRuntimeStatus(response);
+}
+
+/** Status of every saved language without a job; languages fetched for the first time report their progress. */
+export async function fetchAdminLanguageTranslationOverview(options?: RequestOptions): Promise<AdminTranslationOverview> {
+  const response = await requestJson<unknown>("/api/admin/translations/overview", options);
+  return {
+    statuses: normalizeAdminLanguageTranslationCacheStatuses(response),
+    localizationPath: asString(asRecord(response).localizationPath).trim(),
+  };
 }
 
 export async function fetchPublicSiteSettings(): Promise<PublicSiteSettings> {
@@ -1522,8 +1551,9 @@ export async function sendDocsAiChatMessage(messages: {
   };
 }
 
-export async function testAdminConnection(settings: AdminSettings): Promise<string> {
+export async function testAdminConnection(settings: AdminSettings, options?: RequestOptions): Promise<string> {
   const response = await requestJson<unknown>("/api/admin/test-connection", {
+    ...options,
     method: "POST",
     body: JSON.stringify({
       owner: settings.githubOwner,

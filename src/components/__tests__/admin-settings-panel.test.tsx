@@ -16,6 +16,7 @@ const clearAdminMarkdownCacheMock = vi.fn();
 const createAdminModeratorMock = vi.fn();
 const deleteAdminModeratorMock = vi.fn();
 const fetchAdminDomainSslStatusMock = vi.fn();
+const fetchAdminLanguageTranslationOverviewMock = vi.fn();
 const fetchAdminLanguageTranslationStatusMock = vi.fn();
 const fetchAdminMarkdownCacheStatusMock = vi.fn();
 const fetchAdminMarkdownCacheWarmJobMock = vi.fn();
@@ -48,6 +49,7 @@ vi.mock("@/components/api", () => ({
   createAdminModerator: (...args: unknown[]) => createAdminModeratorMock(...args),
   deleteAdminModerator: (...args: unknown[]) => deleteAdminModeratorMock(...args),
   fetchAdminDomainSslStatus: (...args: unknown[]) => fetchAdminDomainSslStatusMock(...args),
+  fetchAdminLanguageTranslationOverview: (...args: unknown[]) => fetchAdminLanguageTranslationOverviewMock(...args),
   fetchAdminLanguageTranslationStatus: (...args: unknown[]) => fetchAdminLanguageTranslationStatusMock(...args),
   fetchAdminMarkdownCacheStatus: (...args: unknown[]) => fetchAdminMarkdownCacheStatusMock(...args),
   fetchAdminMarkdownCacheWarmJob: (...args: unknown[]) => fetchAdminMarkdownCacheWarmJobMock(...args),
@@ -277,6 +279,9 @@ const MARKDOWN_CACHE_STATUS = {
   ],
 };
 
+const SOURCE_STATUS = { languageCode: "en-US", languageName: "English (US)", cachedPages: 4, currentPages: 4, missingPages: 0, outdatedPages: 0, pendingPages: 0, totalPages: 4, unrecordedPages: 0, loading: null, sourceLanguage: true };
+const GERMAN_STATUS = { languageCode: "de", languageName: "German", cachedPages: 4, currentPages: 4, missingPages: 0, outdatedPages: 0, pendingPages: 0, totalPages: 4, unrecordedPages: 0, loading: null, sourceLanguage: false };
+
 const RUNNING_WARM_JOB = {
   id: "markdown-cache-1",
   status: "running",
@@ -301,6 +306,7 @@ describe("AdminSettingsPanel", () => {
       job: null,
       updatedAt: "2026-03-10T12:00:00.000Z",
     });
+    fetchAdminLanguageTranslationOverviewMock.mockResolvedValue({ statuses: [SOURCE_STATUS], localizationPath: "localizations" });
     fetchAdminMarkdownCacheStatusMock.mockResolvedValue(MARKDOWN_CACHE_STATUS);
     fetchAdminMarkdownCacheWarmJobMock.mockResolvedValue(null);
     fetchAdminPerformanceStatsMock.mockResolvedValue(PERFORMANCE_STATS);
@@ -402,8 +408,8 @@ describe("AdminSettingsPanel", () => {
       error: null,
       logs: [],
     };
-    const germanStatus = { languageCode: "de", languageName: "German", cachedPages: 4, currentPages: 4, missingPages: 0, outdatedPages: 0, totalPages: 4, sourceLanguage: false };
-    fetchAdminLanguageTranslationStatusMock.mockResolvedValue({ statuses: [{ ...germanStatus, unrecordedPages: 3 }], job: finishedJob, jobState: "current", updatedAt: "2026-03-10T12:00:00.000Z" });
+    // No job ran since the server started: the overview alone reports the unrecorded translations.
+    fetchAdminLanguageTranslationOverviewMock.mockResolvedValue({ statuses: [SOURCE_STATUS, { ...GERMAN_STATUS, unrecordedPages: 3 }], localizationPath: "localizations" });
     requestAdminSourceVersionRecordingMock.mockResolvedValue({ ...finishedJob, id: "source-versions", status: "running", phase: "checking", mode: "source-versions", finishedAt: null });
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
 
@@ -414,11 +420,62 @@ describe("AdminSettingsPanel", () => {
     expect(confirm).toHaveBeenCalledTimes(1);
     expect(requestAdminSourceVersionRecordingMock).not.toHaveBeenCalled();
 
-    fetchAdminLanguageTranslationStatusMock.mockResolvedValue({ statuses: [{ ...germanStatus, unrecordedPages: 0 }], job: { ...finishedJob, id: "source-versions", mode: "source-versions" }, jobState: "current", updatedAt: "2026-03-10T12:02:00.000Z" });
+    // The job finishes; the overview loaded after it reports every translation as recorded.
+    fetchAdminLanguageTranslationStatusMock.mockResolvedValue({ statuses: [], job: { ...finishedJob, id: "source-versions", mode: "source-versions" }, jobState: "current", updatedAt: "2026-03-10T12:02:00.000Z" });
+    fetchAdminLanguageTranslationOverviewMock.mockResolvedValue({ statuses: [SOURCE_STATUS, GERMAN_STATUS], localizationPath: "localizations" });
     fireEvent.click(recordButton);
     await waitFor(() => expect(requestAdminSourceVersionRecordingMock).toHaveBeenCalledWith(3));
     await waitFor(() => expect(container.querySelector(".translation-record-source-versions")).toBeNull());
+    expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(2);
     confirm.mockRestore();
+  });
+
+  it("shows every language's status without a job, the source language's too, and follows a first fetch until it finished", async () => {
+    fetchAdminLanguageTranslationOverviewMock
+      .mockResolvedValueOnce({ statuses: [SOURCE_STATUS, { ...GERMAN_STATUS, currentPages: 0, pendingPages: 4, loading: { downloaded: 1, total: 4 } }], localizationPath: "localizations" })
+      .mockResolvedValue({ statuses: [SOURCE_STATUS, { ...GERMAN_STATUS, currentPages: 3, missingPages: 1 }], localizationPath: "localizations" });
+
+    const { container } = render(<AdminSettingsPanel />);
+    const statusOf = (index: number): Element | null =>
+      container.querySelectorAll(".translation-language-item:not(.translation-language-label-row) .translation-language-cache-status")[index] ?? null;
+
+    await waitFor(() => expect(statusOf(1)?.getAttribute("aria-valuenow")).toBe("25"), { timeout: 3_000 });
+    expect(statusOf(1)?.getAttribute("role")).toBe("progressbar");
+    expect(statusOf(0)?.classList.contains("translation-language-cache-status-complete")).toBe(true);
+    expect(fetchAdminLanguageTranslationStatusMock).toHaveBeenCalledTimes(1);
+
+    // The card asks again while the language is fetched, and stops once its status is final.
+    await waitFor(() => expect(statusOf(1)?.classList.contains("translation-language-cache-status-partial")).toBe(true), { timeout: 3_000 });
+    expect(statusOf(1)?.getAttribute("role")).toBeNull();
+    const overviewRequests = fetchAdminLanguageTranslationOverviewMock.mock.calls.length;
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 1_800));
+    });
+    expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(overviewRequests);
+  });
+
+  it("stops its requests when it unmounts and lets no late answer update it", async () => {
+    const visitorStats = createDeferred<unknown>();
+    fetchAdminVisitorStatsMock.mockImplementation(() => visitorStats.promise);
+    const consoleError = vi.spyOn(console, "error");
+
+    const { container, unmount } = render(<AdminSettingsPanel />);
+    await findElement(container, ".panel-card-visitors");
+    await waitFor(() => expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalled(), { timeout: 3_000 });
+    const readMocks = [getCurrentUserMock, fetchAdminSettingsMock, fetchAdminModeratorsMock, fetchAdminDomainSslStatusMock, fetchAdminPerformanceStatsMock, fetchAdminVisitorStatsMock, fetchAdminMarkdownCacheWarmJobMock, fetchAdminLanguageTranslationOverviewMock];
+    const signals = readMocks.flatMap((mock) => mock.mock.calls.map((call) => (call.at(-1) as { signal?: AbortSignal } | undefined)?.signal));
+    expect(signals.length).toBeGreaterThanOrEqual(readMocks.length);
+    expect(signals.every((signal) => signal instanceof AbortSignal && !signal.aborted)).toBe(true);
+
+    unmount();
+
+    expect(signals.every((signal) => signal?.aborted)).toBe(true);
+    await act(async () => {
+      visitorStats.resolve({ stats: VISITOR_STATS, status: IDLE_VISITOR_STATUS });
+      await visitorStats.promise;
+    });
+    expect(consoleError).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 
   it("shows analytics catch-up progress and never lets an older analytics response replace a newer one", async () => {
@@ -440,7 +497,7 @@ describe("AdminSettingsPanel", () => {
     // A background poll starts while catching up; the admin refreshes before it answers.
     await waitFor(() => expect(fetchAdminVisitorStatsMock).toHaveBeenCalledTimes(2), { timeout: 3_500 });
     fireEvent.click(card()!.querySelector(".visitor-refresh-button")!);
-    expect(fetchAdminVisitorStatsMock).toHaveBeenLastCalledWith({ refresh: true });
+    expect(fetchAdminVisitorStatsMock).toHaveBeenLastCalledWith(expect.objectContaining({ refresh: true }));
 
     await act(async () => {
       manualRefresh.resolve({ stats: statsWithVisits(300), status: IDLE_VISITOR_STATUS });
