@@ -11,7 +11,7 @@ import {
   normalizeAiChatSystemPromptTemplate,
   normalizeAiChatWelcomeMessage,
 } from "@/lib/ai-chat";
-import { normalizeDocsCacheTtlMs } from "@/lib/cache";
+import { MIN_DOCS_CACHE_TTL_MS, normalizeDocsCacheTtlMs } from "@/lib/cache";
 import { DEFAULT_SETTINGS, DEFAULT_STORE, STORE_VERSION } from "@/lib/defaults";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import { normalizeFooterTemplate } from "@/lib/footer";
@@ -76,16 +76,15 @@ const normalizeTimestamp = (value: unknown): string => {
   return Number.isNaN(Date.parse(trimmed)) ? now() : trimmed;
 };
 
+/**
+ * A stored interval below the minimum cannot come from the admin API (it rejects those), so it is
+ * treated as invalid and replaced by the default instead of being raised to the minimum.
+ */
 const normalizeStoredDocsRefreshIntervalMs = (value: unknown, fallback: number): number => {
-  const normalized = normalizeDocsCacheTtlMs(value, fallback);
   const numericValue =
     typeof value === "number" ? value : typeof value === "string" && value.trim() ? Number(value) : Number.NaN;
 
-  if (Number.isFinite(numericValue) && numericValue > 0 && numericValue < 60_000) {
-    return fallback;
-  }
-
-  return normalized;
+  return Number.isFinite(numericValue) && numericValue < MIN_DOCS_CACHE_TTL_MS ? fallback : normalizeDocsCacheTtlMs(value, fallback);
 };
 
 const normalizeModeratorUsername = (value: unknown): string => {

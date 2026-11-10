@@ -57,6 +57,8 @@ vi.mock("@/components/api", () => ({
   fetchAdminVisitorStats: (...args: unknown[]) => fetchAdminVisitorStatsMock(...args),
   formatApiError: (error: unknown) => (error instanceof Error ? error.message : "Something went wrong. Please try again."),
   getCurrentUser: (...args: unknown[]) => getCurrentUserMock(...args),
+  MAX_DOCS_REFRESH_INTERVAL_MINUTES: 1_440,
+  MIN_DOCS_REFRESH_INTERVAL_MINUTES: 1,
   logout: (...args: unknown[]) => logoutMock(...args),
   refreshAdminDocsCache: (...args: unknown[]) => refreshAdminDocsCacheMock(...args),
   requestAdminLanguageTranslations: (...args: unknown[]) => requestAdminLanguageTranslationsMock(...args),

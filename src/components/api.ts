@@ -91,8 +91,9 @@ export type PublicSiteSettings = {
 };
 
 const DEFAULT_DOCS_REFRESH_INTERVAL_MINUTES = 60;
-const MIN_DOCS_REFRESH_INTERVAL_MINUTES = 1;
-const MAX_DOCS_REFRESH_INTERVAL_MINUTES = 1_440;
+/** The server's bounds (`MIN_DOCS_CACHE_TTL_MS` / `MAX_DOCS_CACHE_TTL_MS` in lib/cache.ts) in minutes. */
+export const MIN_DOCS_REFRESH_INTERVAL_MINUTES = 1;
+export const MAX_DOCS_REFRESH_INTERVAL_MINUTES = 1_440;
 const DOMAIN_SSL_CERTIFICATE_STATES: DomainSslCertificateState[] = [
   "missing",
   "valid",

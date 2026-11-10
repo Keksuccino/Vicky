@@ -8,16 +8,12 @@ const mocks = vi.hoisted(() => ({
   loadPage: vi.fn(),
   loadTree: vi.fn(),
   nextHeaders: vi.fn(),
-  redirect: vi.fn((location: string): never => {
-    throw Object.assign(new Error("redirect"), { location });
-  }),
   resolveRuntimeConfig: vi.fn(),
   setCacheTtl: vi.fn(),
   toAbsoluteDocPath: vi.fn((value: string) => value.startsWith("/") ? value : `/${value}`),
 }));
 
 vi.mock("next/headers", () => ({ headers: mocks.nextHeaders }));
-vi.mock("next/navigation", () => ({ redirect: mocks.redirect }));
 vi.mock("@/components/api", () => ({ buildDocTree: mocks.buildDocTree, firstLeafPath: mocks.firstLeafPath, toAbsoluteDocPath: mocks.toAbsoluteDocPath }));
 vi.mock("@/lib/cache", () => ({ setDocsCacheTtlMs: mocks.setCacheTtl }));
 vi.mock("@/lib/docs-server-data", () => ({ loadDocsTreeForLanguage: mocks.loadTree, loadRenderedDocsPageForLanguage: mocks.loadPage }));
@@ -25,7 +21,7 @@ vi.mock("@/lib/github", () => ({ resolveRuntimeConfig: mocks.resolveRuntimeConfi
 vi.mock("@/lib/public-docs-admission", () => ({ withPublicDocsAdmission: mocks.admit }));
 vi.mock("@/lib/store", () => ({ getStore: mocks.getStore }));
 
-import { docsRequestPath, loadDocsRouteData, loadInitialDocsClientData } from "@/lib/docs-initial-data";
+import { docsRequestPath, loadDocsRouteData, loadInitialDocsClientData, resolveDocsIndexHref } from "@/lib/docs-initial-data";
 import { DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE } from "@/lib/auto-translate";
 import { docsHrefForPagePath } from "@/lib/docs-routing";
 import { ApiError } from "@/lib/http";
@@ -166,10 +162,10 @@ describe("docs route data", () => {
     expect(docsRequestPath(["de", "guide", "setup"])).toBe("/de/guide/setup");
   });
 
-  it("forwards the bare docs index to the configured start page before loading docs", async () => {
+  it("resolves the bare docs index to the configured start page without loading docs", async () => {
     mocks.getStore.mockResolvedValue({ ...store, settings: { ...store.settings, startPage: "/guide" } });
 
-    await expect(loadDocsRouteData("/")).rejects.toMatchObject({ location: docsHrefForPagePath("/guide", DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE) });
+    await expect(resolveDocsIndexHref()).resolves.toBe(docsHrefForPagePath("/guide", DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE));
     expect(mocks.loadTree).not.toHaveBeenCalled();
     expect(mocks.loadPage).not.toHaveBeenCalled();
   });
@@ -177,9 +173,9 @@ describe("docs route data", () => {
   it("reports an unreadable store at the bare docs index as a server failure instead of redirecting", async () => {
     mocks.getStore.mockRejectedValue(new Error("store unavailable"));
 
+    await expect(resolveDocsIndexHref()).resolves.toBeNull();
     const result = await loadDocsRouteData("/");
 
-    expect(mocks.redirect).not.toHaveBeenCalled();
     expect(result.pageErrorStatus).toBe(500);
   });
 
@@ -189,7 +185,6 @@ describe("docs route data", () => {
 
     const result = await loadDocsRouteData("/guide");
 
-    expect(mocks.redirect).not.toHaveBeenCalled();
     expect(result.page).toMatchObject({ slug: "guide" });
   });
 });

@@ -53,6 +53,16 @@ export const parseDocsRoutePath = (
   };
 };
 
+/**
+ * The raw Markdown URL of the docs `href`: its query with `raw=1`, keeping every other parameter.
+ * next.config.ts rewrites that form to the raw Markdown route.
+ */
+export const rawDocsHref = (href: string, query: URLSearchParams): string => {
+  const rawQuery = new URLSearchParams(query);
+  rawQuery.set("raw", "1");
+  return `${href}?${rawQuery}`;
+};
+
 export const docsHrefForPagePath = (
   pagePath: string,
   languageCode?: string,

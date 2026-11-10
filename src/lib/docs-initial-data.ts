@@ -1,7 +1,6 @@
 import { buildDocTree, firstLeafPath, toAbsoluteDocPath } from "@/components/api";
 import type { DocPageChrome, DocTreeNode } from "@/components/types";
 import { headers } from "next/headers";
-import { redirect } from "next/navigation";
 import { cache } from "react";
 import {
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
@@ -150,29 +149,24 @@ export const loadInitialDocsClientData = async (requestedPath: string): Promise<
 /** Maps the optional catch-all `slug` param of `/docs/[[...slug]]` to the requested docs path. */
 export const docsRequestPath = (slug: string[] | undefined): string => (slug?.length ? `/${slug.join("/")}` : "/");
 
-const resolveStartPageHref = async (): Promise<string | null> => {
+/**
+ * Where the bare docs index forwards to: the configured start page, read once per request. The
+ * index has no document of its own; the page forwards it (to the raw Markdown for `?raw`) before
+ * anything loads, and the layout renders nothing for it. Null when the store cannot be read: the
+ * index then loads like any route, which reports the failure inside the docs shell.
+ */
+export const resolveDocsIndexHref = cache(async (): Promise<string | null> => {
   try {
     return startPageToDocsHref((await getStore()).settings.startPage, DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE);
   } catch {
-    // The initial-data load reads the store again and reports the failure inside the docs shell.
     return null;
   }
-};
+});
 
 /**
  * Loads one docs route per request. The docs layout renders the shell from this data, the page
  * renders the article or interrupts with its not-found or error state, and `generateMetadata`
  * takes the title and description from it, so all three read the same request-scoped result
- * instead of loading (and consuming admission permits) more than once. The bare docs index has
- * no document of its own and forwards to the configured start page.
+ * instead of loading (and consuming admission permits) more than once.
  */
-export const loadDocsRouteData = cache(async (requestedPath: string): Promise<InitialDocsClientData> => {
-  if (requestedPath === "/") {
-    const startPageHref = await resolveStartPageHref();
-    if (startPageHref) {
-      redirect(startPageHref);
-    }
-  }
-
-  return loadInitialDocsClientData(requestedPath);
-});
+export const loadDocsRouteData = cache((requestedPath: string): Promise<InitialDocsClientData> => loadInitialDocsClientData(requestedPath));

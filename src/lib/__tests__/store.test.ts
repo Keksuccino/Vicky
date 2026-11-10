@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { MAX_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS } from "@/lib/cache";
 import { DEFAULT_STORE } from "@/lib/defaults";
 import { gitHubDocsLogicalSourceKey, legacyGitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { listPersistentRenderedMarkdownCacheEntries, writePersistentRenderedMarkdown } from "@/lib/markdown-render-cache-store";
@@ -120,6 +121,22 @@ describe("store reads", () => {
     const renderKeys = (await listPersistentRenderedMarkdownCacheEntries()).map((entry) => entry.key);
     expect(renderKeys).not.toContain(legacyRenderKey);
     expect(renderKeys).toContain(otherRenderKey);
+  });
+
+  it.each([
+    [30_000, DEFAULT_STORE().settings.docsCacheTtlMs],
+    [MIN_DOCS_CACHE_TTL_MS, MIN_DOCS_CACHE_TTL_MS],
+    [120_000, 120_000],
+    [MAX_DOCS_CACHE_TTL_MS * 2, MAX_DOCS_CACHE_TTL_MS],
+  ])("reads a stored refresh interval of %i ms as %i ms", async (storedMs, expectedMs) => {
+    const storePath = await createStorePath();
+    const store = DEFAULT_STORE();
+    store.settings.docsCacheTtlMs = storedMs;
+    await writeFile(storePath, JSON.stringify(store, null, 2), "utf8");
+
+    const { getStore } = await importStore(storePath);
+
+    expect((await getStore()).settings.docsCacheTtlMs).toBe(expectedMs);
   });
 
   it("uses a unique cache security epoch for every newly created store", () => {

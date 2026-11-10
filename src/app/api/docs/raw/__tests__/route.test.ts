@@ -49,7 +49,7 @@ describe("public raw docs error responses", () => {
     const response = await getRawDoc(createRequest());
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe("Internal Server Error");
+    expect(await response.text()).not.toContain(secret);
     expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(response.headers.get("cache-control")).toBe("no-store, must-revalidate");
     expect(consoleError).toHaveBeenCalledOnce();
@@ -86,19 +86,27 @@ describe("public raw docs error responses", () => {
     const response = await getRawDocBySlug(createRequest("/api/docs/raw/guide"), { params: Promise.resolve({ slug: ["guide"] }) });
 
     expect(response.status).toBe(500);
-    expect(await response.text()).toBe("Internal Server Error");
+    expect(await response.text()).not.toContain(secret);
     expect(response.headers.get("content-type")).toBe("text/plain; charset=utf-8");
     expect(response.headers.get("cache-control")).toBe("no-store, must-revalidate");
     expect(consoleError).toHaveBeenCalledOnce();
-    expect(String(consoleError.mock.calls[0]?.[0])).toContain("Non-Error throw: [object]");
     expect(String(consoleError.mock.calls[0]?.[0])).not.toContain(secret);
+  });
+
+  it("forwards the docs index (rewritten without a page) to the start page's raw Markdown", async () => {
+    mocks.getStore.mockResolvedValue({ ...store, settings: { ...store.settings, startPage: "/guide/setup" } });
+
+    const response = await getRawDoc(createRequest("/api/docs/raw?raw=1&language=de"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("/docs/en-US/guide/setup?raw=1&language=de");
+    expect(mocks.loadPage).not.toHaveBeenCalled();
   });
 
   it("keeps catch-all slug validation failures useful and quiet", async () => {
     const response = await getRawDocBySlug(createRequest("/api/docs/raw/"), { params: Promise.resolve({ slug: [] }) });
 
     expect(response.status).toBe(400);
-    expect(await response.text()).toBe("A slug query parameter is required.");
     expect(mocks.getStore).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
   });

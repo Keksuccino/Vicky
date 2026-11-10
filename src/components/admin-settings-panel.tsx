@@ -30,6 +30,8 @@ import {
   fetchAdminVisitorStats,
   formatApiError,
   getCurrentUser,
+  MAX_DOCS_REFRESH_INTERVAL_MINUTES,
+  MIN_DOCS_REFRESH_INTERVAL_MINUTES,
   refreshAdminDocsCache,
   requestAdminLanguageTranslations,
   requestAdminSourceVersionRecording,
@@ -2696,19 +2698,19 @@ export function AdminSettingsPanel() {
                     id="docs-refresh-interval-minutes"
                     className="input"
                     type="number"
-                    min={1}
-                    max={1440}
+                    min={MIN_DOCS_REFRESH_INTERVAL_MINUTES}
+                    max={MAX_DOCS_REFRESH_INTERVAL_MINUTES}
                     step={1}
                     value={settings.docsRefreshIntervalMinutes}
                     onChange={(event) => {
                       const parsed = Number.parseInt(event.target.value, 10);
-                      const normalized = Number.isFinite(parsed) ? Math.min(1440, Math.max(1, parsed)) : 1;
+                      const normalized = Number.isFinite(parsed) ? Math.min(MAX_DOCS_REFRESH_INTERVAL_MINUTES, Math.max(MIN_DOCS_REFRESH_INTERVAL_MINUTES, parsed)) : MIN_DOCS_REFRESH_INTERVAL_MINUTES;
                       setSettings((prev) => ({ ...prev, docsRefreshIntervalMinutes: normalized }));
                     }}
                     required
                   />
                   <span className="field-hint">
-                    Allowed range: 1-1440. Vicky fetches the full docs set once per interval.
+                    {MIN_DOCS_REFRESH_INTERVAL_MINUTES} to {MAX_DOCS_REFRESH_INTERVAL_MINUTES} minutes (24 hours). Vicky checks GitHub for changes once per interval and only downloads pages that changed.
                   </span>
                 </label>
               </div>

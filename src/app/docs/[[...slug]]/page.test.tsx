@@ -7,11 +7,12 @@ import { DocsPageErrorMessageProvider } from "@/components/docs-page-error";
 import { DocsShell } from "@/components/docs-shell";
 import type { InitialDocsClientData } from "@/lib/docs-initial-data";
 
-const mocks = vi.hoisted(() => ({ loadDocsRouteData: vi.fn() }));
+const mocks = vi.hoisted(() => ({ loadDocsRouteData: vi.fn(), resolveDocsIndexHref: vi.fn() }));
 
 vi.mock("@/lib/docs-initial-data", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/docs-initial-data")>()),
   loadDocsRouteData: mocks.loadDocsRouteData,
+  resolveDocsIndexHref: mocks.resolveDocsIndexHref,
 }));
 
 import DocsLayout from "./layout";
@@ -25,6 +26,7 @@ const page = { slug: "guide" } as NonNullable<InitialDocsClientData["page"]>;
 describe("docs route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.resolveDocsIndexHref.mockResolvedValue("/docs/en-US/home");
   });
 
   it("renders the loaded article for the requested path", async () => {
@@ -37,7 +39,24 @@ describe("docs route", () => {
     expect(element.props.page).toBe(page);
   });
 
-  it("loads the docs index for the bare route", async () => {
+  it("forwards the bare docs index to the start page without loading anything", async () => {
+    await expect(DocsPage(pageProps())).rejects.toMatchObject({ digest: "NEXT_REDIRECT;replace;/docs/en-US/home;307;" });
+    expect(mocks.loadDocsRouteData).not.toHaveBeenCalled();
+
+    const children = <span />;
+    const element = await DocsLayout({ children, params: routeParams() });
+    expect(element.type).not.toBe(DocsShell);
+    expect(element.props.children).toBe(children);
+    expect(mocks.loadDocsRouteData).not.toHaveBeenCalled();
+  });
+
+  it.each(["", "1"])("forwards the bare docs index with raw=%j to the start page's raw Markdown", async (raw) => {
+    await expect(DocsPage(pageProps(undefined, { raw, language: "de" }))).rejects.toMatchObject({ digest: "NEXT_REDIRECT;replace;/docs/en-US/home?raw=1&language=de;307;" });
+    expect(mocks.loadDocsRouteData).not.toHaveBeenCalled();
+  });
+
+  it("loads the docs index itself when the start page cannot be resolved", async () => {
+    mocks.resolveDocsIndexHref.mockResolvedValue(null);
     mocks.loadDocsRouteData.mockResolvedValue({ page, shell } satisfies InitialDocsClientData);
 
     await DocsPage(pageProps());

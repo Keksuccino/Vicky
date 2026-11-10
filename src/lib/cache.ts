@@ -4,7 +4,11 @@ import type { PersistedRenderedMarkdown } from "@/lib/markdown-render-cache-stor
 import { processSingleton } from "@/lib/process-singleton.mjs";
 
 const FALLBACK_DOCS_CACHE_TTL_MS = 3_600_000;
-export const MIN_DOCS_CACHE_TTL_MS = 1_000;
+/**
+ * Bounds of the docs refresh interval: 1 minute to 24 hours, the range the admin panel's minutes
+ * field offers. Each interval costs at least one conditional tree request to GitHub.
+ */
+export const MIN_DOCS_CACHE_TTL_MS = 60_000;
 export const MAX_DOCS_CACHE_TTL_MS = 86_400_000;
 export const AI_PLAINTEXT_EXPORT_CACHE_TTL_MS = 30_000;
 
@@ -24,6 +28,9 @@ export function normalizeDocsCacheTtlMs(value: unknown, fallback = FALLBACK_DOCS
   const rounded = Math.round(numeric);
   return Math.min(MAX_DOCS_CACHE_TTL_MS, Math.max(MIN_DOCS_CACHE_TTL_MS, rounded));
 }
+
+/** Any positive expiry, in whole milliseconds; the docs refresh bounds apply only to `setDocsCacheTtlMs`. */
+const normalizeTtlMs = (value: number, fallback: number): number => (Number.isFinite(value) && value > 0 ? Math.max(1, Math.round(value)) : fallback);
 
 /** Approximate bytes of a JavaScript string: two per UTF-16 code unit plus the string header. */
 export const approximateStringBytes = (value: string): number => value.length * 2 + 16;
@@ -54,7 +61,7 @@ export class MemoryCache<V extends object | string> {
   private ttlMs: number | undefined;
 
   constructor(options: MemoryCacheOptions<V>) {
-    this.ttlMs = options.ttlMs === undefined ? undefined : normalizeDocsCacheTtlMs(options.ttlMs);
+    this.ttlMs = options.ttlMs === undefined ? undefined : normalizeTtlMs(options.ttlMs, FALLBACK_DOCS_CACHE_TTL_MS);
     const sizeOf = "sizeOf" in options ? options.sizeOf : null;
     this.entries = new LRUCache<string, V>({
       ...("maxBytes" in options ? { maxSize: options.maxBytes, sizeCalculation: (value: V) => Math.max(1, Math.ceil(sizeOf?.(value) ?? 1)) } : { max: options.maxEntries }),
@@ -97,7 +104,7 @@ export class MemoryCache<V extends object | string> {
   /** Changes the expiry of entries set from now on; no effect on a cache without expiry. */
   setTtlMs(ttlMs: number): void {
     if (this.ttlMs !== undefined) {
-      this.ttlMs = normalizeDocsCacheTtlMs(ttlMs, this.ttlMs);
+      this.ttlMs = normalizeTtlMs(ttlMs, this.ttlMs);
     }
   }
 
