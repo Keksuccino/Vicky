@@ -7,6 +7,7 @@ import {
   normalizeClientIp,
   resolveClientIp,
   resolveTrustedForwardedClientIp,
+  unusedForwardedClientIpReason,
   type ClientIpRequest,
 } from "@/lib/client-ip-policy";
 
@@ -116,5 +117,18 @@ describe("client IP policy", () => {
 
     expect(resolveClientIp(internalRequest)).toBe("10.0.0.2");
     expect(resolveTrustedForwardedClientIp(new Headers({ "x-forwarded-for": "198.51.100.20", "x-real-ip": "garbage" }), true)).toBeNull();
+  });
+
+  it("explains why forwarded client headers go unused, so a proxy without trust configuration can be reported", () => {
+    expect(unusedForwardedClientIpReason(new Headers(), "10.0.0.2")).toBeNull();
+    expect(unusedForwardedClientIpReason(new Headers({ "x-forwarded-for": "198.51.100.20" }), "10.0.0.2")).toBe("untrusted-peer");
+    expect(unusedForwardedClientIpReason(new Headers({ "x-real-ip": "198.51.100.20" }), "::ffff:10.0.0.2")).toBe("untrusted-peer");
+
+    vi.stubEnv("AUTH_TRUST_PROXY_HEADERS", "true");
+    vi.stubEnv("AUTH_TRUSTED_PROXY_IPS", "10.0.0.2");
+    expect(unusedForwardedClientIpReason(new Headers({ "x-forwarded-for": "198.51.100.20" }), "10.0.0.3")).toBe("untrusted-peer");
+    expect(unusedForwardedClientIpReason(new Headers({ "x-forwarded-for": "198.51.100.20" }), "10.0.0.2")).toBeNull();
+    expect(unusedForwardedClientIpReason(new Headers({ "x-forwarded-for": "198.51.100.20, 10.0.0.9" }), "10.0.0.2")).toBe("unusable-value");
+    expect(unusedForwardedClientIpReason(new Headers({ "x-forwarded-for": "198.51.100.20", "x-real-ip": "198.51.100.21" }), "10.0.0.2")).toBe("unusable-value");
   });
 });

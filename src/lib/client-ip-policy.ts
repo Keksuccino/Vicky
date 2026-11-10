@@ -5,6 +5,7 @@ export {
   normalizeClientIp,
   resolveClientIp,
   resolveTrustedForwardedClientIp,
+  unusedForwardedClientIpReason,
 } from "@/lib/client-ip-policy.mjs";
 
 export type ClientIpRequest = {

@@ -340,16 +340,6 @@ The optional external SSL health endpoint defaults to `/.well-known/vicky/ssl-st
 
 `HTTP_PORT` and `HTTPS_PORT` must be different values.
 
-If you run Vicky behind a reverse proxy:
-- keep the proxy's idle timeout for upstream keep-alive connections below `SERVER_KEEP_ALIVE_TIMEOUT_MS` (Cloudflare's fixed 900 s is covered by the default); otherwise Vicky can close a connection the proxy reuses and the request fails with a 502 or 520
-- forward `/.well-known/acme-challenge/*` to Vicky unchanged
-- do not replace Vicky's fail-closed custom-domain `503` response with a plaintext application fallback
-- preserve the original `Host` header
-- keep DNS pointed at the proxy/public ingress
-- set `AUTH_TRUST_PROXY_HEADERS=true` and list every exact proxy socket address in `AUTH_TRUSTED_PROXY_IPS` only when the proxy removes client-supplied `x-forwarded-for`/`x-real-ip`, overwrites one client address, the Vicky listener is isolated from other peers, and the proxy never appends a forwarding chain
-- set `VICKY_TRUST_PROXY_ORIGIN_HEADERS=true` only when the proxy removes client-supplied forwarding headers, overwrites both `x-forwarded-host` and `x-forwarded-proto` with one client-facing value each, and the Vicky port cannot be reached except through that proxy
-- do not append forwarding chains for origin headers; Vicky intentionally ignores comma-separated first-hop/last-hop values
-
 For a plain `npm run start:next` deployment without a reverse proxy, leave `AUTH_TRUST_PROXY_HEADERS=false`, `AUTH_TRUSTED_PROXY_IPS` empty, and `VICKY_TRUST_PROXY_ORIGIN_HEADERS=false`. If no custom domain is configured, set `VICKY_DIRECT_REQUEST_PROTOCOL` to the direct public protocol when its value differs from the localhost/HTTPS defaults. The included `npm run start` server derives the direct protocol and authenticated client socket address itself and does not need this setting. Plain Next uses global-only public-docs and analytics admission when no trustworthy IP is available; login and AI brute-force protection deliberately retain conservative global unknown buckets.
 
 For direct HTTP-01 validation without a reverse proxy, you usually want:
@@ -364,6 +354,26 @@ Persist these paths across deployments:
 - `data/wiki-analytics.sqlite`, including its `-wal` and `-shm` companions when present (a leftover `wiki-analytics.sqlite.compact` is a disposable copy and need not be kept)
 - `data/login-rate-limit.sqlite`, including its `-wal` and `-shm` companions when present
 - `data/login-rate-limit.json` when retained as a legacy migration source
+
+## Running behind a reverse proxy or CDN
+
+Without proxy trust, `npm run start` sees every request as coming from the proxy's address, so **all visitors share one set of per-client limits**: 180 docs requests per minute and 12 at a time (`PUBLIC_DOCS_CLIENT_*`), 60 recorded page views per minute (`VISITOR_ANALYTICS_CLIENT_*`), the failed-login block (`AUTH_LOGIN_*`), and the AI chat limits. A few busy visitors, or one wrong password too many, then throttle or block everyone. Vicky logs one warning per process when this happens: when requests from a peer that is not a trusted proxy carry `X-Forwarded-For` or `X-Real-IP`, or when a trusted proxy sends a value Vicky cannot use. (If clients reach Vicky directly, such a warning means a client sent those headers itself and can be ignored.)
+
+To give every visitor their own limits:
+1. Make the proxy **replace** the client address instead of appending to it, for example nginx `proxy_set_header X-Real-IP $remote_addr;` and `proxy_set_header X-Forwarded-For $remote_addr;`, Caddy `header_up X-Forwarded-For {remote_host}`, or HAProxy `http-request set-header X-Forwarded-For %[src]`. Vicky rejects forwarding chains (`client, proxy`), addresses with ports, and two headers that disagree.
+2. Set `AUTH_TRUST_PROXY_HEADERS=true` and list in `AUTH_TRUSTED_PROXY_IPS` the exact address (or comma-separated addresses) the proxy connects to Vicky from, as the warning names it. Hostnames and CIDR ranges are not accepted.
+3. Make sure nothing but the proxy can reach the Vicky port.
+
+A CDN that connects from many changing addresses (such as Cloudflare) cannot be listed address by address. Put a reverse proxy on the Vicky host between the two that takes the client address from the CDN's header only for requests from the CDN's published ranges (nginx: `set_real_ip_from <range>;` for each range and `real_ip_header CF-Connecting-IP;`, then `proxy_set_header X-Real-IP $remote_addr;`), and trust only that local proxy, for example `AUTH_TRUSTED_PROXY_IPS=127.0.0.1`. Plain `npm run start:next` cannot use forwarded addresses at all and applies only the global docs and analytics limits.
+
+Also, behind a reverse proxy:
+- keep the proxy's idle timeout for upstream keep-alive connections below `SERVER_KEEP_ALIVE_TIMEOUT_MS` (Cloudflare's fixed 900 s is covered by the default); otherwise Vicky can close a connection the proxy reuses and the request fails with a 502 or 520
+- forward `/.well-known/acme-challenge/*` to Vicky unchanged
+- do not replace Vicky's fail-closed custom-domain `503` response with a plaintext application fallback
+- preserve the original `Host` header
+- keep DNS pointed at the proxy/public ingress
+- set `VICKY_TRUST_PROXY_ORIGIN_HEADERS=true` only when the proxy removes client-supplied forwarding headers, overwrites both `x-forwarded-host` and `x-forwarded-proto` with one client-facing value each, and the Vicky port cannot be reached except through that proxy
+- do not append forwarding chains for origin headers; Vicky intentionally ignores comma-separated first-hop/last-hop values
 
 # API Overview
 

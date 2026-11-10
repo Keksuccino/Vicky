@@ -145,6 +145,27 @@ export function isTrustedProxyClientIpPeer(peerIp) {
 }
 
 /**
+ * Why the forwarded client-IP headers of a request from `peerIp` go unused, when it carries any:
+ * `untrusted-peer` when the peer is not an allowlisted proxy (or proxy trust is off), and
+ * `unusable-value` when an allowlisted proxy sent a value the policy rejects (a forwarding chain,
+ * an address with a port, or two disagreeing headers). Null when there are none or they are used.
+ * Behind a proxy, either reason means the proxy's address counts as the client of every visitor.
+ *
+ * @param {{ get: (name: string) => string | null }} headers
+ * @param {unknown} peerIp
+ * @returns {"untrusted-peer" | "unusable-value" | null}
+ */
+export function unusedForwardedClientIpReason(headers, peerIp) {
+  if (getHeader(headers, "x-forwarded-for") === null && getHeader(headers, "x-real-ip") === null) {
+    return null;
+  }
+  if (!isTrustedProxyClientIpPeer(peerIp)) {
+    return "untrusted-peer";
+  }
+  return resolveTrustedForwardedClientIp(headers, true) ? null : "unusable-value";
+}
+
+/**
  * @param {{ headers: { get: (name: string) => string | null }, ip?: string }} request
  * @returns {string | null}
  */

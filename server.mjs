@@ -10,7 +10,7 @@ import tls from "node:tls";
 
 import * as acme from "acme-client";
 
-import { INTERNAL_CLIENT_IP_HEADER, isTrustedProxyClientIpPeer, normalizeClientIp, resolveTrustedForwardedClientIp } from "./src/lib/client-ip-policy.mjs";
+import { INTERNAL_CLIENT_IP_HEADER, isTrustedProxyClientIpPeer, normalizeClientIp, resolveTrustedForwardedClientIp, unusedForwardedClientIpReason } from "./src/lib/client-ip-policy.mjs";
 import { normalizeCustomDomainInput, normalizeEmailInput } from "./src/lib/domain-normalization.mjs";
 import { ACME_HTTP_CHALLENGE_PREFIX, decideRuntimeRequestAction, isHttpsServiceAvailable, routeRuntimeHttpRequest, writeHttpsMaintenanceResponse, writeStaticRetryResponse } from "./src/lib/https-runtime-policy.mjs";
 import { peekProcessSingleton } from "./src/lib/process-singleton.mjs";
@@ -119,6 +119,7 @@ let statusPersistQueue = Promise.resolve();
 let shutdownPromise = null;
 let shuttingDown = false;
 let runtimeOwnerLease = null;
+let unusedForwardedClientIpWarningShown = false;
 
 const app = next({
   dev: IS_DEV,
@@ -389,6 +390,30 @@ function setInternalClientIpHeader(request) {
   }
 }
 
+/**
+ * Warns once per process when forwarded client-IP headers go unused: behind a reverse proxy or CDN
+ * without the trust configuration, the proxy's address is the client of every visitor, so all of
+ * them share one set of per-client limits. Header values are never logged; they may be forged.
+ */
+function warnOnceAboutUnusedForwardedClientIp(headers, remoteAddress) {
+  if (unusedForwardedClientIpWarningShown) {
+    return;
+  }
+  const reason = unusedForwardedClientIpReason(headers, remoteAddress);
+  if (!reason) {
+    return;
+  }
+
+  unusedForwardedClientIpWarningShown = true;
+  const peer = normalizeClientIp(remoteAddress) ?? "an unknown peer";
+  const consequence = "Behind a reverse proxy or CDN this makes every visitor share one set of per-client limits (by default 180 docs requests per minute and 12 at a time for all visitors together, and the login, AI chat, and analytics limits too).";
+  warn(
+    reason === "untrusted-peer"
+      ? `Requests from ${peer} carry X-Forwarded-For or X-Real-IP, but ${peer} is not a trusted proxy, so Vicky ignores those headers and counts ${peer} itself as the client. ${consequence} If ${peer} is your proxy, set AUTH_TRUST_PROXY_HEADERS=true and add ${peer} to AUTH_TRUSTED_PROXY_IPS (see "Running behind a reverse proxy or CDN" in the README). If clients reach Vicky directly, a client sent these headers itself and this can be ignored. Shown once per process.`
+      : `The trusted proxy ${peer} sent an X-Forwarded-For or X-Real-IP value Vicky cannot use (a forwarding chain, an address with a port, or two different addresses), so Vicky counts ${peer} itself as the client. ${consequence} Configure the proxy to replace the header with the single client address instead of appending to it (see "Running behind a reverse proxy or CDN" in the README). Shown once per process.`,
+  );
+}
+
 function applyProxyClientIpHeaderPolicy(request) {
   const remoteAddress = request.socket?.remoteAddress || request.connection?.remoteAddress;
   const headers = {
@@ -397,6 +422,7 @@ function applyProxyClientIpHeaderPolicy(request) {
       return typeof value === "string" ? value : null;
     },
   };
+  warnOnceAboutUnusedForwardedClientIp(headers, remoteAddress);
   const forwardedClientIp = resolveTrustedForwardedClientIp(headers, isTrustedProxyClientIpPeer(remoteAddress));
 
   // Next preserves a supplied XFF value and otherwise synthesizes one from the socket.
