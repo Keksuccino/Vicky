@@ -25,7 +25,7 @@ export const gitHubDocsLogicalSourceKey = (config: GitHubRuntimeConfig): string 
     normalizeSourcePart(config.docsPath),
   ].join("|");
 
-const credentialFingerprint = (token: string): string =>
+export const gitHubCredentialFingerprint = (token: string): string =>
   createHash("sha256").update(token.trim(), "utf8").digest("hex");
 
 /**
@@ -47,6 +47,6 @@ export const legacyGitHubRuntimeCacheKey = (config: GitHubRuntimeConfig): string
 export const gitHubRuntimeCacheKey = (config: GitHubRuntimeConfig): string =>
   [
     gitHubDocsLogicalSourceKey(config),
-    `auth-${credentialFingerprint(config.token)}`,
+    `auth-${gitHubCredentialFingerprint(config.token)}`,
     `epoch-${normalizeGitHubCacheEpoch(config.cacheEpoch)}`,
   ].join("|");
