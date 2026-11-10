@@ -4,13 +4,16 @@ import {
   logAutoTranslateInfo,
 } from "@/lib/auto-translate-logging";
 import { listMarkdownDocsTreePagesWithTitles } from "@/lib/github";
+import { recordGitHubLocalizationSourceVersions, type GitHubSourceVersionRecordingEvent } from "@/lib/github-localization-saves";
 import {
+  summarizePageLocalizationStatuses,
   translatePageLocalizations,
   type PageLocalizationLanguageStatus,
   type PageLocalizationRequestMode,
   type PageLocalizationRequestResult,
   type PageLocalizationTranslationEvent,
 } from "@/lib/page-localization";
+import { isSourceLanguage } from "@/lib/page-localization-read";
 import { processSingleton } from "@/lib/process-singleton.mjs";
 import type {
   AutoTranslateLanguage,
@@ -18,7 +21,10 @@ import type {
 } from "@/lib/types";
 
 export type PageLocalizationJobStatus = "running" | "completed" | "completed_with_failures" | "failed";
-export type PageLocalizationJobPhase = "queued" | "translating" | "uploading" | "finished";
+/** `checking` and `uploading` are the phases of a source-version recording job. */
+export type PageLocalizationJobPhase = "queued" | "checking" | "translating" | "uploading" | "finished";
+/** A translation run, or `source-versions`: recording the source version in existing translations. */
+export type PageLocalizationJobMode = PageLocalizationRequestMode | "source-versions";
 export type PageLocalizationJobLogLevel = "info" | "success" | "warning" | "error";
 
 export type PageLocalizationJobLogEntry = {
@@ -36,7 +42,7 @@ export type PageLocalizationJobSnapshot = {
   id: string;
   status: PageLocalizationJobStatus;
   phase: PageLocalizationJobPhase;
-  mode: PageLocalizationRequestMode;
+  mode: PageLocalizationJobMode;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -79,6 +85,20 @@ type StartPageLocalizationJobInput = {
   origin: string;
   requestTimeoutMs: number;
   siteTitle: string;
+};
+
+type StartSourceVersionJobInput = {
+  config: GitHubRuntimeConfig;
+  /** Every configured language; the source language is left out of the recording. */
+  languages: AutoTranslateLanguage[];
+  localizationPath: string;
+  /** Number of files the admin confirmed; a larger plan fails before anything is written. */
+  maxFiles: number;
+};
+
+type JobDefinition = Pick<PageLocalizationJobSnapshot, "localizationPath" | "mode" | "model"> & {
+  attemptTimeoutMs: number;
+  languages: AutoTranslateLanguage[];
 };
 
 const MAX_JOB_LOG_ENTRIES = 500;
@@ -153,27 +173,27 @@ const cloneJob = (job: PageLocalizationJob, logLimit = MAX_JOB_LOG_ENTRIES): Pag
   logs: job.logs.slice(-Math.max(1, logLimit)).map((entry) => ({ ...entry })),
 });
 
-const createJob = (input: StartPageLocalizationJobInput): PageLocalizationJob => {
+const createJob = (definition: JobDefinition): PageLocalizationJob => {
   const state = getPageLocalizationJobState();
   const job: PageLocalizationJob = {
     id: `translation-${Date.now()}-${state.nextJobId}`,
     status: "running",
     phase: "queued",
-    mode: input.mode,
+    mode: definition.mode,
     createdAt: new Date().toISOString(),
     startedAt: null,
     finishedAt: null,
-    languages: input.languages.map((language) => ({
+    languages: definition.languages.map((language) => ({
       code: language.code,
       name: language.name,
     })),
-    localizationPath: input.localizationPath,
-    model: input.model,
+    localizationPath: definition.localizationPath,
+    model: definition.model,
     result: emptyResult(),
     statuses: [],
     error: null,
     logs: [],
-    attemptTimeoutMs: input.requestTimeoutMs,
+    attemptTimeoutMs: definition.attemptTimeoutMs,
     progressDeadlineAtMs: Date.now() + JOB_STALL_LIMIT_MS,
     promise: null,
     watchdog: null,
@@ -215,10 +235,10 @@ const startJobWatchdog = (job: PageLocalizationJob): void => {
   job.watchdog = setInterval(() => {
     if (Date.now() > job.progressDeadlineAtMs) {
       finishJob(job, {
-        details: `No progress for ${JOB_STALL_LIMIT_MS / 60_000} minutes. Start the job again; translations that were already uploaded are kept.`,
+        details: `No progress for ${JOB_STALL_LIMIT_MS / 60_000} minutes. Start it again; files that were already committed are kept.`,
         error: "The job stopped making progress.",
         level: "error",
-        message: "Translation job stopped because it made no progress.",
+        message: "Job stopped because it made no progress.",
         status: "failed",
       });
     }
@@ -234,6 +254,15 @@ const formatMode = (mode: PageLocalizationRequestMode): string =>
 
 const formatPage = (event: Extract<PageLocalizationTranslationEvent, { sourcePage: { path: string; slug: string } }>): string =>
   event.sourcePage.slug || event.sourcePage.path || "unknown page";
+
+/** Logs the start and the end of a status scan's downloads only; every download still counts as progress. */
+const logTranslationDownloads = (job: PageLocalizationJob, downloaded: number, total: number): void => {
+  if (downloaded === 0) {
+    addJobLog(job, "info", `Downloading ${total} translation${total === 1 ? "" : "s"} from GitHub to check ${total === 1 ? "its" : "their"} status.`);
+  } else if (downloaded === total) {
+    addJobLog(job, "info", `Downloaded ${total} translation${total === 1 ? "" : "s"}.`);
+  }
+};
 
 /** When the job reports next at the latest after this event: an attempt can take its timeout, a queued upload waits for its window. */
 const nextActivityAtMs = (job: PageLocalizationJob, event: PageLocalizationTranslationEvent): number => {
@@ -262,16 +291,7 @@ const updateJobFromEvent = (job: PageLocalizationJob, event: PageLocalizationTra
   }
 
   if (event.type === "reading-translations") {
-    // Logged at the start and at the end only; every download still counts as progress.
-    if (event.downloaded === 0 || event.downloaded === event.total) {
-      addJobLog(
-        job,
-        "info",
-        event.downloaded === 0
-          ? `Downloading ${event.total} translation${event.total === 1 ? "" : "s"} from GitHub to check ${event.total === 1 ? "its" : "their"} status.`
-          : `Downloaded ${event.total} translation${event.total === 1 ? "" : "s"}.`,
-      );
-    }
+    logTranslationDownloads(job, event.downloaded, event.total);
     return;
   }
 
@@ -488,27 +508,130 @@ const runPageLocalizationJob = async (job: PageLocalizationJob, input: StartPage
   }
 };
 
-export const startPageLocalizationJob = (input: StartPageLocalizationJobInput): PageLocalizationJobSnapshot => {
+const updateJobFromSourceVersionEvent = (job: PageLocalizationJob, event: GitHubSourceVersionRecordingEvent): void => {
+  if (job.status !== "running") {
+    return;
+  }
+  noteJobProgress(job);
+
+  if (event.type === "reading-translations") {
+    logTranslationDownloads(job, event.downloaded, event.total);
+    return;
+  }
+
+  if (event.type === "planned") {
+    job.result = { ...job.result, requestedPages: event.files };
+    const skipped = event.skipped.outdated + event.skipped.undetermined + event.skipped.unreadable;
+    addJobLog(
+      job,
+      "info",
+      event.files === 0
+        ? "Every current translation already records its source version."
+        : `Found ${event.files} current translation${event.files === 1 ? "" : "s"} that ${event.files === 1 ? "does" : "do"} not record ${event.files === 1 ? "its" : "their"} source version.`,
+      skipped > 0
+        ? {
+            details: `Left ${skipped} as they are because their status is not certain (${event.skipped.outdated} outdated, ${event.skipped.undetermined} with an unknown commit date, ${event.skipped.unreadable} unreadable). The translation job records it when it updates them.`,
+          }
+        : {},
+    );
+    if (event.files > 0) {
+      job.phase = "uploading";
+    }
+    return;
+  }
+
+  if (event.type === "sending") {
+    addJobLog(job, "info", `Sent ${event.sentFiles} of ${event.totalFiles} translations to GitHub.`);
+    return;
+  }
+
+  addJobLog(job, "success", `Committed ${event.files} translation${event.files === 1 ? "" : "s"} to GitHub.`, { details: `Commit ${event.commitSha}. Only the front matter changed.` });
+};
+
+const runSourceVersionJob = async (job: PageLocalizationJob, input: StartSourceVersionJobInput): Promise<void> => {
+  try {
+    job.startedAt = new Date().toISOString();
+    job.phase = "checking";
+    const targetLanguages = input.languages.filter((language) => !isSourceLanguage(language));
+    addJobLog(job, "info", "Checking translations on GitHub.", { details: `Languages: ${targetLanguages.map(formatAutoTranslateLanguageForLog).join(", ")}.` });
+
+    const outcome = await recordGitHubLocalizationSourceVersions({
+      config: input.config,
+      languageCodes: targetLanguages.map((language) => language.code),
+      localizationPath: input.localizationPath,
+      maxFiles: input.maxFiles,
+      onEvent: (event) => updateJobFromSourceVersionEvent(job, event),
+    });
+
+    const recordedFiles = Array.from(outcome.recorded.values()).reduce((total, count) => total + count, 0);
+    // Target languages only, like the statuses of translation jobs.
+    job.statuses = summarizePageLocalizationStatuses(targetLanguages, outcome.sourcePages, outcome.statuses).map((status) => ({
+      ...status,
+      unrecordedPages: Math.max(0, status.unrecordedPages - (outcome.recorded.get(status.languageCode) ?? 0)),
+    }));
+    const failures = outcome.failures.map((failure) => ({ error: failure.error, languageCode: failure.languageCode, path: failure.sourcePage.path, slug: failure.sourcePage.slug, stage: "upload" as const }));
+    finishJob(job, {
+      level: failures.length > 0 ? "warning" : "success",
+      message:
+        outcome.plannedFiles === 0
+          ? "Nothing to record."
+          : `Recorded the source version in ${recordedFiles} translation${recordedFiles === 1 ? "" : "s"}${failures.length > 0 ? `; ${failures.length} could not be changed` : ""}.`,
+      result: { ...emptyResult(), requestedPages: outcome.plannedFiles, uploadedPages: recordedFiles, uploadFailedPages: failures.length, failedPages: failures.length, failures },
+      status: failures.length > 0 ? "completed_with_failures" : "completed",
+    });
+    for (const failure of failures) {
+      addJobLog(job, "error", `Could not record the source version of ${failure.slug} in ${failure.languageCode}.`, { details: failure.error, languageCode: failure.languageCode, path: failure.path, slug: failure.slug });
+    }
+  } catch (error: unknown) {
+    const message = getDetailedAutoTranslateErrorMessage(error);
+    finishJob(job, { details: `${message} Nothing was committed.`, error: message, level: "error", message: "Recording source versions stopped.", status: "failed" });
+  } finally {
+    job.promise = null;
+  }
+};
+
+/** Starts a job unless one is running already (jobs of both kinds write translations, so they never overlap). */
+const startJob = (definition: JobDefinition, queuedLog: { details: string; message: string }, run: (job: PageLocalizationJob) => Promise<void>): PageLocalizationJobSnapshot => {
   const state = getPageLocalizationJobState();
   const activeJob = state.latestJob;
 
   if (activeJob?.status === "running") {
-    addJobLog(activeJob, "warning", "A new translation request was received while a job is already running.", {
-      details: "Kept the current job running and ignored the duplicate start request.",
+    addJobLog(activeJob, "warning", "A new request was received while a job is already running.", {
+      details: "Kept the current job running and ignored the new request.",
     });
     return cloneJob(activeJob);
   }
 
-  const job = createJob(input);
+  const job = createJob(definition);
   state.latestJob = job;
-  addJobLog(job, "info", "Queued translation job.", {
-    details: `Requested ${formatMode(input.mode)} for ${input.languages.length} target language${input.languages.length === 1 ? "" : "s"}.`,
-  });
+  addJobLog(job, "info", queuedLog.message, { details: queuedLog.details });
 
   startJobWatchdog(job);
-  job.promise = Promise.resolve().then(() => runPageLocalizationJob(job, input));
+  job.promise = Promise.resolve().then(() => run(job));
   return cloneJob(job);
 };
+
+export const startPageLocalizationJob = (input: StartPageLocalizationJobInput): PageLocalizationJobSnapshot =>
+  startJob(
+    { attemptTimeoutMs: input.requestTimeoutMs, languages: input.languages, localizationPath: input.localizationPath, mode: input.mode, model: input.model },
+    {
+      details: `Requested ${formatMode(input.mode)} for ${input.languages.length} target language${input.languages.length === 1 ? "" : "s"}.`,
+      message: "Queued translation job.",
+    },
+    (job) => runPageLocalizationJob(job, input),
+  );
+
+/**
+ * Records the source version in existing translations that lack it (see
+ * `recordGitHubLocalizationSourceVersions`). Commits to the repository, so it only ever runs
+ * when an admin starts it with the number of files they confirmed.
+ */
+export const startSourceVersionRecordingJob = (input: StartSourceVersionJobInput): PageLocalizationJobSnapshot =>
+  startJob(
+    { attemptTimeoutMs: 0, languages: input.languages.filter((language) => !isSourceLanguage(language)), localizationPath: input.localizationPath, mode: "source-versions", model: "" },
+    { details: `Confirmed for up to ${input.maxFiles} translation${input.maxFiles === 1 ? "" : "s"}.`, message: "Queued recording source versions." },
+    (job) => runSourceVersionJob(job, input),
+  );
 
 export const getLatestPageLocalizationJob = (): PageLocalizationJobSnapshot | null => {
   const job = getPageLocalizationJobState().latestJob;

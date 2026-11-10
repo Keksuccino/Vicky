@@ -167,8 +167,9 @@ export type AdminTranslationJobLogEntry = {
 export type AdminTranslationJobSnapshot = {
   id: string;
   status: "running" | "completed" | "completed_with_failures" | "failed";
-  phase: "queued" | "translating" | "uploading" | "finished";
-  mode: "outdated" | "missing-and-outdated";
+  phase: "queued" | "checking" | "translating" | "uploading" | "finished";
+  /** `source-versions`: recording the source version in existing translations. */
+  mode: "outdated" | "missing-and-outdated" | "source-versions";
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
@@ -195,6 +196,8 @@ export type AdminLanguageTranslationCacheStatus = {
   missingPages: number;
   outdatedPages: number;
   totalPages: number;
+  /** Current translations that do not record their source version yet. */
+  unrecordedPages: number;
   sourceLanguage: boolean;
 };
 

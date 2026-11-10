@@ -31,6 +31,7 @@ import {
   getCurrentUser,
   refreshAdminDocsCache,
   requestAdminLanguageTranslations,
+  requestAdminSourceVersionRecording,
   saveAdminSettings,
   testAdminConnection,
   updateAdminModerator,
@@ -1447,6 +1448,10 @@ const getTranslationJobStatusLabel = (job: AdminTranslationJobSnapshot | null): 
       return "Queued";
     }
 
+    if (job.phase === "checking") {
+      return "Checking";
+    }
+
     return job.phase === "uploading" ? "Uploading" : "Translating";
   }
 
@@ -1576,7 +1581,7 @@ export function AdminSettingsPanel() {
   const [requestedTranslationLanguageCodes, setRequestedTranslationLanguageCodes] = useState<Set<string>>(
     () => new Set(),
   );
-  const [translationBulkAction, setTranslationBulkAction] = useState<"outdated" | "missing-and-outdated" | null>(null);
+  const [translationBulkAction, setTranslationBulkAction] = useState<AdminTranslationJobSnapshot["mode"] | null>(null);
   const [translationRequestStatus, setTranslationRequestStatus] = useState<TranslationRequestStatus | null>(null);
   const [translationJob, setTranslationJob] = useState<AdminTranslationJobSnapshot | null>(null);
   const [translationCacheStatuses, setTranslationCacheStatuses] = useState<
@@ -1663,6 +1668,16 @@ export function AdminSettingsPanel() {
   );
   const activeTranslationMode = translationJob?.status === "running" ? translationJob.mode : translationBulkAction;
   const translationLogEntries = translationJob?.logs ?? [];
+  /** Current translations that do not record their source version yet, as the latest job reported them. */
+  const unrecordedTranslationCount = useMemo(
+    () =>
+      settings.autoTranslateLanguages.reduce(
+        (total, language) =>
+          isDefaultAutoTranslateLanguageCode(language.code) ? total : total + (translationCacheStatuses[translationCacheStatusKey(language.code)]?.unrecordedPages ?? 0),
+        0,
+      ),
+    [settings.autoTranslateLanguages, translationCacheStatuses],
+  );
 
   const trackTranslationJob = useCallback((job: AdminTranslationJobSnapshot | null): void => {
     translationJobRef.current = job;
@@ -2304,6 +2319,49 @@ export function AdminSettingsPanel() {
       trackTranslationJob,
     ],
   );
+
+  const recordSourceVersions = useCallback(async () => {
+    const count = unrecordedTranslationCount;
+    if (count === 0) {
+      return;
+    }
+
+    const files = `${formatVisitorCount(count)} translation${count === 1 ? "" : "s"}`;
+    const repository = `${settings.githubOwner.trim()}/${settings.githubRepo.trim()} (${settings.githubBranch.trim() || "main"})`;
+    if (
+      !window.confirm(
+        `Record the source version in ${files}?\n\nThis commits ${count === 1 ? "1 file" : `${formatVisitorCount(count)} files`} to ${repository} in a single commit. Only the front matter changes, so the pages stay exactly as they are. Outdated translations are left alone.`,
+      )
+    ) {
+      return;
+    }
+
+    setTranslationBulkAction("source-versions");
+    setTranslationRequestStatus(null);
+
+    try {
+      await persistLatestSettings();
+      const job = await requestAdminSourceVersionRecording(count);
+      trackTranslationJob(job);
+      lastTranslationJobStatusRef.current = job.status;
+      void refreshTranslationCacheStatuses();
+    } catch (error) {
+      setTranslationRequestStatus({
+        tone: "error",
+        message: formatApiError(error),
+      });
+    } finally {
+      setTranslationBulkAction(null);
+    }
+  }, [
+    persistLatestSettings,
+    refreshTranslationCacheStatuses,
+    settings.githubBranch,
+    settings.githubOwner,
+    settings.githubRepo,
+    trackTranslationJob,
+    unrecordedTranslationCount,
+  ]);
 
   useEffect(() => {
     latestSettingsRef.current = settings;
@@ -3735,7 +3793,28 @@ export function AdminSettingsPanel() {
                       {activeTranslationMode === "missing-and-outdated" ? "Translating..." : "Translate All Missing/Outdated"}
                     </span>
                   </button>
+
+                  {unrecordedTranslationCount > 0 || activeTranslationMode === "source-versions" ? (
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={activeTranslationMode !== null}
+                      onClick={() => {
+                        void recordSourceVersions();
+                      }}
+                    >
+                      <MaterialIcon name={activeTranslationMode === "source-versions" ? "hourglass_top" : "fact_check"} />
+                      <span>{activeTranslationMode === "source-versions" ? "Recording..." : "Record Source Versions"}</span>
+                    </button>
+                  ) : null}
                 </div>
+                {unrecordedTranslationCount > 0 && activeTranslationMode !== "source-versions" ? (
+                  <span className="field-hint">
+                    {formatVisitorCount(unrecordedTranslationCount)} current translation{unrecordedTranslationCount === 1 ? " doesn't" : "s don't"} say
+                    which version of {unrecordedTranslationCount === 1 ? "its" : "their"} page {unrecordedTranslationCount === 1 ? "it was" : "they were"} translated from yet.
+                    Record it once and outdated checks become exact. Outdated translations get it the next time they&apos;re translated.
+                  </span>
+                ) : null}
                 <div className="translation-language-list">
                   <div className="translation-language-item translation-language-label-row" aria-hidden="true">
                     <div className="field-inline translation-language-fields translation-language-label-fields">
@@ -3993,7 +4072,14 @@ export function AdminSettingsPanel() {
                     </span>
                   </div>
 
-                  {translationJob ? (
+                  {translationJob?.mode === "source-versions" ? (
+                    <div className="translation-log-summary">
+                      <span>
+                        {translationJob.result.uploadedPages}/{translationJob.result.requestedPages} recorded
+                      </span>
+                      <span>{translationJob.result.failedPages} failed</span>
+                    </div>
+                  ) : translationJob ? (
                     <div className="translation-log-summary">
                       <span>
                         {translationJob.result.translatedPages}/{translationJob.result.requestedPages} translated

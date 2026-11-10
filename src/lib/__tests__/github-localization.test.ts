@@ -14,11 +14,11 @@ import { gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import { readPrivateJsonFile, sourceCacheFilePath } from "@/lib/github-docs-cache-files";
 import { loadGitHubLocalizationStatuses } from "@/lib/github-localization";
-import { saveGitHubLocalizedDoc, saveGitHubLocalizedDocsBatch } from "@/lib/github-localization-saves";
+import { recordGitHubLocalizationSourceVersions, saveGitHubLocalizedDoc, saveGitHubLocalizedDocsBatch } from "@/lib/github-localization-saves";
 import { parseMarkdownDocument } from "@/lib/markdown";
 import { createMarkdownRenderCacheStatus, warmMarkdownRenderCache } from "@/lib/markdown-render-cache-admin";
 import { translatePageLocalizations, type PageLocalizationTranslationEvent } from "@/lib/page-localization";
-import { getLatestPageLocalizationJob, startPageLocalizationJob } from "@/lib/page-localization-jobs";
+import { getLatestPageLocalizationJob, startPageLocalizationJob, startSourceVersionRecordingJob } from "@/lib/page-localization-jobs";
 import type { AutoTranslateLanguage, DocsStore, GitHubRuntimeConfig } from "@/lib/types";
 
 import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake-github-api";
@@ -413,6 +413,83 @@ describe("GitHub localizations from the repository index", () => {
 
     expect(fake.requests.map((request) => request.kind)).toEqual(["ref", "commit", "create-tree", "create-tree", "create-tree", "create-commit", "update-ref"]);
     expect(fake.files.get("localizations/de/generated/page-249.md")?.toString("utf8")).toBe(page("Seite generated/page-249", "Inhalt\n"));
+  });
+
+  it("records the source version only in current unrecorded translations, in one commit that keeps rendered HTML valid", async () => {
+    delete (globalThis as typeof globalThis & Record<symbol, unknown>)[Symbol.for("vicky.pageLocalization.jobState")];
+    const home = page("Home", "Welcome home");
+    fake.setFile("localizations/fr/home.md", recordedTranslation("Accueil", "Bienvenue", home));
+    // The German setup translation becomes outdated.
+    fake.setFile("docs/guide/setup.md", page("Setup", "Install the package and restart"));
+    await refreshGitHubDocsCache(config);
+    await loadGitHubLocalizationStatuses({ config, languageCodes: ["de", "fr"], localizationPath: "localizations" });
+    await warmMarkdownRenderCache({ config, store });
+    const before = new Map(Array.from(fake.files, ([repoPath, bytes]) => [repoPath, bytes.toString("utf8")]));
+    fake.resetRequests();
+
+    const started = startSourceVersionRecordingJob({ config, languages: [SOURCE, GERMAN, FRENCH], localizationPath: "localizations", maxFiles: 1 });
+    await vi.waitFor(() => expect(getLatestPageLocalizationJob()?.status).toBe("completed"));
+
+    expect(fake.requests.map((request) => request.kind)).toEqual(["tree", "ref", "commit", "create-tree", "create-commit", "update-ref"]);
+    const stamped = fake.files.get("localizations/de/home.md")?.toString("utf8") ?? "";
+    expect(parseMarkdownDocument(stamped)).toMatchObject({ sourceBlobSha: gitBlobShaOf(home), content: parseMarkdownDocument(before.get("localizations/de/home.md") ?? "").content });
+    for (const unchanged of ["localizations/de/guide/setup.md", "localizations/de/orphan.md", "localizations/fr/home.md"]) {
+      expect(fake.files.get(unchanged)?.toString("utf8")).toBe(before.get(unchanged));
+    }
+    expect(getLatestPageLocalizationJob()).toMatchObject({
+      id: started.id,
+      mode: "source-versions",
+      result: { requestedPages: 1, uploadedPages: 1, failedPages: 0 },
+      statuses: [
+        { languageCode: "de", currentPages: 1, outdatedPages: 1, missingPages: 1, unrecordedPages: 0 },
+        { languageCode: "fr", currentPages: 1, unrecordedPages: 0 },
+      ],
+    });
+
+    fake.resetRequests();
+    await expect(loadDocsPageForLanguage({ config, locator: { slug: "home" }, requestedLanguageCode: "de", store })).resolves.toMatchObject({ data: { title: "Startseite", localizationStatus: "current" } });
+    await expect(createMarkdownRenderCacheStatus({ config, store })).resolves.toMatchObject({ uncachedVariants: 0 });
+    await refreshGitHubDocsCache(config);
+    expect(fake.requests.map((request) => request.kind)).toEqual(["tree"]);
+  });
+
+  it("records the source version of many translations with one tree request per hundred files", async () => {
+    for (let index = 0; index < 20; index += 1) {
+      fake.setFile(`docs/generated/page-${index}.md`, page(`Page ${index}`, `Body ${index}`));
+    }
+    for (let index = 0; index < 20; index += 1) {
+      for (const languageCode of ["de", "fr", "es"]) {
+        fake.setFile(`localizations/${languageCode}/generated/page-${index}.md`, page(`${languageCode} ${index}`, `Text ${index}`));
+      }
+    }
+    await refreshGitHubDocsCache(config);
+    await loadGitHubLocalizationStatuses({ config, languageCodes: ["de", "fr", "es"], localizationPath: "localizations" });
+    fake.resetRequests();
+
+    const result = await recordGitHubLocalizationSourceVersions({ config, languageCodes: ["de", "fr", "es"], localizationPath: "localizations", maxFiles: 100 });
+
+    // 20 generated pages in three languages plus the German home and setup pages and the French home page.
+    expect(result.plannedFiles).toBe(63);
+    expect(fake.requests.map((request) => request.kind)).toEqual(["tree", "ref", "commit", "create-tree", "create-commit", "update-ref"]);
+  });
+
+  it("never records a version for translations whose commit dates are unknown", async () => {
+    fake.intercept((request) =>
+      request.kind === "graphql" ? new Response(JSON.stringify({ message: "Unavailable" }), { status: 502, headers: { "content-type": "application/json" } }) : undefined,
+    );
+
+    const result = await recordGitHubLocalizationSourceVersions({ config, languageCodes: ["de", "fr"], localizationPath: "localizations", maxFiles: 10 });
+
+    expect(result.plannedFiles).toBe(0);
+    expect(fake.count("create-tree")).toBe(0);
+    expect(parseMarkdownDocument(fake.files.get("localizations/de/home.md")?.toString("utf8") ?? "").sourceBlobSha).toBeUndefined();
+  });
+
+  it("refuses to record more files than the admin confirmed", async () => {
+    await expect(recordGitHubLocalizationSourceVersions({ config, languageCodes: ["de", "fr"], localizationPath: "localizations", maxFiles: 2 })).rejects.toMatchObject({ status: 409 });
+
+    expect(fake.count("create-tree")).toBe(0);
+    expect(parseMarkdownDocument(fake.files.get("localizations/de/home.md")?.toString("utf8") ?? "").sourceBlobSha).toBeUndefined();
   });
 
   it("refuses to commit over a branch that moved while the batch was prepared", async () => {

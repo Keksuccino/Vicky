@@ -26,6 +26,7 @@ const getCurrentUserMock = vi.fn();
 const logoutMock = vi.fn();
 const refreshAdminDocsCacheMock = vi.fn();
 const requestAdminLanguageTranslationsMock = vi.fn();
+const requestAdminSourceVersionRecordingMock = vi.fn();
 const saveAdminSettingsMock = vi.fn();
 const testAdminConnectionMock = vi.fn();
 const updateAdminModeratorMock = vi.fn();
@@ -57,6 +58,7 @@ vi.mock("@/components/api", () => ({
   logout: (...args: unknown[]) => logoutMock(...args),
   refreshAdminDocsCache: (...args: unknown[]) => refreshAdminDocsCacheMock(...args),
   requestAdminLanguageTranslations: (...args: unknown[]) => requestAdminLanguageTranslationsMock(...args),
+  requestAdminSourceVersionRecording: (...args: unknown[]) => requestAdminSourceVersionRecordingMock(...args),
   saveAdminSettings: (...args: unknown[]) => saveAdminSettingsMock(...args),
   testAdminConnection: (...args: unknown[]) => testAdminConnectionMock(...args),
   updateAdminModerator: (...args: unknown[]) => updateAdminModeratorMock(...args),
@@ -334,6 +336,41 @@ describe("AdminSettingsPanel", () => {
       },
       status: { ...MARKDOWN_CACHE_STATUS, cachedVariants: 2, uncachedVariants: 0 },
     });
+  });
+
+  it("offers recording source versions only while unrecorded translations exist, and starts it after confirmation with the count", async () => {
+    const finishedJob = {
+      id: "translation-done",
+      status: "completed",
+      phase: "finished",
+      mode: "outdated",
+      createdAt: "2026-03-10T12:00:00.000Z",
+      startedAt: "2026-03-10T12:00:00.000Z",
+      finishedAt: "2026-03-10T12:01:00.000Z",
+      languages: [{ name: "German", code: "de" }],
+      localizationPath: "localizations",
+      model: "openai/gpt-5.4-mini",
+      result: { totalPages: 4, cachedPages: 4, requestedPages: 0, translatedPages: 0, uploadedPages: 0, translationFailedPages: 0, uploadFailedPages: 0, failedPages: 0, failures: [] },
+      error: null,
+      logs: [],
+    };
+    const germanStatus = { languageCode: "de", languageName: "German", cachedPages: 4, currentPages: 4, missingPages: 0, outdatedPages: 0, totalPages: 4, sourceLanguage: false };
+    fetchAdminLanguageTranslationStatusMock.mockResolvedValue({ statuses: [{ ...germanStatus, unrecordedPages: 3 }], job: finishedJob, jobState: "current", updatedAt: "2026-03-10T12:00:00.000Z" });
+    requestAdminSourceVersionRecordingMock.mockResolvedValue({ ...finishedJob, id: "source-versions", status: "running", phase: "checking", mode: "source-versions", finishedAt: null });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+
+    render(<AdminSettingsPanel />);
+    const recordButton = await screen.findByRole("button", { name: "Record Source Versions" }, { timeout: 3_000 });
+
+    fireEvent.click(recordButton);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(requestAdminSourceVersionRecordingMock).not.toHaveBeenCalled();
+
+    fetchAdminLanguageTranslationStatusMock.mockResolvedValue({ statuses: [{ ...germanStatus, unrecordedPages: 0 }], job: { ...finishedJob, id: "source-versions", mode: "source-versions" }, jobState: "current", updatedAt: "2026-03-10T12:02:00.000Z" });
+    fireEvent.click(recordButton);
+    await waitFor(() => expect(requestAdminSourceVersionRecordingMock).toHaveBeenCalledWith(3));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Record Source Versions|Recording/ })).toBeNull());
+    confirm.mockRestore();
   });
 
   it("keeps the newest typed value when an older autosave response resolves later", async () => {

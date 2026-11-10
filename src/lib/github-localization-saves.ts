@@ -1,13 +1,14 @@
 import { assertGitHubCacheAccess, beginGitHubCacheAccess, prepareGitHubCacheMutation } from "@/lib/github-cache-invalidation";
 import { getGitHubClient, gitHubErrorStatus } from "@/lib/github-client";
 import { extractCommitMetadata, hydrateGitHubDocPageMetadata, type GitHubCommitMetadata } from "@/lib/github-commit-metadata";
-import { fetchGitHubFile, gitBlobSha, parseGitHubBlobRecord } from "@/lib/github-content-store";
+import { fetchGitHubFile, gitBlobSha, loadGitHubBlobs, parseGitHubBlobRecord } from "@/lib/github-content-store";
 import { pruneRenderedMarkdownCache } from "@/lib/github-derived-caches";
-import { applyCommittedGitHubFiles, validateGitHubRuntimeConfig } from "@/lib/github-docs-source";
-import { createLocalizedDocPage } from "@/lib/github-localization";
+import { getGitHubDocsCacheDir } from "@/lib/github-docs-cache-files";
+import { applyCommittedGitHubFiles, loadGitHubDocsSourceView, validateGitHubRuntimeConfig } from "@/lib/github-docs-source";
+import { createLocalizedDocPage, loadGitHubLocalizationStatuses, type GitHubLocalizationStatus } from "@/lib/github-localization";
 import { localizedRepoPathForSourcePath } from "@/lib/github-paths";
-import { badRequest } from "@/lib/http";
-import { parseMarkdownDocument, serializeMarkdownDocument } from "@/lib/markdown";
+import { ApiError, badRequest } from "@/lib/http";
+import { parseMarkdownDocument, serializeMarkdownDocument, withSourceBlobSha } from "@/lib/markdown";
 import type { AutoTranslateLanguage, GitHubDocPage, GitHubRuntimeConfig, SaveGitHubDocInput, SaveGitHubDocResult } from "@/lib/types";
 
 /**
@@ -25,6 +26,8 @@ import type { AutoTranslateLanguage, GitHubDocPage, GitHubRuntimeConfig, SaveGit
  */
 const TREE_CHUNK_MAX_FILES = 100;
 const TREE_CHUNK_MAX_BYTES = 1024 * 1024;
+/** Index refreshes the stamping tries to get a listing that matches the branch head it commits on. */
+const SOURCE_VERSION_HEAD_ATTEMPTS = 3;
 
 export type GitHubBranchHead = {
   commitSha: string;
@@ -319,4 +322,150 @@ export const saveGitHubLocalizedDocsBatch = async ({
     : [];
 
   return { commitSha: commit.commitSha, results };
+};
+
+export type GitHubSourceVersionRecordingEvent =
+  | { type: "reading-translations"; downloaded: number; total: number }
+  | {
+      type: "planned";
+      files: number;
+      /** Unrecorded translations left as they are: outdated, of unknown age (a commit date is missing), or unreadable. */
+      skipped: { outdated: number; undetermined: number; unreadable: number };
+    }
+  | { type: "sending"; sentFiles: number; totalFiles: number }
+  | { type: "committed"; commitSha: string; files: number };
+
+export type GitHubSourceVersionRecordingResult = {
+  commitSha: string | null;
+  failures: Array<{ error: string; languageCode: string; sourcePage: Pick<GitHubDocPage, "path" | "slug"> }>;
+  plannedFiles: number;
+  /** Translations that now record their source version, by language code. */
+  recorded: Map<string, number>;
+  sourcePages: GitHubDocPage[];
+  /** Translation statuses before recording; recorded translations no longer count as unrecorded. */
+  statuses: Map<string, Map<string, GitHubLocalizationStatus>>;
+};
+
+/** Refreshes the index until it lists exactly the tree of the branch head, and returns both. */
+const refreshToBranchHead = async (config: GitHubRuntimeConfig): Promise<{ head: GitHubBranchHead; sourcePages: GitHubDocPage[] }> => {
+  for (let attempt = 1; ; attempt += 1) {
+    const view = await loadGitHubDocsSourceView(config, { forceRefresh: true });
+    const head = await readGitHubBranchHead(config);
+    if (view.index.treeSha === head.treeSha) {
+      return { head, sourcePages: view.pages };
+    }
+    if (attempt >= SOURCE_VERSION_HEAD_ATTEMPTS) {
+      throw new ApiError(409, "The branch kept changing while the translations were checked. Try again in a moment.");
+    }
+  }
+};
+
+/** A translation that records no source version yet but is current by commit dates, so recording the current version is exact. */
+const isRecordable = (status: GitHubLocalizationStatus): boolean => status.state === "current" && Boolean(status.summary) && !status.summary?.sourceBlobSha;
+
+/**
+ * Records the source version in every translation that lacks it and is current by commit dates,
+ * as one commit: outdated and undetermined translations are never touched, they get the field
+ * when the translation job replaces them. Only the front matter of each file changes, so the
+ * rendered HTML of those pages (keyed by the body's content hash) stays valid.
+ *
+ * The plan is computed on the exact tree the commit builds on: the index is refreshed until its
+ * tree matches the branch head, and the ref update is not forced, so a translation changed on
+ * GitHub meanwhile is never overwritten with older content. `maxFiles` is the number the admin
+ * confirmed; a larger plan fails before anything is written.
+ *
+ * Requests on a warm store: one tree request, the ref and its commit, one tree request per 100
+ * files (content inline), one commit, and one ref update, all paced as bulk work.
+ */
+export const recordGitHubLocalizationSourceVersions = async ({
+  config,
+  languageCodes,
+  localizationPath,
+  maxFiles,
+  onEvent,
+}: {
+  config: GitHubRuntimeConfig;
+  languageCodes: string[];
+  localizationPath: string;
+  maxFiles: number;
+  onEvent?: (event: GitHubSourceVersionRecordingEvent) => void;
+}): Promise<GitHubSourceVersionRecordingResult> => {
+  const access = beginGitHubCacheAccess(config);
+  const validation = validateGitHubRuntimeConfig(config);
+  if (!validation.valid) {
+    throw badRequest(validation.errors.join(" "));
+  }
+
+  const { head, sourcePages } = await refreshToBranchHead(config);
+  const statuses = await loadGitHubLocalizationStatuses({
+    config,
+    languageCodes,
+    localizationPath,
+    onDownloadProgress: (downloaded, total) => onEvent?.({ type: "reading-translations", downloaded, total }),
+    sourcePages,
+  });
+  const planned: Array<GitHubLocalizationStatus & { languageCode: string }> = [];
+  const skipped = { outdated: 0, undetermined: 0, unreadable: 0 };
+  for (const [languageCode, byPath] of statuses) {
+    for (const status of byPath.values()) {
+      if (isRecordable(status)) {
+        planned.push({ ...status, languageCode });
+      } else if (!status.summary) {
+        skipped.unreadable += 1;
+      } else if (!status.summary.sourceBlobSha) {
+        skipped[status.state === "outdated" ? "outdated" : "undetermined"] += 1;
+      }
+    }
+  }
+  onEvent?.({ type: "planned", files: planned.length, skipped });
+
+  const result: GitHubSourceVersionRecordingResult = { commitSha: null, failures: [], plannedFiles: planned.length, recorded: new Map(), sourcePages, statuses };
+  if (planned.length === 0) {
+    return result;
+  }
+  if (planned.length > maxFiles) {
+    throw new ApiError(409, `${planned.length} translations would change, more than the ${maxFiles} you confirmed. Check the translation status and start again.`);
+  }
+
+  const baseDir = getGitHubDocsCacheDir();
+  const files: Array<GitHubMarkdownCommitFile & { languageCode: string }> = [];
+  for (const entry of planned) {
+    const record = (await loadGitHubBlobs(config, [entry.sha], baseDir)).get(entry.sha);
+    const markdown = record ? withSourceBlobSha(record.markdown, entry.sourcePage.sha) : null;
+    const rewritten = markdown === null ? null : parseGitHubBlobRecord("", markdown);
+    if (record && markdown !== null && rewritten?.contentHash === record.contentHash && rewritten.sourceBlobSha === entry.sourcePage.sha) {
+      files.push({ languageCode: entry.languageCode, markdown, repoPath: entry.repoPath });
+    } else {
+      result.failures.push({ error: "Its front matter could not be changed without changing the page itself.", languageCode: entry.languageCode, sourcePage: entry.sourcePage });
+    }
+  }
+  assertGitHubCacheAccess(access);
+  if (files.length === 0) {
+    return result;
+  }
+
+  const commit = await commitGitHubMarkdownFiles({
+    config,
+    files,
+    head,
+    message: `docs: record the source version of ${files.length} localization${files.length === 1 ? "" : "s"}`,
+    onTreeChunk: (sentFiles) => onEvent?.({ type: "sending", sentFiles, totalFiles: files.length }),
+  });
+  assertGitHubCacheAccess(access);
+
+  // No rendered-HTML pruning: the bodies, and with them the cache keys, are unchanged.
+  const mutationAccess = await prepareGitHubCacheMutation(config);
+  await applyCommittedGitHubFiles(
+    config,
+    mutationAccess,
+    files.map((file, index) => ({ markdown: file.markdown, metadata: commit.metadata, repoPath: file.repoPath, sha: commit.blobShas[index] })),
+  );
+  assertGitHubCacheAccess(mutationAccess);
+
+  result.commitSha = commit.commitSha;
+  for (const file of files) {
+    result.recorded.set(file.languageCode, (result.recorded.get(file.languageCode) ?? 0) + 1);
+  }
+  onEvent?.({ type: "committed", commitSha: commit.commitSha, files: files.length });
+  return result;
 };

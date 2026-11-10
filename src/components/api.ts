@@ -855,8 +855,8 @@ function normalizeAdminTranslationJob(source: unknown): AdminTranslationJobSnaps
     id,
     status:
       status === "completed" || status === "completed_with_failures" || status === "failed" ? status : "running",
-    phase: phase === "queued" || phase === "uploading" || phase === "finished" ? phase : "translating",
-    mode: mode === "outdated" ? "outdated" : "missing-and-outdated",
+    phase: phase === "queued" || phase === "checking" || phase === "uploading" || phase === "finished" ? phase : "translating",
+    mode: mode === "outdated" || mode === "source-versions" ? mode : "missing-and-outdated",
     createdAt: asString(payload.createdAt).trim() || new Date(0).toISOString(),
     startedAt: startedAt || null,
     finishedAt: finishedAt || null,
@@ -905,6 +905,7 @@ function normalizeAdminLanguageTranslationCacheStatuses(source: unknown): AdminL
         missingPages: Math.max(0, Math.round(asNumber(payload.missingPages, 0))),
         outdatedPages: Math.max(0, Math.round(asNumber(payload.outdatedPages, 0))),
         totalPages: Math.max(0, Math.round(asNumber(payload.totalPages, 0))),
+        unrecordedPages: Math.max(0, Math.round(asNumber(payload.unrecordedPages, 0))),
         sourceLanguage: asBoolean(payload.sourceLanguage, false),
       };
     })
@@ -1481,6 +1482,21 @@ export async function requestAdminLanguageTranslations(
   const job = normalizeAdminTranslationJob(response);
   if (!job) {
     throw new ApiError("Translation request did not return a job.", 500, response);
+  }
+
+  return job;
+}
+
+/** Starts recording the source version in existing translations; `expectedFiles` is the number the admin confirmed. */
+export async function requestAdminSourceVersionRecording(expectedFiles: number): Promise<AdminTranslationJobSnapshot> {
+  const response = await requestJson<unknown>("/api/admin/translations/source-versions", {
+    method: "POST",
+    body: JSON.stringify({ expectedFiles }),
+  });
+
+  const job = normalizeAdminTranslationJob(response);
+  if (!job) {
+    throw new ApiError("Recording source versions did not return a job.", 500, response);
   }
 
   return job;
