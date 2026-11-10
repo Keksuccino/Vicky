@@ -6,6 +6,7 @@ import { loadRenderedDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse } from "@/lib/http";
 import { canonicalizePublicDocLocator } from "@/lib/public-doc-path";
+import { withPublicDocsAdmission } from "@/lib/public-docs-admission";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -22,14 +23,9 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.nextUrl.searchParams.get("language") ??
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
-    const { data: page } = await loadRenderedDocsPageForLanguage({
-      config,
-      locator,
-      requestedLanguageCode,
-      request,
-      signal: request.signal,
-      store,
-    });
+    const { data: page } = await withPublicDocsAdmission(request, () =>
+      loadRenderedDocsPageForLanguage({ config, locator, requestedLanguageCode, signal: request.signal, store }),
+    );
 
     return NextResponse.json({ page });
   } catch (error: unknown) {

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  admit: vi.fn((_request: unknown, work: () => Promise<unknown>) => work()),
   buildDocTree: vi.fn(),
   firstLeafPath: vi.fn(),
   getStore: vi.fn(),
@@ -21,6 +22,7 @@ vi.mock("@/components/api", () => ({ buildDocTree: mocks.buildDocTree, firstLeaf
 vi.mock("@/lib/cache", () => ({ setDocsCacheTtlMs: mocks.setCacheTtl }));
 vi.mock("@/lib/docs-server-data", () => ({ loadDocsTreeForLanguage: mocks.loadTree, loadRenderedDocsPageForLanguage: mocks.loadPage }));
 vi.mock("@/lib/github", () => ({ resolveRuntimeConfig: mocks.resolveRuntimeConfig }));
+vi.mock("@/lib/public-docs-admission", () => ({ withPublicDocsAdmission: mocks.admit }));
 vi.mock("@/lib/store", () => ({ getStore: mocks.getStore }));
 
 import { docsRequestPath, loadDocsRouteData, loadInitialDocsClientData } from "@/lib/docs-initial-data";
@@ -88,6 +90,27 @@ describe("initial public docs error state", () => {
     expect(result.pageErrorStatus).toBe(404);
     expect(mocks.loadPage).not.toHaveBeenCalled();
     expect(consoleError).not.toHaveBeenCalled();
+  });
+
+  it("takes one admission permit for a docs root that loads its tree and first page", async () => {
+    mocks.firstLeafPath.mockReturnValueOnce("/guide");
+
+    const result = await loadInitialDocsClientData("/");
+
+    expect(result.page).toMatchObject({ slug: "guide" });
+    expect(mocks.loadTree).toHaveBeenCalledOnce();
+    expect(mocks.loadPage).toHaveBeenCalledOnce();
+    expect(mocks.admit).toHaveBeenCalledOnce();
+  });
+
+  it("reports a rejected admission as the page error", async () => {
+    mocks.admit.mockRejectedValueOnce(new ApiError(429, "Too many requests."));
+
+    const result = await loadInitialDocsClientData("/guide");
+
+    expect(result).toMatchObject({ pageErrorStatus: 429, shell: { initialPath: "/guide" } });
+    expect(result.page).toBeUndefined();
+    expect(mocks.loadPage).not.toHaveBeenCalled();
   });
 
   it("leaves the status unset when the page loads", async () => {

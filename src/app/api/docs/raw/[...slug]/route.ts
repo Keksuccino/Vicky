@@ -7,6 +7,7 @@ import { loadDocsPageForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { badRequest, publicTextErrorResponse } from "@/lib/http";
 import { canonicalizePublicDocLocator } from "@/lib/public-doc-path";
+import { withPublicDocsAdmission } from "@/lib/public-docs-admission";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -40,14 +41,10 @@ export const GET = async (request: NextRequest, context: RawDocBySlugRouteContex
       request.nextUrl.searchParams.get("language") ??
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
-    const { data: page } = await loadDocsPageForLanguage({
-      config,
-      locator: canonicalizePublicDocLocator({ slug: route.pagePath.replace(/^\/+/, "") }),
-      requestedLanguageCode,
-      request,
-      signal: request.signal,
-      store,
-    });
+    const locator = canonicalizePublicDocLocator({ slug: route.pagePath.replace(/^\/+/, "") });
+    const { data: page } = await withPublicDocsAdmission(request, () =>
+      loadDocsPageForLanguage({ config, locator, requestedLanguageCode, signal: request.signal, store }),
+    );
 
     return new Response(page.markdown, {
       status: 200,

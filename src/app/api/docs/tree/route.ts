@@ -5,6 +5,7 @@ import { setDocsCacheTtlMs } from "@/lib/cache";
 import { loadDocsTreeForLanguage } from "@/lib/docs-server-data";
 import { resolveRuntimeConfig } from "@/lib/github";
 import { errorResponse } from "@/lib/http";
+import { withPublicDocsAdmission } from "@/lib/public-docs-admission";
 import { getStore } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -20,13 +21,9 @@ export const GET = async (request: NextRequest): Promise<NextResponse> => {
       request.cookies.get(AUTO_TRANSLATE_LANGUAGE_COOKIE_NAME)?.value ??
       undefined;
     const waitForPendingTitles = request.nextUrl.searchParams.get("waitForTitles") === "1";
-    const { data: items, titlesPending } = await loadDocsTreeForLanguage({
-      config,
-      requestedLanguageCode,
-      request,
-      store,
-      waitForPendingTitles,
-    });
+    const { data: items, titlesPending } = await withPublicDocsAdmission(request, () =>
+      loadDocsTreeForLanguage({ config, requestedLanguageCode, store, waitForPendingTitles }),
+    );
 
     return NextResponse.json({ items, titlesPending: Boolean(titlesPending) });
   } catch (error: unknown) {
