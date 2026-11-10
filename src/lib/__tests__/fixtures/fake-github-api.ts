@@ -63,9 +63,12 @@ export const createFakeGitHub = (options?: { branch?: string; owner?: string; re
   const requests: FakeGitHubRequest[] = [];
   const interceptors: Interceptor[] = [];
   const treeShaPaths = new Map<string, string>();
-  /** Trees and commits created through the Git data API; a commit's files apply when the ref moves to it. */
+  /**
+   * Trees and commits created through the Git data API; a commit's files apply when the ref moves
+   * to it. A staged tree holds every entry of the staged trees it was based on.
+   */
   const stagedTrees = new Map<string, Array<{ path: string; sha: string }>>();
-  const stagedCommits = new Map<string, { entries: Array<{ path: string; sha: string }>; commit: FakeCommit }>();
+  const stagedCommits = new Map<string, { entries: Array<{ path: string; sha: string }>; commit: FakeCommit; parent: string }>();
   let clock = Date.parse("2026-01-01T00:00:00Z");
   let inFlight = 0;
   let maxInFlight = 0;
@@ -263,22 +266,39 @@ export const createFakeGitHub = (options?: { branch?: string; owner?: string; re
         return json(201, { sha });
       }
       case "create-tree": {
-        const entries = (payload.tree as Array<{ path: string; sha: string }>).map((entry) => ({ path: entry.path, sha: entry.sha }));
-        const sha = sha1(`staged-tree-${stagedTrees.size}-${JSON.stringify(entries)}`);
-        stagedTrees.set(sha, entries);
+        const requested = payload.tree as Array<{ path: string; sha?: string; content?: string }>;
+        if (requested.some((entry) => (entry.sha === undefined) === (entry.content === undefined))) {
+          return json(422, { message: "Each tree entry needs exactly one of sha or content" });
+        }
+        const entries = requested.map((entry) => {
+          if (entry.content === undefined) {
+            return { path: entry.path, sha: entry.sha as string };
+          }
+          const bytes = Buffer.from(entry.content, "utf8");
+          const sha = blobSha(bytes);
+          blobs.set(sha, bytes);
+          return { path: entry.path, sha };
+        });
+        const base = stagedTrees.get(String(payload.base_tree)) ?? [];
+        const combined = [...base.filter((entry) => !entries.some((next) => next.path === entry.path)), ...entries];
+        const sha = sha1(`staged-tree-${stagedTrees.size}-${JSON.stringify(combined)}`);
+        stagedTrees.set(sha, combined);
         return json(201, { sha, tree: [] });
       }
       case "create-commit": {
         clock += 60_000;
         const entries = stagedTrees.get(String(payload.tree)) ?? [];
         const created: FakeCommit = { author: "Translator", date: new Date(clock).toISOString().replace(".000Z", "Z"), paths: new Set(entries.map((entry) => entry.path)), sha: sha1(`staged-commit-${stagedCommits.size}-${clock}`) };
-        stagedCommits.set(created.sha, { commit: created, entries });
+        stagedCommits.set(created.sha, { commit: created, entries, parent: String((payload.parents as string[] | undefined)?.[0]) });
         return json(201, { sha: created.sha, author: { name: created.author, date: created.date }, committer: { name: created.author, date: created.date }, tree: { sha: String(payload.tree) } });
       }
       case "update-ref": {
         const staged = stagedCommits.get(String(payload.sha));
         if (!staged) {
           return json(422, { message: "Object does not exist" });
+        }
+        if (payload.force !== true && staged.parent !== latestCommitSha()) {
+          return json(422, { message: "Update is not a fast forward" });
         }
         for (const entry of staged.entries) {
           const bytes = blobs.get(entry.sha);

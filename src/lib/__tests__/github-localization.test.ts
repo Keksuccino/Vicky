@@ -381,7 +381,7 @@ describe("GitHub localizations from the repository index", () => {
       ],
     });
 
-    expect(fake.requests.map((request) => request.kind)).toEqual(["ref", "commit", "create-blob", "create-blob", "create-tree", "create-commit", "update-ref"]);
+    expect(fake.requests.map((request) => request.kind)).toEqual(["ref", "commit", "create-tree", "create-commit", "update-ref"]);
     fake.resetRequests();
     const tree = await loadDocsTreeForLanguage({ config, requestedLanguageCode: "fr", store, waitForPendingTitles: true });
     expect(treeNames(tree.data)).toEqual({ "guide/setup": "Installation", "guide/usage": "Utilisation", home: "Accueil" });
@@ -394,5 +394,38 @@ describe("GitHub localizations from the repository index", () => {
     fake.resetRequests();
     await refreshGitHubDocsCache(config);
     expect(fake.requests.map((request) => request.kind)).toEqual(["tree"]);
+  });
+
+  it("commits a large batch with one tree request per hundred files and no blob requests", async () => {
+    const sourcePages = Array.from({ length: 250 }, (_, index) => ({
+      path: `generated/page-${index}.md`,
+      slug: `generated/page-${index}`,
+      sha: gitBlobShaOf(page(`Page ${index}`, `Body ${index}`)),
+      includeInPlaintextExport: true,
+    }));
+
+    await saveGitHubLocalizedDocsBatch({
+      config,
+      includePages: false,
+      items: sourcePages.map((sourcePage) => ({ input: { markdown: page(`Seite ${sourcePage.slug}`, "Inhalt") }, language: GERMAN, localizationPath: "localizations", sourcePage })),
+    });
+
+    expect(fake.requests.map((request) => request.kind)).toEqual(["ref", "commit", "create-tree", "create-tree", "create-tree", "create-commit", "update-ref"]);
+    expect(fake.files.get("localizations/de/generated/page-249.md")?.toString("utf8")).toBe(page("Seite generated/page-249", "Inhalt\n"));
+  });
+
+  it("refuses to commit over a branch that moved while the batch was prepared", async () => {
+    const usage = await loadPublicGitHubDoc(config, { slug: "guide/usage" });
+    fake.intercept((request) => {
+      if (request.kind === "create-commit" && !fake.files.has("localizations/fr/guide/usage.md")) {
+        fake.setFile("localizations/fr/guide/usage.md", page("Utilisation", "Écrit ailleurs"));
+      }
+      return undefined;
+    });
+
+    await expect(
+      saveGitHubLocalizedDocsBatch({ config, includePages: false, items: [{ input: { markdown: page("Utilisation", "Utilisez-le") }, language: FRENCH, localizationPath: "localizations", sourcePage: usage }] }),
+    ).rejects.toMatchObject({ status: 422 });
+    expect(fake.files.get("localizations/fr/guide/usage.md")?.toString("utf8")).toBe(page("Utilisation", "Écrit ailleurs"));
   });
 });
