@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { chmod, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -119,6 +119,29 @@ describe("runtime topology", () => {
       expect((await stat(layout.storePath)).mode & 0o777).toBe(0o600);
       expect((await stat(layout.ownerFilePath)).mode & 0o777).toBe(0o600);
     }
+  });
+
+  it("removes the files of the translation cache Vicky no longer keeps and leaves every other file", async () => {
+    const cwd = await createTempDir();
+    const environment = environmentFor();
+    const { obsoleteTranslationCacheDir } = resolveRuntimeStorageLayout(environment, cwd);
+    const cacheFile = `${"a".repeat(64)}.json`;
+    await mkdir(path.join(obsoleteTranslationCacheDir, "pages"), { recursive: true, mode: 0o700 });
+    await mkdir(path.join(obsoleteTranslationCacheDir, "titles"), { recursive: true, mode: 0o700 });
+    await writeFile(path.join(obsoleteTranslationCacheDir, "pages", cacheFile), "{}");
+    await writeFile(path.join(obsoleteTranslationCacheDir, "pages", `${cacheFile}.123.456.${"0".repeat(8)}-0000-4000-8000-${"0".repeat(12)}.tmp`), "{");
+    await writeFile(path.join(obsoleteTranslationCacheDir, "titles", `${"b".repeat(64)}.json`), "{}");
+    await writeFile(path.join(obsoleteTranslationCacheDir, "pages", "notes.txt"), "kept");
+
+    leases.push(await acquireRuntimeOwnerLease({ cwd, environment }));
+
+    expect(await readdir(obsoleteTranslationCacheDir)).toEqual(["pages"]);
+    expect(await readdir(path.join(obsoleteTranslationCacheDir, "pages"))).toEqual(["notes.txt"]);
+    await leases.splice(0)[0]?.release();
+    await rename(path.join(obsoleteTranslationCacheDir, "pages", "notes.txt"), path.join(cwd, "notes.txt"));
+
+    leases.push(await acquireRuntimeOwnerLease({ cwd, environment }));
+    await expect(stat(obsoleteTranslationCacheDir)).rejects.toMatchObject({ code: "ENOENT" });
   });
 
   it("keeps the child gate closed until the exclusive child assignment exists", async () => {

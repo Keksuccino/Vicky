@@ -42,7 +42,7 @@ It gives you:
 - SSL certificates and runtime SSL status live in `data/ssl/` by default.
 - Rendered Markdown HTML cache files live in `data/markdown-cache/` by default.
 - The local copy of the docs repository lives in `data/docs-cache/` by default: an index of every Markdown file with its Git blob SHA, the Markdown blobs themselves (stored once per content, already parsed), and per-file "last updated" commit data. See [How Vicky Talks to GitHub](#how-vicky-talks-to-github).
-- OpenRouter docs translation cache files live in `data/translation-cache/` by default.
+- Translations live only in your repository. Files of the translation cache Vicky no longer keeps (`data/translation-cache/`, or the directory `WIKI_TRANSLATION_CACHE_DIR` names) are deleted at startup.
 - Login rate-limit state lives in `data/login-rate-limit.sqlite` by default. A legacy `data/login-rate-limit.json` is migrated once and retained untouched.
 - Visitor and visit analytics live in `data/wiki-analytics.sqlite` by default. Single page views are kept for 365 days; daily totals per page and the all-time numbers are kept as aggregates. See [How Vicky Counts Visits](#how-vicky-counts-visits).
 - A live process owns `data/wiki-store.json.runtime-owner.json` by default. A launcher that starts a Next.js child also creates `data/wiki-store.json.runtime-owner.json.child.json`. These are exclusive runtime ownership artifacts, not application data or backup artifacts.
@@ -243,7 +243,6 @@ Common optional settings:
 | `WIKI_SSL_STORAGE_DIR` | Certificate storage directory | `./data/ssl` |
 | `WIKI_MARKDOWN_CACHE_DIR` | Persistent rendered Markdown HTML cache directory | `./data/markdown-cache` |
 | `WIKI_DOCS_CACHE_DIR` | Persistent local copy of the docs repository (index, Markdown blobs, commit data) | `./data/docs-cache` |
-| `WIKI_TRANSLATION_CACHE_DIR` | Persistent docs translation cache directory | `./data/translation-cache` |
 | `WIKI_ANALYTICS_DB_PATH` | Persistent visitor analytics SQLite database | `./data/wiki-analytics.sqlite` |
 | `AUTH_LOGIN_DB_PATH` | Durable login rate-limit SQLite database | `./data/login-rate-limit.sqlite` |
 | `AUTH_LOGIN_MAX_FAILURES` | Failed logins allowed within the rolling window before blocking | `8` |
@@ -360,7 +359,6 @@ Persist these paths across deployments:
 - `data/ssl/`
 - `data/markdown-cache/`
 - `data/docs-cache/`
-- `data/translation-cache/`
 - `data/wiki-analytics.sqlite`, including its `-wal` and `-shm` companions when present (a leftover `wiki-analytics.sqlite.compact` is a disposable copy and need not be kept)
 - `data/login-rate-limit.sqlite`, including its `-wal` and `-shm` companions when present
 - `data/login-rate-limit.json` when retained as a legacy migration source

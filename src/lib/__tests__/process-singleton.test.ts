@@ -10,7 +10,7 @@ import type { GitHubRuntimeConfig } from "@/lib/types";
 
 import { createFakeGitHub, type FakeGitHub } from "./fixtures/fake-github-api";
 
-const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_STORE_FILE_PATH", "WIKI_TRANSLATION_CACHE_DIR"] as const;
+const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_STORE_FILE_PATH"] as const;
 
 // Next.js evaluates every library module once per bundle graph (server-rendered pages, route
 // handlers, ...). Importing again after resetting the module registry creates exactly such a
@@ -32,7 +32,6 @@ describe("process-wide runtime state", () => {
     process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
     process.env.WIKI_STORE_FILE_PATH = path.join(tempDir, "wiki-store.json");
-    process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
     fake = createFakeGitHub();
     fake.setFile("docs/home.md", "# Home");
     vi.stubGlobal("fetch", fake.fetch);

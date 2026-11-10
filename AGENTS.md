@@ -60,7 +60,7 @@
   - `src/lib/github-content-store.ts`: content-addressed blob store (parsed once), downloads, unreferenced-blob sweep, reads by path
   - `src/lib/github-commit-metadata.ts`: "last updated" data per file version (batched GraphQL), persisted
   - `src/lib/github-docs-cache-files.ts`: on-disk layout of the docs cache directory
-  - `src/lib/github-derived-caches.ts`: pruning of rendered, translated, search, and plaintext caches for changed pages
+  - `src/lib/github-derived-caches.ts`: pruning of rendered, search, and plaintext caches for changed pages
   - `src/lib/github-localization.ts`: localization readers (translated pages, sidebar titles, search pages, job status, cache-card variants) and lazy per-language loads
   - `src/lib/github-localization-saves.ts`: localized saves (single file and batched Git data API commits)
   - `src/lib/github-paths.ts`: repository path rules
@@ -70,13 +70,11 @@
 - Cache implementations:
   - `src/lib/cache.ts`
   - `src/lib/markdown-render-cache-store.ts`
-  - `src/lib/translation-cache-store.ts`
 - Auth + rate limiting:
   - `src/lib/auth.ts`
   - `src/lib/login-rate-limit.ts`
 - AI and translation:
   - `src/lib/ai-chat.ts`
-  - `src/lib/auto-translate-server.ts`
   - `src/lib/openrouter.ts`
 - Analytics (see "Visitor Analytics"):
   - `src/lib/visitors.ts`: visit queue (dedup, capacity, retries, batches) and the admin summary shape
@@ -167,7 +165,7 @@ Useful URLs:
 - Translation job (`page-localization.ts`, `page-localization-jobs.ts`): starting one costs one index refresh (a single tree request on a warm index); status comes from `loadGitHubLocalizationStatuses`. Up to 16 OpenRouter requests run in parallel (fewer under memory pressure). `classifyTranslationFailure` decides retries: transient failures retry up to 6 attempts with exponential backoff and jitter, `retry-after` pauses every worker, page-level 4xx fail only that page, and 401/404/402-without-`retry-after` (or a closed upload queue) stop starting further translations. The memory wait is bounded (2 minutes), a batch upload is bounded (10 minutes, `GITHUB_LOCALIZATION_UPLOAD_TIMEOUT_MS`), and a watchdog fails a job that reports no progress for 15 minutes past its next expected activity, so a job always reaches a final state and never blocks later jobs.
 - Recording source versions (`recordGitHubLocalizationSourceVersions`, admin action "Record Source Versions", `POST /api/admin/translations/source-versions` with the confirmed `expectedFiles`): writes `sourceBlobSha` into every translation that lacks it and is current by commit dates; outdated, undetermined, and unreadable ones are never touched. It refreshes the index until it matches the branch head, commits everything in one commit (one tree request per 100 files, content inline, non-forced ref update), applies the files to index, store, and metadata, and prunes no rendered HTML (bodies are unchanged). It runs as a job of the shared job/log (`mode: "source-versions"`); both job kinds share one slot, so they never overlap. The UI offers it only while the latest job reports `unrecordedPages`.
 - Front matter (`markdown.ts`): the app manages `title`, `description`, `excludeFromAiPlaintext`, and `sourceBlobSha`. Saves edit those keys line by line in the existing YAML (`serializeMarkdownDocument(fields, base)`), so other keys, comments, and formatting survive every read–modify–write; pass the replaced file (or the Markdown sent) as `base`. `withSourceBlobSha` changes only the front matter and keeps every body byte, so rendered HTML stays valid.
-- Persistent layout under `WIKI_DOCS_CACHE_DIR` (`data/docs-cache/`): `sources/<sha256 of the runtime cache key>/repo-index.json` and `commit-metadata.json`, plus `blobs/<2 hex>/<sha>.json`. Whole-docs snapshot files of the earlier format are removed on first use. Rendered Markdown and translations are cached in their own directories.
+- Persistent layout under `WIKI_DOCS_CACHE_DIR` (`data/docs-cache/`): `sources/<sha256 of the runtime cache key>/repo-index.json` and `commit-metadata.json`, plus `blobs/<2 hex>/<sha>.json`. Whole-docs snapshot files of the earlier format are removed on first use. Rendered Markdown is cached in its own directory. Startup (`acquireRuntimeOwnerLease`) deletes the files of the translation cache Vicky no longer keeps from `WIKI_TRANSLATION_CACHE_DIR` (`data/translation-cache/` by default) and nothing else; translations live only in the repository and the docs cache.
 - Source isolation: cache keys include the credential fingerprint and the security epoch (`github-cache-identity.ts`). Changing the source repo/branch/path/token revokes the old key, deletes its source directory and the blobs no remaining index references; in-flight work of an older cache generation can never publish (`github-cache-invalidation.ts`).
 - Search builds its corpus from the source view, and per language from the stored translations.
 - Tests use the fake GitHub API in `src/lib/__tests__/fixtures/fake-github-api.ts` (`vi.stubGlobal("fetch", fake.fetch)`), which exercises the real client, and must point `WIKI_DOCS_CACHE_DIR` (and the other cache directories) at a temporary directory. `TESTING_GUIDELINES.md` describes running the production server against the same fake (`scripts/fake-github-preload.mjs`) and checking UI offscreen (`scripts/offscreen-browser.mjs`).
@@ -204,11 +202,11 @@ Useful URLs:
 
 ## Generated/Ignored Files
 - `next-env.d.ts` is ignored and generated by Next.js.
-- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*` (a `wiki-analytics.sqlite.compact` copy exists only during the one-time compaction and is removed at the next start), `login-rate-limit.json`, SSL files, rendered Markdown, the docs cache, and translations.
+- Runtime state under `data/` is ignored, including `wiki-store.json`, `wiki-analytics.sqlite*` (a `wiki-analytics.sqlite.compact` copy exists only during the one-time compaction and is removed at the next start), `login-rate-limit.json`, SSL files, rendered Markdown, and the docs cache.
 - `.next/` artifacts are generated and can cause stale type references after route refactors; clean/restart build if needed.
 
 ## Deployment Notes
 - Use `npm run build` then `npm run start` for the included production server with custom-domain and automatic HTTPS support.
 - Use `npm run start:next` only when intentionally running plain Next.js without the included HTTPS/ACME server.
-- Persist `data/wiki-store.json`, `data/wiki-analytics.sqlite*`, `data/login-rate-limit.json`, and `data/ssl/` across deployments. Persist the Markdown cache, the docs cache (`data/docs-cache/`), and the translation cache when preserving warm caches or generated translations matters; without the docs cache, the first start downloads every page again.
+- Persist `data/wiki-store.json`, `data/wiki-analytics.sqlite*`, `data/login-rate-limit.json`, and `data/ssl/` across deployments. Persist the Markdown cache and the docs cache (`data/docs-cache/`) when preserving warm caches matters; without the docs cache, the first start downloads every page again.
 - Direct Let's Encrypt HTTP-01 usually requires ports 80/443 or a correctly configured reverse proxy; local development uses port 3000 and does not require privileged ports.

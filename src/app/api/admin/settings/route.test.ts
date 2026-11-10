@@ -59,7 +59,6 @@ describe("admin settings GitHub cache transition", () => {
     mocks.transitionGitHubRuntimeCaches.mockResolvedValue({
       renderedEntries: 0,
       docsCacheFiles: 0,
-      translationEntries: 0,
     });
     mocks.updateStore.mockImplementation(async (mutator: (store: DocsStore) => Promise<void>) => {
       const next = structuredClone(store);

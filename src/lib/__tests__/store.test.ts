@@ -9,14 +9,12 @@ import { DEFAULT_STORE } from "@/lib/defaults";
 import { gitHubDocsLogicalSourceKey, legacyGitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { listPersistentRenderedMarkdownCacheEntries, writePersistentRenderedMarkdown } from "@/lib/markdown-render-cache-store";
 import { createAdminCredentialFingerprint } from "@/lib/session-security";
-import { readPersistentTranslatedPage, writePersistentTranslatedPage } from "@/lib/translation-cache-store";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 const tempDirs: string[] = [];
 const previousMarkdownCacheDir = process.env.WIKI_MARKDOWN_CACHE_DIR;
 const previousSnapshotCacheDir = process.env.WIKI_DOCS_SNAPSHOT_DIR;
 const previousDocsCacheDir = process.env.WIKI_DOCS_CACHE_DIR;
-const previousTranslationCacheDir = process.env.WIKI_TRANSLATION_CACHE_DIR;
 const previousAdminPassword = process.env.ADMIN_PASSWORD;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -60,11 +58,6 @@ afterEach(async () => {
   } else {
     process.env.WIKI_DOCS_CACHE_DIR = previousDocsCacheDir;
   }
-  if (previousTranslationCacheDir === undefined) {
-    delete process.env.WIKI_TRANSLATION_CACHE_DIR;
-  } else {
-    process.env.WIKI_TRANSLATION_CACHE_DIR = previousTranslationCacheDir;
-  }
   if (previousAdminPassword === undefined) {
     delete process.env.ADMIN_PASSWORD;
   } else {
@@ -102,18 +95,12 @@ describe("store reads", () => {
     await writeFile(snapshotPath(otherConfig), "unrelated snapshot", "utf8");
     process.env.WIKI_DOCS_SNAPSHOT_DIR = snapshotDir;
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(path.dirname(storePath), "rendered");
-    process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(path.dirname(storePath), "translations");
     const legacyPrefix = `${legacyGitHubRuntimeCacheKey(legacyConfig)}|`;
     const otherPrefix = `${legacyGitHubRuntimeCacheKey(otherConfig)}|`;
     const legacyRenderKey = `${legacyPrefix}markdown-render|v1|private|en-us|legacy`;
     const otherRenderKey = `${otherPrefix}markdown-render|v1|public|en-us|other`;
-    const legacyTranslationKey = `${legacyPrefix}auto-translate|page|language|private|legacy`;
-    const otherTranslationKey = `${otherPrefix}auto-translate|page|language|public|other`;
-    const translatedPage = { content: "translated", description: "", headings: [], includeInPlaintextExport: true, markdown: "translated", path: "private.md", sha: "sha", slug: "private", title: "Private" };
     await writePersistentRenderedMarkdown(legacyRenderKey, { headings: [], html: "legacy private" });
     await writePersistentRenderedMarkdown(otherRenderKey, { headings: [], html: "other source" });
-    await writePersistentTranslatedPage(legacyTranslationKey, translatedPage);
-    await writePersistentTranslatedPage(otherTranslationKey, translatedPage);
 
     const { getStore } = await importStore(storePath);
     const normalized = await getStore();
@@ -128,8 +115,6 @@ describe("store reads", () => {
     const renderKeys = (await listPersistentRenderedMarkdownCacheEntries()).map((entry) => entry.key);
     expect(renderKeys).not.toContain(legacyRenderKey);
     expect(renderKeys).toContain(otherRenderKey);
-    expect(await readPersistentTranslatedPage(legacyTranslationKey)).toBeNull();
-    expect(await readPersistentTranslatedPage(otherTranslationKey)).not.toBeNull();
   });
 
   it("uses a unique cache security epoch for every newly created store", () => {

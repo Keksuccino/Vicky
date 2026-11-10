@@ -116,8 +116,6 @@ const docsMemoryCaches = processSingleton("cache.docsMemoryCaches.v3", () => ({
   docsSource: new MemoryCache<string, unknown>(),
   docsSearchCorpus: new TtlCache<string, unknown>(DOCS_CACHE_TTL_MS),
   aiPlaintextDocs: new TtlCache<string, string>(AI_PLAINTEXT_EXPORT_CACHE_TTL_MS),
-  translatedDocsPage: new MemoryCache<string, unknown>(),
-  translatedDocsTitle: new MemoryCache<string, unknown>(),
   renderedMarkdown: new MemoryCache<string, unknown>(),
 }));
 
@@ -131,8 +129,6 @@ export const docsSourceCache = docsMemoryCaches.docsSource;
 /** Search corpora; their TTL is the docs refresh interval. */
 export const docsSearchCorpusCache = docsMemoryCaches.docsSearchCorpus;
 export const aiPlaintextDocsCache = docsMemoryCaches.aiPlaintextDocs;
-export const translatedDocsPageCache = docsMemoryCaches.translatedDocsPage;
-export const translatedDocsTitleCache = docsMemoryCaches.translatedDocsTitle;
 export const renderedMarkdownCache = docsMemoryCaches.renderedMarkdown;
 
 export const setDocsCacheTtlMs = (ttlMs: number): number => {

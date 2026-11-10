@@ -13,7 +13,7 @@ import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake
 
 const createConfig = (cacheEpoch: string): GitHubRuntimeConfig => ({ owner: "owner", repo: "repo", branch: "main", docsPath: "docs", token: "token", cacheEpoch });
 
-const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_TRANSLATION_CACHE_DIR"] as const;
+const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR"] as const;
 
 describe("public GitHub document reads", () => {
   const previousEnvironment = new Map(RUNTIME_DIRECTORY_VARIABLES.map((name) => [name, process.env[name]]));
@@ -24,7 +24,6 @@ describe("public GitHub document reads", () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-public-docs-"));
     process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
-    process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
     docsSourceCache.clear();
     clearGitHubBlobMemory();
     fake = createFakeGitHub();

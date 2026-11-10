@@ -4,7 +4,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { docsSourceCache, renderedMarkdownCache, translatedDocsPageCache } from "@/lib/cache";
+import { docsSourceCache, renderedMarkdownCache } from "@/lib/cache";
 import { clearGitHubBlobMemory } from "@/lib/github-content-store";
 import { loadGitHubDoc, loadPublicGitHubDoc, refreshGitHubDocsCache, saveGitHubDoc, toRuntimeConfigCacheKey } from "@/lib/github";
 import { transitionGitHubRuntimeCaches } from "@/lib/github-cache-invalidation";
@@ -13,7 +13,6 @@ import { readPersistentGitHubRepoIndex } from "@/lib/github-repo-index";
 import { searchDocsCorpus } from "@/lib/docs-search";
 import { listPersistentRenderedMarkdownCacheEntries } from "@/lib/markdown-render-cache-store";
 import { renderGitHubDocPageMarkdown } from "@/lib/markdown-server-renderer";
-import { readPersistentTranslatedPage, writePersistentTranslatedPage } from "@/lib/translation-cache-store";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 import { createFakeGitHub, type FakeGitHub } from "./fixtures/fake-github-api";
@@ -27,7 +26,7 @@ const config: GitHubRuntimeConfig = {
   cacheEpoch: "deletion-test",
 };
 
-const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_TRANSLATION_CACHE_DIR"] as const;
+const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR"] as const;
 
 describe("GitHub deletion invalidation", () => {
   const previousEnvironment = new Map(RUNTIME_DIRECTORY_VARIABLES.map((name) => [name, process.env[name]]));
@@ -38,11 +37,9 @@ describe("GitHub deletion invalidation", () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-deletion-cache-"));
     process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
-    process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
     docsSourceCache.clear();
     clearGitHubBlobMemory();
     renderedMarkdownCache.clear();
-    translatedDocsPageCache.clear();
     fake = createFakeGitHub();
     fake.setFile("docs/home.md", "---\ntitle: Home\n---\nPublic home");
     fake.setFile("docs/private.md", "---\ntitle: Private\n---\nSecret deleted text");
@@ -62,11 +59,10 @@ describe("GitHub deletion invalidation", () => {
     docsSourceCache.clear();
     clearGitHubBlobMemory();
     renderedMarkdownCache.clear();
-    translatedDocsPageCache.clear();
     await rm(tempDir, { recursive: true, force: true });
   });
 
-  it("removes deleted pages from page, index, render, translation, and search caches on refresh", async () => {
+  it("removes deleted pages from page, index, render, and search caches on refresh", async () => {
     await refreshGitHubDocsCache(config);
     const deletedPage = await loadGitHubDoc(config, { slug: "private" });
     await renderGitHubDocPageMarkdown({ config, languageCode: "en-US", page: deletedPage });
@@ -76,8 +72,6 @@ describe("GitHub deletion invalidation", () => {
       throw new Error("Expected the stored translation.");
     }
     await renderGitHubDocPageMarkdown({ config, languageCode: "de", page: localized.page });
-    const translationKey = `${toRuntimeConfigCacheKey(config)}|auto-translate|page|${"a".repeat(32)}|private|content`;
-    await writePersistentTranslatedPage(translationKey, deletedPage);
     expect(await searchDocsCorpus(config, "secret")).toHaveLength(1);
 
     fake.deleteFile("docs/private.md");
@@ -87,7 +81,6 @@ describe("GitHub deletion invalidation", () => {
     await expect(loadGitHubDoc(config, { slug: "private" })).rejects.toThrow("Document not found");
     await expect(loadPublicGitHubDoc(config, { slug: "private" })).rejects.toMatchObject({ status: 404 });
     await expect(searchDocsCorpus(config, "secret")).resolves.toEqual([]);
-    await expect(readPersistentTranslatedPage(translationKey)).resolves.toBeNull();
     await expect(listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(config)}|`)).resolves.toEqual([]);
     const persistedIndex = await readPersistentGitHubRepoIndex(config, path.join(tempDir, "docs-cache"));
     expect(Array.from(persistedIndex?.files.keys() ?? [])).toEqual(["docs/home.md"]);
@@ -114,13 +107,10 @@ describe("GitHub deletion invalidation", () => {
     await refreshGitHubDocsCache(config);
     const homePage = await loadGitHubDoc(config, { slug: "home" });
     await renderGitHubDocPageMarkdown({ config, languageCode: "en-US", page: homePage });
-    const translationKey = `${toRuntimeConfigCacheKey(config)}|auto-translate|page|${"b".repeat(32)}|home|content`;
-    await writePersistentTranslatedPage(translationKey, homePage);
     expect(await searchDocsCorpus(config, "public")).toHaveLength(1);
 
     await saveGitHubDoc(config, { path: "home.md", content: "Updated saved content" });
 
-    await expect(readPersistentTranslatedPage(translationKey)).resolves.toBeNull();
     await expect(listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(config)}|`)).resolves.toEqual([]);
     await expect(searchDocsCorpus(config, "public")).resolves.toEqual([]);
     await expect(searchDocsCorpus(config, "updated")).resolves.toHaveLength(1);
@@ -131,15 +121,12 @@ describe("GitHub deletion invalidation", () => {
     await refreshGitHubDocsCache(config);
     const homePage = await loadGitHubDoc(config, { slug: "home" });
     await renderGitHubDocPageMarkdown({ config, languageCode: "en-US", page: homePage });
-    const translationKey = `${toRuntimeConfigCacheKey(config)}|auto-translate|page|${"c".repeat(32)}|home|content`;
-    await writePersistentTranslatedPage(translationKey, homePage);
     fake.intercept((request) =>
       request.kind === "put-contents" ? new Response(JSON.stringify({ message: "GitHub rejected the write" }), { status: 422, headers: { "content-type": "application/json" } }) : undefined,
     );
 
     await expect(saveGitHubDoc(config, { path: "home.md", content: "Rejected content" })).rejects.toThrow("GitHub rejected");
 
-    await expect(readPersistentTranslatedPage(translationKey)).resolves.not.toBeNull();
     await expect(listPersistentRenderedMarkdownCacheEntries(`${toRuntimeConfigCacheKey(config)}|`)).resolves.toHaveLength(1);
     await expect(loadGitHubDoc(config, { slug: "home" })).resolves.toMatchObject({ content: "Public home" });
   });

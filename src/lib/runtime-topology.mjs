@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants as fsConstants, readFileSync, rmSync } from "node:fs";
-import { access, readFile, rm } from "node:fs/promises";
+import { access, readFile, readdir, rm, rmdir, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -16,6 +16,12 @@ const OWNER_FILE_SUFFIX = ".runtime-owner.json";
 const OWNER_ASSIGNMENT_FILE_SUFFIX = ".child.json";
 const OWNER_ASSIGNMENT_POLL_MS = 10;
 const OWNER_ASSIGNMENT_TIMEOUT_MS = 10_000;
+/**
+ * Files of the translation cache Vicky no longer keeps: `pages/` and `titles/` entries named by
+ * the SHA-256 of their key, and the temporary files of interrupted atomic writes beside them.
+ */
+const OBSOLETE_TRANSLATION_CACHE_SUBDIRECTORIES = ["pages", "titles"];
+const OBSOLETE_TRANSLATION_CACHE_FILE_PATTERN = /^[a-f0-9]{64}\.json(\.\d+\.\d+\.[0-9a-f-]{36}\.tmp)?$/;
 
 const defaultPath = (cwd, ...segments) => path.join(cwd, ...segments);
 const configuredPath = (value, fallback, cwd, variableName) => {
@@ -64,11 +70,12 @@ export function resolveRuntimeStorageLayout(environment = process.env, cwd = pro
     path.dirname(sslStatusPath),
     configuredTrimmedPath(environment.WIKI_MARKDOWN_CACHE_DIR, defaultPath(cwd, "data", "markdown-cache"), cwd, "WIKI_MARKDOWN_CACHE_DIR"),
     configuredTrimmedPath(environment.WIKI_DOCS_CACHE_DIR, defaultPath(cwd, "data", "docs-cache"), cwd, "WIKI_DOCS_CACHE_DIR"),
-    configuredTrimmedPath(environment.WIKI_TRANSLATION_CACHE_DIR, defaultPath(cwd, "data", "translation-cache"), cwd, "WIKI_TRANSLATION_CACHE_DIR"),
     path.dirname(analyticsDbPath),
     path.dirname(loginDbPath),
     path.dirname(legacyLoginPath),
   ];
+  // Only located, never created: startup removes what is left of the cache (see removeObsoleteTranslationCache).
+  const obsoleteTranslationCacheDir = path.resolve(cwd, environment.WIKI_TRANSLATION_CACHE_DIR?.trim() || defaultPath(cwd, "data", "translation-cache"));
   const sensitiveFiles = [
     storePath,
     sslStatusPath,
@@ -87,6 +94,7 @@ export function resolveRuntimeStorageLayout(environment = process.env, cwd = pro
   return {
     assignmentFilePath: `${ownerFilePath}${OWNER_ASSIGNMENT_FILE_SUFFIX}`,
     directories: [...new Set(directories)],
+    obsoleteTranslationCacheDir,
     ownerFilePath,
     sensitiveFiles: [...new Set(sensitiveFiles)],
     storePath,
@@ -203,6 +211,43 @@ const preflightRuntimeStorage = async (layout) => {
     if (await ensurePrivateFile(filePath)) {
       await access(filePath, fsConstants.W_OK);
     }
+  }
+};
+
+/**
+ * Deletes what is left of the translation cache Vicky no longer keeps (nothing reads it), then the
+ * directories that leaves empty. Only file names that cache used are removed, so any other file
+ * survives, and a shared or system directory is never touched. Failures are logged and never stop
+ * startup; the next start tries again. Once the directory is gone, this costs one failed readdir.
+ */
+const removeObsoleteTranslationCache = async (directoryPath) => {
+  try {
+    assertDedicatedPrivateDirectory(directoryPath);
+    for (const subdirectory of OBSOLETE_TRANSLATION_CACHE_SUBDIRECTORIES) {
+      const subdirectoryPath = path.join(directoryPath, subdirectory);
+      let fileNames;
+      try {
+        fileNames = await readdir(/*turbopackIgnore: true*/ subdirectoryPath);
+      } catch (error) {
+        if (isMissingPathError(error)) {
+          continue;
+        }
+        throw error;
+      }
+      for (const fileName of fileNames) {
+        if (OBSOLETE_TRANSLATION_CACHE_FILE_PATTERN.test(fileName)) {
+          await unlink(path.join(subdirectoryPath, fileName)).catch((error) => {
+            if (!isMissingPathError(error)) {
+              throw error;
+            }
+          });
+        }
+      }
+      await rmdir(subdirectoryPath).catch(() => undefined);
+    }
+    await rmdir(directoryPath).catch(() => undefined);
+  } catch (error) {
+    console.warn(`[vicky] Failed to remove the obsolete translation cache in ${directoryPath}: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
 
@@ -361,6 +406,7 @@ export async function acquireRuntimeOwnerLease(options = {}) {
   environment[RUNTIME_OWNER_ID_ENV] = lease.id;
   try {
     await preflightRuntimeStorage(layout);
+    await removeObsoleteTranslationCache(layout.obsoleteTranslationCacheDir);
     return lease;
   } catch (error) {
     await lease.release().catch(() => undefined);

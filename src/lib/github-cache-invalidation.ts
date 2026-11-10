@@ -3,8 +3,6 @@ import {
   docsSearchCorpusCache,
   docsSourceCache,
   renderedMarkdownCache,
-  translatedDocsPageCache,
-  translatedDocsTitleCache,
 } from "@/lib/cache";
 import { gitHubDocsLogicalSourceKey, gitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { clearGitHubBlobMemory, sweepUnreferencedGitHubBlobs } from "@/lib/github-content-store";
@@ -16,7 +14,6 @@ import {
   recordRenderedMarkdownCacheMutation,
 } from "@/lib/markdown-render-cache-store";
 import { processSingleton } from "@/lib/process-singleton.mjs";
-import { deletePersistentTranslationCacheWhere } from "@/lib/translation-cache-store";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 type GitHubCacheRuntimeState = {
@@ -36,7 +33,6 @@ export type GitHubCacheInvalidationResult = {
   /** Removed repository index, commit metadata, blob, and obsolete snapshot files. */
   docsCacheFiles: number;
   renderedEntries: number;
-  translationEntries: number;
 };
 
 const runtimeState = processSingleton("githubCache.runtimeState", (): GitHubCacheRuntimeState => ({
@@ -158,8 +154,6 @@ const clearMemoryCachesForPrefix = (prefix: string): void => {
   docsSourceCache.deleteWhere((key) => key.startsWith(prefix));
   docsSearchCorpusCache.deleteWhere((key) => key.startsWith(prefix));
   aiPlaintextDocsCache.deleteWhere((key) => key.startsWith(prefix));
-  translatedDocsPageCache.deleteWhere((key) => key.startsWith(prefix));
-  translatedDocsTitleCache.deleteWhere((key) => key.startsWith(prefix));
   renderedMarkdownCache.deleteWhere((key) => key.startsWith(prefix));
 };
 
@@ -180,10 +174,9 @@ export const invalidateGitHubRuntimeCaches = async (
   clearMemoryCachesForPrefix(prefix);
   await waitForOlderCacheWrites(runtimeKey, generation);
 
-  const [sourceFiles, renderedEntries, translationEntries] = await Promise.all([
+  const [sourceFiles, renderedEntries] = await Promise.all([
     deleteSourceCacheFiles(baseDir, runtimeKey),
     deletePersistentRenderedMarkdownWhere((key) => key.startsWith(prefix)),
-    deletePersistentTranslationCacheWhere((key) => key.startsWith(prefix)),
   ]);
   const blobFiles = await sweepUnreferencedGitHubBlobs(baseDir);
 
@@ -201,7 +194,6 @@ export const invalidateGitHubRuntimeCaches = async (
   return {
     docsCacheFiles: sourceFiles + blobFiles,
     renderedEntries,
-    translationEntries,
   };
 };
 
@@ -213,7 +205,7 @@ export const transitionGitHubRuntimeCaches = async (
   const nextKey = gitHubRuntimeCacheKey(nextConfig);
   activateGitHubRuntimeConfig(nextConfig);
   if (previousKey === nextKey) {
-    return { docsCacheFiles: 0, renderedEntries: 0, translationEntries: 0 };
+    return { docsCacheFiles: 0, renderedEntries: 0 };
   }
 
   const currentResult = await invalidateGitHubRuntimeCaches(previousConfig, {
@@ -225,7 +217,6 @@ export const transitionGitHubRuntimeCaches = async (
   return {
     docsCacheFiles: legacyResult.docsCacheFiles + currentResult.docsCacheFiles,
     renderedEntries: legacyResult.renderedEntries + currentResult.renderedEntries,
-    translationEntries: legacyResult.translationEntries + currentResult.translationEntries,
   };
 };
 
@@ -245,19 +236,16 @@ export const invalidateAllGitHubRuntimeCaches = async (): Promise<GitHubCacheInv
     docsSourceCache.clear();
     docsSearchCorpusCache.clear();
     aiPlaintextDocsCache.clear();
-    translatedDocsPageCache.clear();
-    translatedDocsTitleCache.clear();
     renderedMarkdownCache.clear();
     clearGitHubBlobMemory();
 
     await Promise.all(Array.from(generations, ([runtimeKey, generation]) => waitForOlderCacheWrites(runtimeKey, generation)));
 
     const baseDir = getGitHubDocsCacheDir();
-    const [docsCacheFiles, legacySnapshotFiles, renderedEntries, translationEntries] = await Promise.all([
+    const [docsCacheFiles, legacySnapshotFiles, renderedEntries] = await Promise.all([
       deleteAllDocsCacheFiles(baseDir),
       removeLegacyDocsSnapshots(baseDir),
       deletePersistentRenderedMarkdownWhere(() => true),
-      deletePersistentTranslationCacheWhere(() => true),
     ]);
 
     await recordRenderedMarkdownCacheMutation({
@@ -266,7 +254,7 @@ export const invalidateAllGitHubRuntimeCaches = async (): Promise<GitHubCacheInv
       scope: "all",
     });
 
-    return { docsCacheFiles: docsCacheFiles + legacySnapshotFiles, renderedEntries, translationEntries };
+    return { docsCacheFiles: docsCacheFiles + legacySnapshotFiles, renderedEntries };
   } finally {
     runtimeState.allInvalidating = false;
     for (const runtimeKey of runtimeKeys) {

@@ -23,7 +23,7 @@ import type { AutoTranslateLanguage, DocsStore, GitHubRuntimeConfig } from "@/li
 
 import { createFakeGitHub, gitBlobShaOf, type FakeGitHub } from "./fixtures/fake-github-api";
 
-const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR", "WIKI_TRANSLATION_CACHE_DIR"] as const;
+const RUNTIME_DIRECTORY_VARIABLES = ["WIKI_DOCS_CACHE_DIR", "WIKI_MARKDOWN_CACHE_DIR"] as const;
 
 const SOURCE: AutoTranslateLanguage = { name: "English (US)", code: "en-US", icon: "us", enabled: true };
 const GERMAN: AutoTranslateLanguage = { name: "German", code: "de", icon: "de", enabled: true };
@@ -93,7 +93,6 @@ describe("GitHub localizations from the repository index", () => {
     tempDir = await mkdtemp(path.join(os.tmpdir(), "vicky-localization-"));
     process.env.WIKI_DOCS_CACHE_DIR = path.join(tempDir, "docs-cache");
     process.env.WIKI_MARKDOWN_CACHE_DIR = path.join(tempDir, "markdown");
-    process.env.WIKI_TRANSLATION_CACHE_DIR = path.join(tempDir, "translations");
     simulateRestart();
     setDocsCacheTtlMs(3_600_000);
     config = createConfig();

@@ -2,7 +2,7 @@
 
 ## Automated tests
 
-- `npm test` runs Vitest. Tests that touch GitHub use the fake API in `src/lib/__tests__/fixtures/fake-github-api.ts` (`vi.stubGlobal("fetch", fake.fetch)`), which runs the real GitHub client, and point `WIKI_DOCS_CACHE_DIR`, `WIKI_MARKDOWN_CACHE_DIR`, and `WIKI_TRANSLATION_CACHE_DIR` at a temporary directory.
+- `npm test` runs Vitest. Tests that touch GitHub use the fake API in `src/lib/__tests__/fixtures/fake-github-api.ts` (`vi.stubGlobal("fetch", fake.fetch)`), which runs the real GitHub client, and point `WIKI_DOCS_CACHE_DIR` and `WIKI_MARKDOWN_CACHE_DIR` at a temporary directory.
 - Assert GitHub traffic with `fake.count(kind)` / `fake.requests` after `fake.resetRequests()`. A test must never reach the real GitHub API: when a module mock stops covering a loader, the loader falls through to `fetch`, so stub `fetch` in every test that can reach GitHub code.
 
 ## Real server without GitHub
@@ -13,7 +13,7 @@
 2. Create a temporary directory inside the project (never commit it) and export, for the server process only:
    - `NODE_ENV=production`, `VICKY_RUNTIME_TOPOLOGY=single-process-local`, a non-default `HTTP_PORT`/`HTTPS_PORT`, `HOST=127.0.0.1`.
    - Fresh `AUTH_JWT_SECRET`, `ADMIN_PASSWORD`, `ENCRYPTION_SECRET` (`openssl rand -base64 48`), not the values of `.env.local`.
-   - Every runtime path, pointed into the temporary directory: `WIKI_STORE_FILE_PATH`, `WIKI_SSL_STORAGE_DIR`, `WIKI_MARKDOWN_CACHE_DIR`, `WIKI_DOCS_CACHE_DIR`, `WIKI_DOCS_SNAPSHOT_DIR`, `WIKI_TRANSLATION_CACHE_DIR`, `WIKI_ANALYTICS_DB_PATH`, `AUTH_LOGIN_DB_PATH`, `AUTH_LOGIN_STORE_FILE_PATH`, `SSL_STATUS_FILE_PATH`. `.env.local` sets some of these to `data/`; exported values take precedence.
+   - Every runtime path, pointed into the temporary directory: `WIKI_STORE_FILE_PATH`, `WIKI_SSL_STORAGE_DIR`, `WIKI_MARKDOWN_CACHE_DIR`, `WIKI_DOCS_CACHE_DIR`, `WIKI_DOCS_SNAPSHOT_DIR`, `WIKI_TRANSLATION_CACHE_DIR` (startup deletes the old translation cache files there), `WIKI_ANALYTICS_DB_PATH`, `AUTH_LOGIN_DB_PATH`, `AUTH_LOGIN_STORE_FILE_PATH`, `SSL_STATUS_FILE_PATH`. `.env.local` sets some of these to `data/`; exported values take precedence.
    - `NODE_OPTIONS=--import=<absolute path>/scripts/fake-github-preload.mjs`. Worker threads (the visitor analytics worker) inherit it; the preload installs its fakes and the control endpoint in the main thread only.
    - Optional: `FAKE_GITHUB_SEED` (JSON array of `{ "path": "docs/x.md", "content": "..." }` or `{ "path": ..., "size": <bytes> }` for synthetic pages, committed in order, so a later entry for a source page makes its earlier translations outdated), `FAKE_GITHUB_LATENCY_MS` (per-request delay), `FAKE_GITHUB_LOG` (one JSON line per GitHub or OpenRouter request), `FAKE_GITHUB_CONTROL_PORT` (default `39190`).
    - Optional for translation jobs: `FAKE_OPENROUTER_LATENCY_MS` (delay per translation), `FAKE_OPENROUTER_RATE_LIMITS=<n>` (the first n requests get a 429 with `retry-after: FAKE_OPENROUTER_RETRY_AFTER_S`, default 2, to watch the backoff). A fake translation appends the language name to the title and puts a note above the unchanged content.

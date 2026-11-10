@@ -1,20 +1,12 @@
-import {
-  aiPlaintextDocsCache,
-  docsSearchCorpusCache,
-  renderedMarkdownCache,
-  translatedDocsPageCache,
-  translatedDocsTitleCache,
-} from "@/lib/cache";
+import { aiPlaintextDocsCache, docsSearchCorpusCache, renderedMarkdownCache } from "@/lib/cache";
 import { gitHubDocsLogicalSourceKey, legacyGitHubRuntimeCacheKey } from "@/lib/github-cache-identity";
 import { getGitHubDocsCacheDir, removeLegacyDocsSnapshots } from "@/lib/github-docs-cache-files";
 import { deletePersistentRenderedMarkdownWhere, recordRenderedMarkdownCacheMutation } from "@/lib/markdown-render-cache-store";
-import { deletePersistentTranslationCacheWhere } from "@/lib/translation-cache-store";
 import type { GitHubRuntimeConfig } from "@/lib/types";
 
 export type LegacyGitHubCacheCleanupResult = {
   docsCacheFiles: number;
   renderedEntries: number;
-  translationEntries: number;
 };
 
 const matchesLegacyNamespace = (key: string, prefix: string, namespaces: string[]): boolean =>
@@ -31,14 +23,11 @@ export const cleanupLegacyGitHubLogicalSourceCaches = async (config: GitHubRunti
 
   docsSearchCorpusCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["search-corpus"]));
   aiPlaintextDocsCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["plaintext-export"]));
-  translatedDocsPageCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["auto-translate"]));
-  translatedDocsTitleCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["auto-translate"]));
   renderedMarkdownCache.deleteWhere((key) => matchesLegacyNamespace(key, prefix, ["markdown-render"]));
 
-  const [docsCacheFiles, renderedEntries, translationEntries] = await Promise.all([
+  const [docsCacheFiles, renderedEntries] = await Promise.all([
     removeLegacyDocsSnapshots(getGitHubDocsCacheDir()),
     deletePersistentRenderedMarkdownWhere((key) => matchesLegacyNamespace(key, prefix, ["markdown-render"])),
-    deletePersistentTranslationCacheWhere((key) => matchesLegacyNamespace(key, prefix, ["auto-translate"])),
   ]);
 
   if (options?.recordMutation !== false) {
@@ -53,6 +42,5 @@ export const cleanupLegacyGitHubLogicalSourceCaches = async (config: GitHubRunti
   return {
     docsCacheFiles,
     renderedEntries,
-    translationEntries,
   };
 };
