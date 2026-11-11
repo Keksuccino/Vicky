@@ -113,7 +113,7 @@ export function RepositorySettingsCard() {
                 onChange={(event) => {
                   const parsed = Number.parseInt(event.target.value, 10);
                   const normalized = Number.isFinite(parsed) ? Math.min(MAX_DOCS_REFRESH_INTERVAL_MINUTES, Math.max(MIN_DOCS_REFRESH_INTERVAL_MINUTES, parsed)) : MIN_DOCS_REFRESH_INTERVAL_MINUTES;
-                  settingsStore.setDraftField("docsRefreshIntervalMinutes", normalized);
+                  settingsStore.setDraftField("docsRefreshIntervalMinutes", normalized, "pause");
                 }}
                 required
               />
@@ -136,7 +136,7 @@ export function RepositorySettingsCard() {
                 placeholder={settings.tokenConfigured ? "Saved token configured (leave blank to keep)" : "github_pat_... or ghp_..."}
                 target="githubToken"
                 value={settings.githubToken}
-                onChange={(value) => settingsStore.setDraftField("githubToken", value)}
+                onChange={(value) => settingsStore.setDraftField("githubToken", value, "leave")}
               />
               <span className="field-hint">
                 Use a PAT for this repo. Minimum permissions: Contents (read/write) and Metadata (read-only).
@@ -154,7 +154,7 @@ export function RepositorySettingsCard() {
                   id="repo-owner"
                   className="input"
                   value={settings.githubOwner}
-                  onChange={(event) => settingsStore.setDraftField("githubOwner", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("githubOwner", event.target.value, "leave")}
                   required
                 />
                 <span className="field-hint">
@@ -167,7 +167,7 @@ export function RepositorySettingsCard() {
                   id="repo-name"
                   className="input"
                   value={settings.githubRepo}
-                  onChange={(event) => settingsStore.setDraftField("githubRepo", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("githubRepo", event.target.value, "leave")}
                   required
                 />
                 <span className="field-hint">
@@ -183,7 +183,7 @@ export function RepositorySettingsCard() {
                   id="repo-branch"
                   className="input"
                   value={settings.githubBranch}
-                  onChange={(event) => settingsStore.setDraftField("githubBranch", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("githubBranch", event.target.value, "leave")}
                   required
                 />
                 <span className="field-hint">
@@ -196,7 +196,7 @@ export function RepositorySettingsCard() {
                   id="docs-path"
                   className="input"
                   value={settings.githubDocsPath}
-                  onChange={(event) => settingsStore.setDraftField("githubDocsPath", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("githubDocsPath", event.target.value, "leave")}
                   required
                 />
                 <span className="field-hint">

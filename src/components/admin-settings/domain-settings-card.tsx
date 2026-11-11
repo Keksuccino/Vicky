@@ -67,7 +67,7 @@ export function DomainSettingsCard() {
                 aria-invalid={Boolean(domainFieldErrors.customDomain)}
                 onChange={(event) => {
                   const value = event.target.value;
-                  settingsStore.setDraftField("customDomain", value);
+                  settingsStore.setDraftField("customDomain", value, "leave");
                   settingsStore.patchErrors("domain", { customDomain: validateCustomDomainInput(value) });
                 }}
                 placeholder="docs.example.com"
@@ -89,7 +89,7 @@ export function DomainSettingsCard() {
                 aria-invalid={Boolean(domainFieldErrors.letsEncryptEmail)}
                 onChange={(event) => {
                   const value = event.target.value;
-                  settingsStore.setDraftField("letsEncryptEmail", value);
+                  settingsStore.setDraftField("letsEncryptEmail", value, "leave");
                   settingsStore.patchErrors("domain", { letsEncryptEmail: validateLetsEncryptEmailInput(value) });
                 }}
                 placeholder="admin@example.com"

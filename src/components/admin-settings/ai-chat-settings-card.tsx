@@ -67,7 +67,7 @@ export function AiChatSettingsCard() {
                   id="ai-chat-assistant-name"
                   className="input"
                   value={settings.aiChatAssistantName}
-                  onChange={(event) => settingsStore.setDraftField("aiChatAssistantName", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("aiChatAssistantName", event.target.value, "pause")}
                   placeholder={DEFAULT_AI_CHAT_ASSISTANT_NAME}
                 />
                 <ResetToDefaultButton
@@ -89,7 +89,7 @@ export function AiChatSettingsCard() {
                 id="ai-chat-avatar-url"
                 className="input"
                 value={settings.aiChatAvatarUrl}
-                onChange={(event) => settingsStore.setDraftField("aiChatAvatarUrl", event.target.value)}
+                onChange={(event) => settingsStore.setDraftField("aiChatAvatarUrl", event.target.value, "pause")}
                 placeholder="https://example.com/assistant-avatar.png"
               />
               <span className="field-hint">
@@ -106,7 +106,7 @@ export function AiChatSettingsCard() {
                   id="ai-chat-header-subtitle"
                   className="input"
                   value={settings.aiChatHeaderSubtitle}
-                  onChange={(event) => settingsStore.setDraftField("aiChatHeaderSubtitle", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("aiChatHeaderSubtitle", event.target.value, "pause")}
                   placeholder={DEFAULT_AI_CHAT_HEADER_SUBTITLE}
                 />
                 <ResetToDefaultButton
@@ -136,7 +136,7 @@ export function AiChatSettingsCard() {
                   className="input textarea"
                   rows={4}
                   value={settings.aiChatWelcomeMessage}
-                  onChange={(event) => settingsStore.setDraftField("aiChatWelcomeMessage", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("aiChatWelcomeMessage", event.target.value, "pause")}
                   placeholder={DEFAULT_AI_CHAT_WELCOME_MESSAGE}
                 />
                 <ResetToDefaultButton
@@ -168,7 +168,7 @@ export function AiChatSettingsCard() {
                   aria-invalid={Boolean(aiChatFieldErrors.openRouterModel)}
                   onChange={(event) => {
                     const value = event.target.value;
-                    settingsStore.setDraftField("openRouterModel", value);
+                    settingsStore.setDraftField("openRouterModel", value, "pause");
                     settingsStore.patchErrors("aiChat", { openRouterModel: validateOpenRouterModelInput(value, settings.aiChatEnabled) });
                   }}
                   placeholder={DEFAULT_AI_CHAT_OPENROUTER_MODEL}
@@ -204,7 +204,7 @@ export function AiChatSettingsCard() {
                   aria-invalid={Boolean(aiChatFieldErrors.systemPrompt)}
                   onChange={(event) => {
                     const value = event.target.value;
-                    settingsStore.setDraftField("aiChatSystemPrompt", value);
+                    settingsStore.setDraftField("aiChatSystemPrompt", value, "pause");
                     settingsStore.patchErrors("aiChat", { systemPrompt: validateSystemPromptInput(value, settings.aiChatEnabled) });
                   }}
                   placeholder={DEFAULT_AI_CHAT_SYSTEM_PROMPT}

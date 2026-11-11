@@ -15,7 +15,10 @@ import type { ModeratorAccount } from "@/components/types";
 export type AdminPanelServices = {
   lifetimeSignal: () => AbortSignal;
   settingsStore: SettingsStore;
-  /** Saves the draft now; actions that read saved settings on the server call it first. */
+  /**
+   * Saves everything changed so far now, the field being typed in included, and resolves once the
+   * server stored it; actions that read saved settings on the server await it first.
+   */
   persistLatestSettings: () => Promise<void>;
   clearSavedSecret: (target: ClearSecretTarget) => Promise<void>;
   refreshTranslationOverview: () => Promise<void>;

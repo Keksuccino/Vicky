@@ -50,8 +50,7 @@ export function AdminPanelProvider({ children }: { children: ReactNode }) {
     panelReady,
     settingsStore,
   });
-  const { applyLoadedSettings, clearSavedSecret, isAutoSaveReady, persistLatestSettings, stopAutoSave } = useSettingsAutoSave({
-    lifetimeSignal,
+  const { applyLoadedSettings, clearSavedSecret, isAutoSaveReady, persistLatestSettings } = useSettingsAutoSave({
     onSaved: refreshOverviewAfterSave,
     refreshSslStatus,
     setThemeSettings,
@@ -75,7 +74,6 @@ export function AdminPanelProvider({ children }: { children: ReactNode }) {
     setInitialModerators,
     setLoadError,
     setLoading,
-    stopAutoSave,
   });
 
   const services = useMemo<AdminPanelServices>(

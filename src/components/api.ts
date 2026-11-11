@@ -98,6 +98,8 @@ const DEFAULT_DOCS_REFRESH_INTERVAL_MINUTES = 60;
 /** The server's bounds (`MIN_DOCS_CACHE_TTL_MS` / `MAX_DOCS_CACHE_TTL_MS` in lib/cache.ts) in minutes. */
 export const MIN_DOCS_REFRESH_INTERVAL_MINUTES = 1;
 export const MAX_DOCS_REFRESH_INTERVAL_MINUTES = 1_440;
+/** Half the 64 KiB that keepalive bodies in flight share, so a save started while another runs fits too. */
+const KEEPALIVE_SETTINGS_SAVE_MAX_BYTES = 32 * 1024;
 const DOMAIN_SSL_CERTIFICATE_STATES: DomainSslCertificateState[] = [
   "missing",
   "valid",
@@ -1423,9 +1425,13 @@ export async function saveAdminSettings(settings: AdminSettings): Promise<AdminS
     openRouter.apiKey = settings.openRouterApiKey.trim();
   }
 
+  const body = JSON.stringify(payload);
   const response = await requestJson<unknown>("/api/admin/settings", {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body,
+    // A keepalive save reaches the server even when the page unloads while it runs. Keepalive
+    // bodies in flight share 64 KiB, so a larger save (a very long custom CSS) goes without it.
+    keepalive: new TextEncoder().encode(body).byteLength <= KEEPALIVE_SETTINGS_SAVE_MAX_BYTES,
   });
 
   return normalizeSettings(response);

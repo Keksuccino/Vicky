@@ -6,7 +6,8 @@ import { formatApiError } from "@/components/api";
  * Returns the getter of the panel's lifetime signal, which is aborted when the panel unmounts:
  * every read the panel starts passes this signal, so its requests stop, and every request checks
  * it before updating state, writes included (those run to completion, since the server may
- * already be applying them). Server-side jobs keep running.
+ * already be applying them). Server-side jobs keep running. The settings auto-save tracks the
+ * panel's mount itself: it still saves after the unmount (see `settings-auto-save.ts`).
  */
 export function usePanelLifetimeSignal(): () => AbortSignal {
   const controllerRef = useRef<AbortController | null>(null);

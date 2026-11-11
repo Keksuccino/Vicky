@@ -42,7 +42,7 @@ export function SiteSettingsCard() {
                   id="site-title"
                   className="input"
                   value={settings.siteTitle}
-                  onChange={(event) => settingsStore.setDraftField("siteTitle", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("siteTitle", event.target.value, "pause")}
                   required
                 />
                 <span className="field-hint">Shown in the header and browser metadata.</span>
@@ -54,7 +54,7 @@ export function SiteSettingsCard() {
                   id="site-description"
                   className="input"
                   value={settings.siteDescription}
-                  onChange={(event) => settingsStore.setDraftField("siteDescription", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("siteDescription", event.target.value, "pause")}
                   required
                 />
                 <span className="field-hint">Short summary used in metadata and previews.</span>
@@ -69,7 +69,7 @@ export function SiteSettingsCard() {
                 id="site-footer-text"
                 className="input"
                 value={settings.footerText}
-                onChange={(event) => settingsStore.setDraftField("footerText", event.target.value)}
+                onChange={(event) => settingsStore.setDraftField("footerText", event.target.value, "pause")}
                 placeholder={DEFAULT_FOOTER_TEXT}
                 required
               />
@@ -115,7 +115,7 @@ export function SiteSettingsCard() {
                 id="site-start-page"
                 className="input"
                 value={settings.startPage}
-                onChange={(event) => settingsStore.setDraftField("startPage", event.target.value)}
+                onChange={(event) => settingsStore.setDraftField("startPage", event.target.value, "pause")}
                 placeholder="/home"
                 required
               />
@@ -136,7 +136,7 @@ export function SiteSettingsCard() {
                   id="docs-icon-png-16"
                   className="input"
                   value={settings.docsIconPng16Url}
-                  onChange={(event) => settingsStore.setDraftField("docsIconPng16Url", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("docsIconPng16Url", event.target.value, "pause")}
                   placeholder="https://example.com/docs-icon-16.png"
                 />
                 <span className="field-hint">Public absolute URL to a PNG file, exactly 16x16 recommended.</span>
@@ -148,7 +148,7 @@ export function SiteSettingsCard() {
                   id="docs-icon-png-32"
                   className="input"
                   value={settings.docsIconPng32Url}
-                  onChange={(event) => settingsStore.setDraftField("docsIconPng32Url", event.target.value)}
+                  onChange={(event) => settingsStore.setDraftField("docsIconPng32Url", event.target.value, "pause")}
                   placeholder="https://example.com/docs-icon-32.png"
                 />
                 <span className="field-hint">Public absolute URL to a PNG file, exactly 32x32 recommended.</span>
@@ -161,7 +161,7 @@ export function SiteSettingsCard() {
                 id="docs-icon-png-180"
                 className="input"
                 value={settings.docsIconPng180Url}
-                onChange={(event) => settingsStore.setDraftField("docsIconPng180Url", event.target.value)}
+                onChange={(event) => settingsStore.setDraftField("docsIconPng180Url", event.target.value, "pause")}
                 placeholder="https://example.com/docs-icon-180.png"
               />
               <span className="field-hint">

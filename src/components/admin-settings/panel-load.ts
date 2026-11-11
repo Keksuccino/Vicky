@@ -26,7 +26,6 @@ type PanelLoadOptions = {
   setInitialModerators: (moderators: ModeratorAccount[]) => void;
   setLoadError: (error: string | null) => void;
   setLoading: (loading: boolean) => void;
-  stopAutoSave: () => void;
 };
 
 /**
@@ -46,7 +45,6 @@ export function useInitialPanelLoad({
   setInitialModerators,
   setLoadError,
   setLoading,
-  stopAutoSave,
 }: PanelLoadOptions): void {
   const router = useRouter();
   const { refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats } = refreshAfterLoad;
@@ -129,7 +127,6 @@ export function useInitialPanelLoad({
 
     return () => {
       isActive = false;
-      stopAutoSave();
     };
-  }, [applyLoadedSettings, lifetimeSignal, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setInitialModerators, setLoadError, setLoading, stopAutoSave]);
+  }, [applyLoadedSettings, lifetimeSignal, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setInitialModerators, setLoadError, setLoading]);
 }

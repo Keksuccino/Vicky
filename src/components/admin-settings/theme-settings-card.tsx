@@ -142,7 +142,7 @@ export function ThemeSettingsCard() {
                 className="input textarea"
                 rows={6}
                 value={settings.themeCustomCss}
-                onChange={(event) => settingsStore.setDraftField("themeCustomCss", event.target.value)}
+                onChange={(event) => settingsStore.setDraftField("themeCustomCss", event.target.value, "pause")}
                 placeholder=".markdown-body a { text-decoration-thickness: 2px; }"
               />
               <span className="field-hint">

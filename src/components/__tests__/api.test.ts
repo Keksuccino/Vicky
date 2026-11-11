@@ -85,6 +85,16 @@ describe("admin API helpers", () => {
     expect(body.openRouter.apiKey).toBe("or_new");
   });
 
+  it("sends settings saves as keepalive requests while they fit the browser's keepalive budget", async () => {
+    const fetchMock = vi.fn().mockImplementation(async () => jsonResponse({ settings: createSettings() }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await saveAdminSettings(createSettings());
+    await saveAdminSettings(createSettings({ themeCustomCss: "a { color: red; }\n".repeat(2_000) }));
+
+    expect(fetchMock.mock.calls.map((call) => (call[1] as RequestInit).keepalive)).toEqual([true, false]);
+  });
+
   it("scopes translation status polls to the tracked local job ID", async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ statuses: [], job: null, jobState: "unknown", updatedAt: "2026-08-18T00:00:00.000Z" }));
     vi.stubGlobal("fetch", fetchMock);

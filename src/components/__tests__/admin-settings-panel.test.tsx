@@ -3,6 +3,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { TYPING_SAVE_DELAY_MS } from "@/components/admin-settings/settings-auto-save";
 import type { AdminSettings, DomainSslRuntimeStatus } from "@/components/types";
 
 import { AdminSettingsPanel } from "../admin-settings-panel";
@@ -12,6 +13,7 @@ const routerMock = {
   replace: replaceMock,
 };
 const setThemeSettingsMock = vi.fn();
+const clearAdminGitHubTokenMock = vi.fn();
 const clearAdminMarkdownCacheMock = vi.fn();
 const createAdminModeratorMock = vi.fn();
 const deleteAdminModeratorMock = vi.fn();
@@ -45,6 +47,7 @@ vi.mock("@/components/theme-provider", () => ({
 }));
 
 vi.mock("@/components/api", () => ({
+  clearAdminGitHubToken: (...args: unknown[]) => clearAdminGitHubTokenMock(...args),
   clearAdminMarkdownCache: (...args: unknown[]) => clearAdminMarkdownCacheMock(...args),
   createAdminModerator: (...args: unknown[]) => createAdminModeratorMock(...args),
   deleteAdminModerator: (...args: unknown[]) => deleteAdminModeratorMock(...args),
@@ -83,6 +86,9 @@ const findElement = async <T extends Element>(container: HTMLElement, selector: 
 
 /** Lets pending promises and React updates settle. */
 const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+/** Waits as long as typing has to pause before it is saved. */
+const pauseTyping = () => act(() => new Promise((resolve) => setTimeout(resolve, TYPING_SAVE_DELAY_MS + 50)));
 
 /** Moves the focus out of `element`, as clicking elsewhere does. */
 const leave = async (element: HTMLElement) => {
@@ -526,91 +532,35 @@ describe("AdminSettingsPanel", () => {
   it("keeps the newest typed value when an older autosave response resolves later", async () => {
     const firstSave = createDeferred<AdminSettings>();
     const secondSave = createDeferred<AdminSettings>();
-
-    saveAdminSettingsMock
-      .mockImplementationOnce(() => firstSave.promise)
-      .mockImplementationOnce(() => secondSave.promise);
+    saveAdminSettingsMock.mockImplementationOnce(() => firstSave.promise).mockImplementationOnce(() => secondSave.promise);
 
     const { container } = render(<AdminSettingsPanel />);
-
     const siteTitleInput = await findElement<HTMLInputElement>(container, "#site-title");
+    siteTitleInput.focus();
 
-    fireEvent.change(siteTitleInput, {
-      target: { value: "Vicky Docs 1" },
-    });
+    fireEvent.change(siteTitleInput, { target: { value: "Vicky Docs 1" } });
+    await pauseTyping();
+    expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
 
-    await waitFor(() => {
-      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
-    });
-
-    fireEvent.change(siteTitleInput, {
-      target: { value: "Vicky Docs 12" },
-    });
-
+    // The next pause asks for a follow-up, which waits for the save in flight.
+    fireEvent.change(siteTitleInput, { target: { value: "Vicky Docs 12" } });
+    await pauseTyping();
+    expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
     expect(siteTitleInput.value).toBe("Vicky Docs 12");
 
     await act(async () => {
-      firstSave.resolve({
-        ...INITIAL_SETTINGS,
-        siteTitle: "Vicky Docs 1",
-      });
+      firstSave.resolve({ ...INITIAL_SETTINGS, siteTitle: "Vicky Docs 1" });
       await firstSave.promise;
     });
-
-    await waitFor(() => {
-      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
-    });
-
+    await waitFor(() => expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2));
     expect(siteTitleInput.value).toBe("Vicky Docs 12");
-    expect((saveAdminSettingsMock.mock.calls[1] ?? [])[0]?.siteTitle).toBe("Vicky Docs 12");
+    expect(lastSaved().siteTitle).toBe("Vicky Docs 12");
 
     await act(async () => {
-      secondSave.resolve({
-        ...INITIAL_SETTINGS,
-        siteTitle: "Vicky Docs 12",
-      });
+      secondSave.resolve({ ...INITIAL_SETTINGS, siteTitle: "Vicky Docs 12" });
       await secondSave.promise;
     });
-
-    await waitFor(() => {
-      expect(siteTitleInput.value).toBe("Vicky Docs 12");
-    });
-  });
-
-  it("keeps a language's ID field focused and as typed, whether saves answer between keystrokes or not", async () => {
-    // Like the real server with a valid list, the fake one stores what the panel sends.
-    saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
-
-    const { container } = render(<AdminSettingsPanel />);
-    const codeInput = await findElement<HTMLInputElement>(container, "#auto-translate-language-code-1");
-    const lastSavedCode = (): string | undefined => (saveAdminSettingsMock.mock.lastCall?.[0] as AdminSettings | undefined)?.autoTranslateLanguages[1]?.code;
-    const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
-    const expectTyped = (value: string) => {
-      expect(document.activeElement).toBe(codeInput);
-      expect(codeInput.value).toBe(value);
-    };
-    codeInput.focus();
-
-    // Deleting and typing faster than a save answers.
-    for (const value of ["d", "", "p", "pt", "pt-", "pt-b", "pt-br"]) {
-      fireEvent.change(codeInput, { target: { value } });
-      expectTyped(value);
-    }
-    await settle();
-    expectTyped("pt-br");
-    expect(lastSavedCode()).toBe("pt-BR");
-
-    // Every save answers before the next keystroke or paste; the field still shows what was typed.
-    for (const [value, savedCode] of [["pt-", "pt"], ["pt-b", "pt-b"], ["pt-br", "pt-BR"], ["", "pt-BR"], ["es_mx", "es-MX"]]) {
-      fireEvent.change(codeInput, { target: { value } });
-      await settle();
-      expectTyped(value);
-      expect(lastSavedCode()).toBe(savedCode);
-    }
-
-    // Leaving the field normalizes the ID.
-    fireEvent.blur(codeInput);
-    expect(codeInput.value).toBe("es-MX");
+    expect(siteTitleInput.value).toBe("Vicky Docs 12");
   });
 
   it("keeps an open icon picker with its language when another row is removed or a language is added, and gives every row a fresh start on reset", async () => {
@@ -651,34 +601,25 @@ describe("AdminSettingsPanel", () => {
   });
 
   it("clears saved GitHub token input before later settings saves", async () => {
-    saveAdminSettingsMock.mockResolvedValue({
-      ...INITIAL_SETTINGS,
-      tokenConfigured: true,
-    });
+    saveAdminSettingsMock.mockResolvedValue({ ...INITIAL_SETTINGS, tokenConfigured: true });
 
     const { container } = render(<AdminSettingsPanel />);
-
     const tokenInput = await findElement<HTMLInputElement>(container, "#github-token");
+    tokenInput.focus();
+    fireEvent.change(tokenInput, { target: { value: "ghp_saved" } });
+    await leave(tokenInput);
 
-    fireEvent.change(tokenInput, {
-      target: { value: "ghp_saved" },
-    });
-
-    await waitFor(() => {
-      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
-      expect(tokenInput.value).toBe("");
-    });
+    expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+    expect(lastSaved().githubToken).toBe("ghp_saved");
+    expect(tokenInput.value).toBe("");
 
     const siteTitleInput = container.querySelector<HTMLInputElement>("#site-title")!;
-    fireEvent.change(siteTitleInput, {
-      target: { value: "Vicky Docs without secret resend" },
-    });
+    siteTitleInput.focus();
+    fireEvent.change(siteTitleInput, { target: { value: "Vicky Docs without secret resend" } });
+    await leave(siteTitleInput);
 
-    await waitFor(() => {
-      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
-    });
-
-    expect((saveAdminSettingsMock.mock.calls[1] ?? [])[0]?.githubToken).toBe("");
+    expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
+    expect(lastSaved().githubToken).toBe("");
   });
 
   describe("a custom language row typed with the source language's ID", () => {
@@ -722,6 +663,267 @@ describe("AdminSettingsPanel", () => {
       expect(listError()).toBeUndefined();
       await leave(codeInput);
       expect(lastSaved().autoTranslateLanguages.map((language) => language.code)).toEqual(["en-US", "de", "nl-BE"]);
+    });
+  });
+
+  describe("a save's answer and the field being typed in", () => {
+    it("never changes what is typed while the field has the focus, and shows what is stored once it is left", async () => {
+      // Trims the title like the real server.
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => ({ ...settings, siteTitle: settings.siteTitle.trim() }));
+
+      const { container } = render(<AdminSettingsPanel />);
+      const titleInput = await findElement<HTMLInputElement>(container, "#site-title");
+      titleInput.focus();
+
+      for (const [value, saves] of [["Vicky Docs ", 1], ["Vicky Docs Hub", 2], ["Vicky Docs Hub ", 3]] as const) {
+        fireEvent.change(titleInput, { target: { value } });
+        await pauseTyping();
+        expect(saveAdminSettingsMock).toHaveBeenCalledTimes(saves);
+        expect(lastSaved().siteTitle).toBe(value);
+        expect(titleInput.value).toBe(value);
+        expect(document.activeElement).toBe(titleInput);
+      }
+
+      // Saved already: leaving the field shows the stored title without saving again.
+      await leave(titleInput);
+      expect(titleInput.value).toBe("Vicky Docs Hub");
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("sends a field saved on leave only once it is left or confirmed, and keeps it as typed meanwhile", async () => {
+      // Stores an empty branch as main and trims it, like the real server.
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => ({ ...settings, githubBranch: settings.githubBranch.trim() || "main" }));
+
+      const { container } = render(<AdminSettingsPanel />);
+      const branchInput = await findElement<HTMLInputElement>(container, "#repo-branch");
+      branchInput.focus();
+      fireEvent.change(branchInput, { target: { value: "" } });
+      await pauseTyping();
+      expect(saveAdminSettingsMock).not.toHaveBeenCalled();
+
+      // A switch saves at once meanwhile: the save keeps the stored branch, and the field stays as typed.
+      fireEvent.click(container.querySelector("#auto-translate-language-enabled-1")!);
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(lastSaved().githubBranch).toBe("main");
+      await settle();
+      expect(branchInput.value).toBe("");
+      expect(document.activeElement).toBe(branchInput);
+
+      // Enter saves it, and the field keeps it as typed.
+      fireEvent.change(branchInput, { target: { value: "dev " } });
+      fireEvent.keyDown(branchInput, { key: "Enter" });
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
+      expect(lastSaved().githubBranch).toBe("dev ");
+      await settle();
+      expect(branchInput.value).toBe("dev ");
+
+      await leave(branchInput);
+      expect(branchInput.value).toBe("dev");
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
+    });
+
+    it("keeps a field as typed when only the window loses the focus, and saves what waits for a pause meanwhile", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => ({ ...settings, siteTitle: settings.siteTitle.trim() }));
+
+      const { container } = render(<AdminSettingsPanel />);
+      const titleInput = await findElement<HTMLInputElement>(container, "#site-title");
+      const repoInput = container.querySelector<HTMLInputElement>("#repo-name")!;
+
+      // The focus stays in the field while another tab or app has the window's focus.
+      titleInput.focus();
+      fireEvent.change(titleInput, { target: { value: "Vicky Docs " } });
+      fireEvent.focusOut(titleInput);
+      await settle();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(lastSaved().siteTitle).toBe("Vicky Docs ");
+      expect(titleInput.value).toBe("Vicky Docs ");
+      expect(document.activeElement).toBe(titleInput);
+
+      // Really leaving it shows the stored title.
+      repoInput.focus();
+      await settle();
+      expect(titleInput.value).toBe("Vicky Docs");
+
+      // A field saved on leave waits until it is really left.
+      fireEvent.change(repoInput, { target: { value: "Vicky-" } });
+      fireEvent.focusOut(repoInput);
+      await settle();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(repoInput.value).toBe("Vicky-");
+    });
+
+    it("saves a slowly typed secret once its field is left, and empties the field after that", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => ({ ...settings, githubToken: "", tokenConfigured: true }));
+
+      const { container } = render(<AdminSettingsPanel />);
+      const tokenInput = await findElement<HTMLInputElement>(container, "#github-token");
+      tokenInput.focus();
+      for (const value of ["ghp_", "ghp_abc"]) {
+        fireEvent.change(tokenInput, { target: { value } });
+        await pauseTyping();
+        expect(tokenInput.value).toBe(value);
+      }
+      expect(saveAdminSettingsMock).not.toHaveBeenCalled();
+
+      await leave(tokenInput);
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(lastSaved().githubToken).toBe("ghp_abc");
+      expect(tokenInput.value).toBe("");
+    });
+
+    it("drops a typed secret when its Clear button is clicked instead of saving it first", async () => {
+      fetchAdminSettingsMock.mockResolvedValue({ ...INITIAL_SETTINGS, tokenConfigured: true });
+      clearAdminGitHubTokenMock.mockResolvedValue(INITIAL_SETTINGS);
+
+      const { container } = render(<AdminSettingsPanel />);
+      const tokenInput = await findElement<HTMLInputElement>(container, "#github-token");
+      const clearButton = container.querySelector<HTMLButtonElement>("#github-token + .secret-clear-button")!;
+      tokenInput.focus();
+      fireEvent.change(tokenInput, { target: { value: "ghp_mistake" } });
+
+      // Pressing the button leaves the focus in the field, so leaving it saves nothing.
+      expect(fireEvent.mouseDown(clearButton)).toBe(false);
+      fireEvent.click(clearButton);
+      await settle();
+      expect(clearAdminGitHubTokenMock).toHaveBeenCalledTimes(1);
+      expect(saveAdminSettingsMock).not.toHaveBeenCalled();
+      expect(tokenInput.value).toBe("");
+    });
+  });
+
+  describe("when what is typed is saved", () => {
+    it("saves typed text once typing pauses, not per keystroke", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+
+      const { container } = render(<AdminSettingsPanel />);
+      const titleInput = await findElement<HTMLInputElement>(container, "#site-title");
+      titleInput.focus();
+      const sentence = "Vicky Docs for everyone";
+      for (let length = 11; length <= sentence.length; length += 1) {
+        fireEvent.change(titleInput, { target: { value: sentence.slice(0, length) } });
+      }
+
+      await act(() => new Promise((resolve) => setTimeout(resolve, TYPING_SAVE_DELAY_MS / 2)));
+      expect(saveAdminSettingsMock).not.toHaveBeenCalled();
+      await pauseTyping();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(lastSaved().siteTitle).toBe(sentence);
+    });
+
+    it("saves a language ID only once it is left or confirmed, so the overview is not loaded again per keystroke", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+
+      const { container } = render(<AdminSettingsPanel />);
+      await waitFor(() => expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(1), { timeout: 3_000 });
+      fireEvent.click(container.querySelector(".translation-language-list + .action-row .btn-secondary")!);
+      await waitFor(() => expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(2));
+      const savesAfterAdding = saveAdminSettingsMock.mock.calls.length;
+      const codeInput = container.querySelector<HTMLInputElement>("#auto-translate-language-code-2")!;
+
+      codeInput.focus();
+      for (const value of ["custo", "cust", "cus", "cu", "c", "", "n", "nl", "nl-", "nl-b", "nl-be"]) {
+        fireEvent.change(codeInput, { target: { value } });
+      }
+      await pauseTyping();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(savesAfterAdding);
+      expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(2);
+
+      // Enter saves it; the field keeps it as typed and keeps the focus.
+      fireEvent.keyDown(codeInput, { key: "Enter" });
+      await settle();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(savesAfterAdding + 1);
+      expect(lastSaved().autoTranslateLanguages[2]?.code).toBe("nl-BE");
+      expect(codeInput.value).toBe("nl-be");
+      expect(document.activeElement).toBe(codeInput);
+      await waitFor(() => expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(3));
+
+      // Leaving it shows the ID as stored, without saving it again.
+      await leave(codeInput);
+      expect(codeInput.value).toBe("nl-BE");
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(savesAfterAdding + 1);
+      expect(fetchAdminLanguageTranslationOverviewMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("lets an action wait until everything typed before it is saved, a save already in flight included", async () => {
+      const firstSave = createDeferred<AdminSettings>();
+      const secondSave = createDeferred<AdminSettings>();
+      saveAdminSettingsMock.mockImplementationOnce(() => firstSave.promise).mockImplementationOnce(() => secondSave.promise);
+
+      const { container } = render(<AdminSettingsPanel />);
+      const titleInput = await findElement<HTMLInputElement>(container, "#site-title");
+      titleInput.focus();
+      fireEvent.change(titleInput, { target: { value: "Vicky Docs 1" } });
+      await pauseTyping();
+      fireEvent.change(titleInput, { target: { value: "Vicky Docs 12" } });
+
+      // "Fetch pages now" reads the saved settings on the server.
+      fireEvent.click(container.querySelector(".panel-card-repo .action-row .btn")!);
+      await settle();
+      expect(refreshAdminDocsCacheMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        firstSave.resolve({ ...INITIAL_SETTINGS, siteTitle: "Vicky Docs 1" });
+        await firstSave.promise;
+      });
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
+      expect(lastSaved().siteTitle).toBe("Vicky Docs 12");
+      expect(refreshAdminDocsCacheMock).not.toHaveBeenCalled();
+
+      await act(async () => {
+        secondSave.resolve({ ...INITIAL_SETTINGS, siteTitle: "Vicky Docs 12" });
+        await secondSave.promise;
+      });
+      await waitFor(() => expect(refreshAdminDocsCacheMock).toHaveBeenCalledTimes(1));
+    });
+
+    it("saves what was just typed when the panel unmounts", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+
+      const { container, unmount } = render(<AdminSettingsPanel />);
+      const titleInput = await findElement<HTMLInputElement>(container, "#site-title");
+      titleInput.focus();
+      fireEvent.change(titleInput, { target: { value: "Vicky Docs unmounted" } });
+      expect(saveAdminSettingsMock).not.toHaveBeenCalled();
+
+      unmount();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(lastSaved().siteTitle).toBe("Vicky Docs unmounted");
+    });
+
+    it("sends what was just typed at once when the page unloads, beside a save still in flight", async () => {
+      const firstSave = createDeferred<AdminSettings>();
+      saveAdminSettingsMock.mockImplementationOnce(() => firstSave.promise).mockImplementation(async (settings: AdminSettings) => settings);
+
+      const { container } = render(<AdminSettingsPanel />);
+      const titleInput = await findElement<HTMLInputElement>(container, "#site-title");
+      const repoInput = container.querySelector<HTMLInputElement>("#repo-name")!;
+      titleInput.focus();
+      fireEvent.change(titleInput, { target: { value: "Vicky Docs 1" } });
+      await pauseTyping();
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+
+      // A field saved on leave, typed in while the page unloads.
+      repoInput.focus();
+      fireEvent.change(repoInput, { target: { value: "Vicky-next" } });
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+
+      window.dispatchEvent(new Event("pagehide"));
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(2);
+      expect(lastSaved()).toMatchObject({ siteTitle: "Vicky Docs 1", githubRepo: "Vicky-next" });
+
+      await act(async () => {
+        firstSave.resolve({ ...INITIAL_SETTINGS, siteTitle: "Vicky Docs 1" });
+        await firstSave.promise;
+      });
+    });
+
+    it("saves a switch at once", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+
+      const { container } = render(<AdminSettingsPanel />);
+      fireEvent.click(await findElement(container, "#auto-translate-language-enabled-1"));
+      expect(saveAdminSettingsMock).toHaveBeenCalledTimes(1);
+      expect(lastSaved().autoTranslateLanguages[1]?.enabled).toBe(false);
     });
   });
 });

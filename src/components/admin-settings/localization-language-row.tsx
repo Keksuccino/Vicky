@@ -4,6 +4,7 @@ import type { CSSProperties } from "react";
 
 import { formatCount } from "@/components/admin-settings/format";
 import { getTranslationStatusProgressPercent, isTranslationStatusPending } from "@/components/admin-settings/localization-status";
+import type { DraftEdit } from "@/components/admin-settings/settings-store";
 import { CircleFlagIconPicker } from "@/components/circle-flag-icon-picker";
 import { MaterialIcon } from "@/components/material-icon";
 import type { AdminLanguageTranslationCacheStatus, AutoTranslateLanguage } from "@/components/types";
@@ -78,7 +79,7 @@ type LanguageRowProps = {
   overviewLoading: boolean;
   /** A job runs or a request for this language is on its way. */
   requestBusy: boolean;
-  onChange: (index: number, change: Partial<AutoTranslateLanguage>) => void;
+  onChange: (index: number, change: Partial<AutoTranslateLanguage>, edit: DraftEdit) => void;
   onRemove: (index: number) => void;
   onRequestTranslations: (language: AutoTranslateLanguage) => void;
 };
@@ -129,7 +130,7 @@ export function LanguageRow({
             checked={languageEnabled}
             disabled={isSourceLanguage}
             aria-label={`${languageEnabled ? "Hide" : "Show"} ${isSourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name || "language"} in the public language selector`}
-            onChange={(event) => onChange(index, { enabled: event.target.checked })}
+            onChange={(event) => onChange(index, { enabled: event.target.checked }, "now")}
           />
           <span className="toggle-control" aria-hidden="true">
             <span className="toggle-thumb" />
@@ -146,7 +147,7 @@ export function LanguageRow({
             aria-label="Display name"
             value={isSourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name}
             disabled={isSourceLanguage}
-            onChange={(event) => onChange(index, { name: event.target.value })}
+            onChange={(event) => onChange(index, { name: event.target.value }, "pause")}
           />
         </label>
 
@@ -160,11 +161,12 @@ export function LanguageRow({
             aria-label="ID"
             value={isSourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code}
             disabled={isSourceLanguage}
-            onChange={(event) => onChange(index, { code: event.target.value })}
+            onChange={(event) => onChange(index, { code: event.target.value }, "leave")}
             onBlur={(event) => {
+              // Normalized as the field is left, right before the auto-save saves it.
               const code = normalizeAutoTranslateLanguageCode(event.target.value);
-              if (code) {
-                onChange(index, { code });
+              if (code && code !== event.target.value) {
+                onChange(index, { code }, "leave");
               }
             }}
           />
@@ -176,7 +178,7 @@ export function LanguageRow({
           disabled={isSourceLanguage}
           selectedDisplay="icon"
           showLabel={false}
-          onChange={(icon) => onChange(index, { icon })}
+          onChange={(icon) => onChange(index, { icon }, "now")}
         />
       </div>
 

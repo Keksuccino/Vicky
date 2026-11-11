@@ -77,16 +77,25 @@ export const themeCustomizationFromSettings = (settings: ThemeSettingsFields): T
 
 export type ClearSecretTarget = "githubToken" | "openRouterApiKey";
 
+/**
+ * When a change the admin makes is saved. `now`: switches, pickers, and buttons. `pause`: typing,
+ * once it pauses or the field is left. `leave`: typing whose half-typed value would act on the
+ * server (a language ID, the docs source, the domain, a secret, the localization directory),
+ * once the field is left or Enter is pressed.
+ */
+export type DraftEdit = "now" | "pause" | "leave";
+
 /** Everything the settings cards share: the draft and the state of its auto-save. */
 export type SettingsState = {
-  /** The admin's working copy of the settings, saved automatically whenever it changes. */
+  /** The admin's working copy of the settings, saved automatically as `DraftEdit` says. */
   draft: AdminSettings;
   errors: SettingsFieldErrors;
-  /** A save or the removal of a saved secret is in flight. */
-  saving: boolean;
+  /** A saved secret is being removed, or waits for a running save to finish first. */
   clearingSecret: ClearSecretTarget | null;
   saveError: string | null;
 };
+
+type EditListener = (field: keyof AdminSettings, edit: DraftEdit) => void;
 
 /**
  * Holds the settings state outside React, so each card subscribes to the fields it shows
@@ -97,7 +106,10 @@ export type SettingsStore = {
   getState: () => SettingsState;
   setState: (patch: Partial<SettingsState>) => void;
   subscribe: (listener: () => void) => () => void;
-  setDraftField: <K extends keyof AdminSettings>(field: K, value: AdminSettings[K]) => void;
+  /** A change the admin made; edit listeners learn when to save it. */
+  setDraftField: <K extends keyof AdminSettings>(field: K, value: AdminSettings[K], edit?: DraftEdit) => void;
+  /** Called after every `setDraftField`, never for drafts set with `setState`. */
+  subscribeEdits: (listener: EditListener) => () => void;
   patchErrors: <G extends keyof SettingsFieldErrors>(group: G, patch: Partial<SettingsFieldErrors[G]>) => void;
 };
 
@@ -105,11 +117,11 @@ export const createSettingsStore = (): SettingsStore => {
   let state: SettingsState = {
     draft: INITIAL_SETTINGS,
     errors: EMPTY_SETTINGS_FIELD_ERRORS,
-    saving: false,
     clearingSecret: null,
     saveError: null,
   };
   const listeners = new Set<() => void>();
+  const editListeners = new Set<EditListener>();
   const setState = (patch: Partial<SettingsState>): void => {
     state = { ...state, ...patch };
     listeners.forEach((listener) => listener());
@@ -124,7 +136,16 @@ export const createSettingsStore = (): SettingsStore => {
         listeners.delete(listener);
       };
     },
-    setDraftField: (field, value) => setState({ draft: { ...state.draft, [field]: value } }),
+    setDraftField: (field, value, edit = "now") => {
+      setState({ draft: { ...state.draft, [field]: value } });
+      editListeners.forEach((listener) => listener(field, edit));
+    },
+    subscribeEdits: (listener) => {
+      editListeners.add(listener);
+      return () => {
+        editListeners.delete(listener);
+      };
+    },
     patchErrors: (group, patch) => setState({ errors: { ...state.errors, [group]: { ...state.errors[group], ...patch } } }),
   };
 };
@@ -133,7 +154,7 @@ export const createSettingsStore = (): SettingsStore => {
  * Same keys in the same order with the same values. Key order counts, so two flat objects that
  * pass also serialize to the same JSON, which the cards compare in places.
  */
-const sameEntries = (left: object, right: object): boolean => {
+export const sameEntries = (left: object, right: object): boolean => {
   const leftEntries = Object.entries(left);
   const rightEntries = Object.entries(right);
   return (

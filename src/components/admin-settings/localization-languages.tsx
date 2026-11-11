@@ -7,7 +7,7 @@ import { LanguageRow } from "@/components/admin-settings/localization-language-r
 import { useLocalizationRequests } from "@/components/admin-settings/localization-requests";
 import { translationCacheStatusKey } from "@/components/admin-settings/localization-status";
 import { useAdminPanel, useLocalizationContext } from "@/components/admin-settings/panel-context";
-import { useDraftFields, useSettingsSelector, type SettingsState } from "@/components/admin-settings/settings-store";
+import { useDraftFields, useSettingsSelector, type DraftEdit, type SettingsState } from "@/components/admin-settings/settings-store";
 import { validateAutoTranslateLanguages } from "@/components/admin-settings/settings-validation";
 import { TranslationLog } from "@/components/admin-settings/translation-log";
 import { MaterialIcon } from "@/components/material-icon";
@@ -88,9 +88,9 @@ export function LocalizationLanguages() {
   // correct, never the locked source row.
   const sourceRowIndex = languages.findIndex((language) => isDefaultAutoTranslateLanguageCode(language.code));
 
-  const changeLanguages = (nextLanguages: AutoTranslateLanguage[], nextRowKeys = rowKeys) => {
+  const changeLanguages = (nextLanguages: AutoTranslateLanguage[], nextRowKeys = rowKeys, edit: DraftEdit = "now") => {
     setRowKeys(nextRowKeys);
-    settingsStore.setDraftField("autoTranslateLanguages", nextLanguages);
+    settingsStore.setDraftField("autoTranslateLanguages", nextLanguages, edit);
     settingsStore.patchErrors("autoTranslate", { languages: validateAutoTranslateLanguages(nextLanguages) });
   };
 
@@ -171,8 +171,12 @@ export function LocalizationLanguages() {
               overviewError={statusError}
               overviewLoading={statusLoading}
               requestBusy={activeTranslationMode !== null || (normalizedCode ? requestedLanguageCodes.has(normalizedCode.toLowerCase()) : false)}
-              onChange={(changedIndex, change) => {
-                changeLanguages(languages.map((entry, entryIndex) => (entryIndex === changedIndex ? { ...entry, ...change } : entry)));
+              onChange={(changedIndex, change, edit) => {
+                changeLanguages(
+                  languages.map((entry, entryIndex) => (entryIndex === changedIndex ? { ...entry, ...change } : entry)),
+                  rowKeys,
+                  edit,
+                );
               }}
               onRemove={(removedIndex) => {
                 changeLanguages(

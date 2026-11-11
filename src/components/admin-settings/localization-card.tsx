@@ -80,11 +80,11 @@ export function LocalizationCard() {
                   aria-invalid={Boolean(autoTranslateFieldErrors.localizationPath)}
                   onChange={(event) => {
                     const value = event.target.value;
-                    settingsStore.setDraftField("autoTranslateLocalizationPath", value);
+                    settingsStore.setDraftField("autoTranslateLocalizationPath", value, "leave");
                     settingsStore.patchErrors("autoTranslate", { localizationPath: validateLocalizationPathInput(value) });
                   }}
                   onBlur={(event) => {
-                    settingsStore.setDraftField("autoTranslateLocalizationPath", normalizeLocalizationPath(event.target.value));
+                    settingsStore.setDraftField("autoTranslateLocalizationPath", normalizeLocalizationPath(event.target.value), "leave");
                     settingsStore.patchErrors("autoTranslate", { localizationPath: null });
                   }}
                   placeholder={DEFAULT_LOCALIZATION_PATH}
@@ -117,7 +117,7 @@ export function LocalizationCard() {
                   aria-invalid={Boolean(autoTranslateFieldErrors.openRouterModel)}
                   onChange={(event) => {
                     const value = event.target.value;
-                    settingsStore.setDraftField("autoTranslateOpenRouterModel", value);
+                    settingsStore.setDraftField("autoTranslateOpenRouterModel", value, "pause");
                     settingsStore.patchErrors("autoTranslate", { openRouterModel: validateOpenRouterModelInput(value, settings.autoTranslateEnabled) });
                   }}
                   placeholder={DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
@@ -156,11 +156,11 @@ export function LocalizationCard() {
                     const value = Number.isFinite(rawValue)
                       ? rawValue
                       : MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000;
-                    settingsStore.setDraftField("autoTranslateRequestTimeoutSeconds", value);
+                    settingsStore.setDraftField("autoTranslateRequestTimeoutSeconds", value, "pause");
                     settingsStore.patchErrors("autoTranslate", { requestTimeout: validateAutoTranslateRequestTimeoutSeconds(value) });
                   }}
                   onBlur={(event) => {
-                    settingsStore.setDraftField("autoTranslateRequestTimeoutSeconds", normalizeAutoTranslateRequestTimeoutSeconds(Number(event.currentTarget.value)));
+                    settingsStore.setDraftField("autoTranslateRequestTimeoutSeconds", normalizeAutoTranslateRequestTimeoutSeconds(Number(event.currentTarget.value)), "pause");
                     settingsStore.patchErrors("autoTranslate", { requestTimeout: null });
                   }}
                 />

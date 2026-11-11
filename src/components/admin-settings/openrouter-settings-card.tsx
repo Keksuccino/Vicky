@@ -37,7 +37,7 @@ export function OpenRouterSettingsCard() {
                 target="openRouterApiKey"
                 value={settings.openRouterApiKey}
                 onChange={(value) => {
-                  settingsStore.setDraftField("openRouterApiKey", value);
+                  settingsStore.setDraftField("openRouterApiKey", value, "leave");
                   settingsStore.patchErrors("openRouter", {
                     apiKey: validateOpenRouterApiKeyInput(value, settings.openRouterApiKeyConfigured, settings.aiChatEnabled || settings.autoTranslateEnabled),
                   });

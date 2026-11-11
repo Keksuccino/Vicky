@@ -35,7 +35,6 @@ export function EnabledToggle({ checked, id, onChange }: EnabledToggleProps) {
   );
 }
 
-const selectSaving = (state: SettingsState): boolean => state.saving;
 const selectClearingSecret = (state: SettingsState): ClearSecretTarget | null => state.clearingSecret;
 
 type SecretInputRowProps = {
@@ -56,7 +55,6 @@ type SecretInputRowProps = {
  */
 export function SecretInputRow({ hasSecret, id, invalid, placeholder, target, value, onChange }: SecretInputRowProps) {
   const { clearSavedSecret } = useAdminPanel();
-  const saving = useSettingsSelector(selectSaving);
   const clearingSecret = useSettingsSelector(selectClearingSecret);
 
   return (
@@ -74,7 +72,10 @@ export function SecretInputRow({ hasSecret, id, invalid, placeholder, target, va
       <button
         type="button"
         className="btn secret-clear-button"
-        disabled={saving || clearingSecret !== null || !hasSecret}
+        disabled={clearingSecret !== null || !hasSecret}
+        // Keeps the focus in the field: leaving it would save the secret typed there first, while
+        // clearing drops it. A keyboard user leaves the field first, which saves what was typed.
+        onMouseDown={(event) => event.preventDefault()}
         onClick={() => {
           void clearSavedSecret(target);
         }}
