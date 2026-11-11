@@ -210,6 +210,9 @@ try {
   for (const cookie of plan.cookies ?? []) {
     await send("Network.setCookie", cookie);
   }
+  if (plan.initScript) {
+    await send("Page.addScriptToEvaluateOnNewDocument", { source: plan.initScript });
+  }
   for (const step of plan.steps ?? []) {
     await runStep(step);
   }

@@ -50,4 +50,4 @@
 }
 ```
 
-Clicks are real mouse events at the element's centre after scrolling it into view; `eval` prints its JSON result; screenshot paths are relative to the steps file, and `selector` clips to one element. JavaScript dialogs (`window.confirm` before an admin action) are printed with their text and accepted; set `"dialogs": "dismiss"` in the plan to cancel them instead. The admin session cookie comes from the login response (for example `curl -c cookies.txt`).
+Clicks are real mouse events at the element's centre after scrolling it into view; `eval` prints its JSON result (it may return a promise, which is awaited); screenshot paths are relative to the steps file, and `selector` clips to one element. An optional `"initScript"` (JavaScript source) runs in every page before the page's own scripts, for example to seed `localStorage` or to wrap `window.fetch` so a check can hold, log, or answer requests. JavaScript dialogs (`window.confirm` before an admin action) are printed with their text and accepted; set `"dialogs": "dismiss"` in the plan to cancel them instead. The admin session cookie comes from the login response (for example `curl -c cookies.txt`).
