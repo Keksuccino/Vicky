@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "r
 
 import {
   INITIAL_SETTINGS,
+  sameDraftValue,
   themeCustomizationFromSettings,
   type ClearSecretTarget,
   type SettingsStore,
@@ -101,7 +102,8 @@ export function useSettingsAutoSave({ lifetimeSignal, onSaved, refreshSslStatus,
       const shouldRefreshSslStatus =
         draftToSave.customDomain !== lastSavedDomainRef.current.customDomain ||
         draftToSave.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
-      const saved = await saveAdminSettings(normalizeSettingsForSave(draftToSave));
+      const sentSettings = normalizeSettingsForSave(draftToSave);
+      const saved = await saveAdminSettings(sentSettings);
       if (signal.aborted) {
         return;
       }
@@ -113,9 +115,8 @@ export function useSettingsAutoSave({ lifetimeSignal, onSaved, refreshSslStatus,
       const latestSettings = getDraft();
       const hasNewerLocalChanges = createSaveSnapshot(latestSettings) !== snapshot;
 
-      markSaved(persistedSettings);
-
       if (hasNewerLocalChanges) {
+        markSaved(persistedSettings);
         // Secrets the save sent are cleared unless they were edited since; the rest stays as typed.
         settingsStore.setState({
           draft: {
@@ -133,7 +134,15 @@ export function useSettingsAutoSave({ lifetimeSignal, onSaved, refreshSslStatus,
           },
         });
       } else {
-        showSettings(persistedSettings);
+        // Languages are saved normalized (canonical IDs, trimmed names). While the server stored
+        // exactly the list that was sent, the panel keeps the list as typed, so a save never rewrites
+        // an ID or a name under the caret; the ID field normalizes itself on blur. That list is also
+        // what later saves compare against, or showing it would start the next save.
+        const shownSettings = sameDraftValue(saved.autoTranslateLanguages, sentSettings.autoTranslateLanguages)
+          ? { ...persistedSettings, autoTranslateLanguages: latestSettings.autoTranslateLanguages }
+          : persistedSettings;
+        markSaved(shownSettings);
+        showSettings(shownSettings);
       }
 
       onSaved(persistedSettings);

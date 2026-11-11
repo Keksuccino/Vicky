@@ -566,6 +566,79 @@ describe("AdminSettingsPanel", () => {
     });
   });
 
+  it("keeps a language's ID field focused and as typed, whether saves answer between keystrokes or not", async () => {
+    // Like the real server with a valid list, the fake one stores what the panel sends.
+    saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+
+    const { container } = render(<AdminSettingsPanel />);
+    const codeInput = await findElement<HTMLInputElement>(container, "#auto-translate-language-code-1");
+    const lastSavedCode = (): string | undefined => (saveAdminSettingsMock.mock.lastCall?.[0] as AdminSettings | undefined)?.autoTranslateLanguages[1]?.code;
+    const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    const expectTyped = (value: string) => {
+      expect(document.activeElement).toBe(codeInput);
+      expect(codeInput.value).toBe(value);
+    };
+    codeInput.focus();
+
+    // Deleting and typing faster than a save answers.
+    for (const value of ["d", "", "p", "pt", "pt-", "pt-b", "pt-br"]) {
+      fireEvent.change(codeInput, { target: { value } });
+      expectTyped(value);
+    }
+    await settle();
+    expectTyped("pt-br");
+    expect(lastSavedCode()).toBe("pt-BR");
+
+    // Every save answers before the next keystroke or paste; the field still shows what was typed.
+    for (const [value, savedCode] of [["pt-", "pt"], ["pt-b", "pt-b"], ["pt-br", "pt-BR"], ["", "pt-BR"], ["es_mx", "es-MX"]]) {
+      fireEvent.change(codeInput, { target: { value } });
+      await settle();
+      expectTyped(value);
+      expect(lastSavedCode()).toBe(savedCode);
+    }
+
+    // Leaving the field normalizes the ID.
+    fireEvent.blur(codeInput);
+    expect(codeInput.value).toBe("es-MX");
+  });
+
+  it("keeps an open icon picker with its language when another row is removed or a language is added, and gives every row a fresh start on reset", async () => {
+    saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+    fetchAdminSettingsMock.mockResolvedValue({
+      ...INITIAL_SETTINGS,
+      autoTranslateLanguages: [
+        ...INITIAL_SETTINGS.autoTranslateLanguages,
+        { name: "French", code: "fr", icon: "fr", enabled: true },
+        { name: "Japanese", code: "ja", icon: "jp", enabled: true },
+      ],
+    });
+
+    const { container } = render(<AdminSettingsPanel />);
+    const codeAt = (index: number): string | undefined => container.querySelector<HTMLInputElement>(`#auto-translate-language-code-${index}`)?.value;
+    const iconSearchAt = (index: number): string | undefined => container.querySelector<HTMLInputElement>(`#auto-translate-language-icon-${index}-search`)?.value;
+    const openPickers = (): number => container.querySelectorAll(".circle-flag-picker-popover").length;
+    // Clicked without a mousedown, as a keyboard activates them, so the open picker stays open.
+    const clickRowAction = (selector: string) => fireEvent.click(container.querySelector(`.translation-language-list + .action-row ${selector}`)!);
+
+    fireEvent.click(await findElement(container, "#auto-translate-language-icon-2"));
+    fireEvent.change(await findElement(container, "#auto-translate-language-icon-2-search"), { target: { value: "jp" } });
+
+    // German goes: French moves up with its picker, and Japanese's stays closed.
+    fireEvent.click(container.querySelectorAll(".translation-language-remove")[1]);
+    expect(codeAt(1)).toBe("fr");
+    expect(iconSearchAt(1)).toBe("jp");
+    expect(openPickers()).toBe(1);
+
+    clickRowAction(".btn-secondary");
+    expect(codeAt(3)).toBe("custom");
+    expect(iconSearchAt(1)).toBe("jp");
+    expect(openPickers()).toBe(1);
+
+    clickRowAction(".btn-ghost");
+    expect(codeAt(1)).toBe("de");
+    expect(openPickers()).toBe(0);
+  });
+
   it("clears saved GitHub token input before later settings saves", async () => {
     saveAdminSettingsMock.mockResolvedValue({
       ...INITIAL_SETTINGS,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import { formatCount } from "@/components/admin-settings/format";
 import { LanguageRow } from "@/components/admin-settings/localization-language-row";
@@ -39,6 +39,13 @@ const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): 
   };
 };
 
+let lastRowKey = 0;
+
+const createRowKey = (): number => {
+  lastRowKey += 1;
+  return lastRowKey;
+};
+
 const LANGUAGE_LIST_FIELDS = ["autoTranslateLanguages", "autoTranslateLocalizationPath"] as const;
 
 const selectLanguagesError = (state: SettingsState): string | null => state.errors.autoTranslate.languages;
@@ -52,6 +59,16 @@ export function LocalizationLanguages() {
   const { bulkAction, recordSourceVersions, requestBulkTranslations, requestLanguageTranslations, requestedLanguageCodes } = useLocalizationRequests(services, localization);
   const { autoTranslateLanguages: languages, autoTranslateLocalizationPath } = useDraftFields(LANGUAGE_LIST_FIELDS);
   const languagesError = useSettingsSelector(selectLanguagesError);
+  // One key per row in list order, kept beside the list because the draft is sent to the server as
+  // it is. Edits keep every key, and so does a save's answer (a list of the same length); removing,
+  // adding, and resetting pass the keys they leave.
+  const [storedRowKeys, setRowKeys] = useState(() => languages.map(createRowKey));
+  let rowKeys = storedRowKeys;
+  if (rowKeys.length !== languages.length) {
+    // A list of another length arrived from outside the row actions: rows keep their keys by position.
+    rowKeys = languages.map((_, index) => storedRowKeys[index] ?? createRowKey());
+    setRowKeys(rowKeys);
+  }
   const activeTranslationMode = job?.status === "running" ? job.mode : bulkAction;
   /** Statuses are shown only while they belong to the localization directory in the field. */
   const statusesShown = statusesLocalizationPath === normalizeLocalizationPath(autoTranslateLocalizationPath);
@@ -66,7 +83,8 @@ export function LocalizationLanguages() {
     [languages, statuses],
   );
 
-  const changeLanguages = (nextLanguages: AutoTranslateLanguage[]) => {
+  const changeLanguages = (nextLanguages: AutoTranslateLanguage[], nextRowKeys = rowKeys) => {
+    setRowKeys(nextRowKeys);
     settingsStore.setDraftField("autoTranslateLanguages", nextLanguages);
     settingsStore.patchErrors("autoTranslate", { languages: validateAutoTranslateLanguages(nextLanguages) });
   };
@@ -137,8 +155,9 @@ export function LocalizationLanguages() {
 
           return (
             <LanguageRow
-              // The key follows the code, so editing a code remounts its row.
-              key={`${language.code || "language"}-${index}`}
+              // A row keeps its key while its ID is typed, so it stays mounted with its focus and caret,
+              // and its state (an open icon picker) stays with its language when other rows change.
+              key={rowKeys[index]}
               index={index}
               language={language}
               normalizedCode={normalizedCode}
@@ -150,7 +169,10 @@ export function LocalizationLanguages() {
                 changeLanguages(languages.map((entry, entryIndex) => (entryIndex === changedIndex ? { ...entry, ...change } : entry)));
               }}
               onRemove={(removedIndex) => {
-                changeLanguages(languages.filter((_, entryIndex) => entryIndex !== removedIndex));
+                changeLanguages(
+                  languages.filter((_, entryIndex) => entryIndex !== removedIndex),
+                  rowKeys.filter((_, entryIndex) => entryIndex !== removedIndex),
+                );
               }}
               onRequestTranslations={(requestedLanguage) => {
                 void requestLanguageTranslations(requestedLanguage);
@@ -165,7 +187,7 @@ export function LocalizationLanguages() {
           type="button"
           className="btn btn-secondary"
           onClick={() => {
-            changeLanguages([...languages, createCustomAutoTranslateLanguage(languages)]);
+            changeLanguages([...languages, createCustomAutoTranslateLanguage(languages)], [...rowKeys, createRowKey()]);
           }}
         >
           <MaterialIcon name="add" />
@@ -177,7 +199,10 @@ export function LocalizationLanguages() {
           className="btn btn-ghost"
           disabled={JSON.stringify(languages) === JSON.stringify(DEFAULT_AUTO_TRANSLATE_LANGUAGES)}
           onClick={() => {
-            changeLanguages(DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })));
+            changeLanguages(
+              DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
+              DEFAULT_AUTO_TRANSLATE_LANGUAGES.map(createRowKey),
+            );
           }}
         >
           Reset languages

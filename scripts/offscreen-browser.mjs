@@ -155,6 +155,20 @@ const elementClip = async (selector) => {
   })()`);
 };
 
+/** Windows virtual key codes of the named keys `key` steps press; Chrome runs a key's default action (deleting, moving the caret or focus) only with its code. */
+const NAMED_KEY_CODES = { Backspace: 8, Tab: 9, Enter: 13, Escape: 27, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Delete: 46 };
+
+/** Presses one key as a keyboard does: a named key, or a single character, which is typed. */
+const pressKey = async (key) => {
+  const keyCode = NAMED_KEY_CODES[key];
+  const text = key === "Enter" ? "\r" : keyCode === undefined ? key : "";
+  const event = { key, text, unmodifiedText: text, windowsVirtualKeyCode: keyCode ?? 0 };
+  await send("Input.dispatchKeyEvent", { ...event, type: text ? "keyDown" : "rawKeyDown" });
+  await send("Input.dispatchKeyEvent", { ...event, type: "keyUp" });
+};
+
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 const runStep = async (step) => {
   if (step.goto) {
     const loaded = waitForEvent("Page.loadEventFired", step.timeoutMs);
@@ -169,13 +183,21 @@ const runStep = async (step) => {
     await send("Input.dispatchMouseEvent", { type: "mouseReleased", x, y, button: "left", clickCount: 1 });
   } else if (step.type !== undefined) {
     await send("Input.insertText", { text: step.type });
+  } else if (step.keys !== undefined) {
+    for (const [index, character] of [...step.keys].entries()) {
+      if (index > 0 && step.delay) {
+        await sleep(step.delay);
+      }
+      await pressKey(character);
+    }
   } else if (step.key) {
-    await send("Input.dispatchKeyEvent", { type: "keyDown", key: step.key });
-    await send("Input.dispatchKeyEvent", { type: "keyUp", key: step.key });
+    for (let count = 0; count < (step.repeat ?? 1); count += 1) {
+      await pressKey(step.key);
+    }
   } else if (step.eval) {
     console.log(JSON.stringify(await evaluate(step.eval)));
   } else if (step.wait) {
-    await new Promise((resolve) => setTimeout(resolve, step.wait));
+    await sleep(step.wait);
   } else if (step.screenshot) {
     const clip = step.selector ? await elementClip(step.selector) : undefined;
     const { data } = await send("Page.captureScreenshot", { format: "png", ...(clip ? { clip, captureBeyondViewport: true } : {}) });

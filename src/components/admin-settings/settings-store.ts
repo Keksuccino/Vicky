@@ -143,7 +143,7 @@ const sameEntries = (left: object, right: object): boolean => {
 };
 
 /** The language list arrives as a new array after every save; a list with the same entries counts as unchanged. */
-const sameDraftValue = (left: unknown, right: unknown): boolean =>
+export const sameDraftValue = (left: unknown, right: unknown): boolean =>
   Object.is(left, right) ||
   (Array.isArray(left) &&
     Array.isArray(right) &&
