@@ -62,7 +62,7 @@ export const INITIAL_SETTINGS: AdminSettings = {
   themeCustomCss: THEME_DEFAULTS.customCss,
 };
 
-export type ThemeSettingsFields = Pick<
+type ThemeSettingsFields = Pick<
   AdminSettings,
   "themeLightAccent" | "themeLightSurfaceAccent" | "themeDarkAccent" | "themeDarkSurfaceAccent" | "themeCustomCss"
 >;
@@ -97,7 +97,6 @@ export type SettingsStore = {
   getState: () => SettingsState;
   setState: (patch: Partial<SettingsState>) => void;
   subscribe: (listener: () => void) => () => void;
-  updateDraft: (update: (draft: AdminSettings) => AdminSettings) => void;
   setDraftField: <K extends keyof AdminSettings>(field: K, value: AdminSettings[K]) => void;
   patchErrors: <G extends keyof SettingsFieldErrors>(group: G, patch: Partial<SettingsFieldErrors[G]>) => void;
 };
@@ -125,7 +124,6 @@ export const createSettingsStore = (): SettingsStore => {
         listeners.delete(listener);
       };
     },
-    updateDraft: (update) => setState({ draft: update(state.draft) }),
     setDraftField: (field, value) => setState({ draft: { ...state.draft, [field]: value } }),
     patchErrors: (group, patch) => setState({ errors: { ...state.errors, [group]: { ...state.errors[group], ...patch } } }),
   };

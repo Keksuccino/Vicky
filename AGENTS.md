@@ -48,6 +48,12 @@
   - `src/lib/remark-github-alerts.ts`
 - Editor:
   - `src/components/editor-workbench.tsx`
+- Admin panel (`/admin/settings`):
+  - `src/components/admin-settings-panel.tsx`: loading gate and card layout
+  - `src/components/admin-settings/panel-provider.tsx`: owns the panel's state for its lifetime and wires cross-card refreshes; `panel-context.ts`: the contexts cards read; `panel-load.ts`: what the panel requests when it opens, in order
+  - `src/components/admin-settings/settings-store.ts`: settings draft, field errors, and save state outside React, read per card with `useDraftFields`/`useFieldErrors` so typing re-renders only that card; `settings-auto-save.ts`: validation, the save queue, clearing saved secrets; `settings-validation.ts`: field validators and save normalization
+  - `src/components/admin-settings/*-card.tsx`: one module per card (larger cards keep their parts beside them, e.g. `localization-languages.tsx`, `visitor-sparkline.tsx`); state that loads with the panel or that other cards refresh lives in the provider's hooks (`performance-stats.ts`, `visitor-stats.ts`, `ssl-status.ts`, `markdown-cache.ts`, `localization-status.ts`), state of actions only one card starts lives in that card (`localization-requests.ts`, `useMarkdownCacheActions`)
+  - `src/components/admin-settings/request-lifetime.ts`: the panel's lifetime abort signal and the newest-request guard; `format.ts`, `panel-ui.tsx`, `settings-fields.tsx`: shared formatting and controls
 - Settings/store:
   - `src/lib/store.ts`
   - `src/lib/defaults.ts`

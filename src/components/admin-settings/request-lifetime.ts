@@ -24,7 +24,7 @@ export function usePanelLifetimeSignal(): () => AbortSignal {
   return lifetimeSignal;
 }
 
-export type RequestOutcome<T> = { error: null; value: T } | { error: string; value: null };
+type RequestOutcome<T> = { error: null; value: T } | { error: string; value: null };
 
 /**
  * Returns a runner for one kind of read: it settles the read into its value or its formatted

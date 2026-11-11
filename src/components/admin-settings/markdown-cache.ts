@@ -14,7 +14,7 @@ import type { AdminMarkdownCachePageStatus, AdminMarkdownCacheStatus, AdminMarkd
 
 const MARKDOWN_CACHE_WARM_JOB_POLL_MS = 1_000;
 
-export type MarkdownCacheActionMessage = { tone: "success" | "warning" | "error"; text: string };
+type MarkdownCacheActionMessage = { tone: "success" | "warning" | "error"; text: string };
 
 /** What the card says once a warm job it watched has finished. */
 const markdownCacheWarmOutcome = (job: AdminMarkdownCacheWarmJob): MarkdownCacheActionMessage => {

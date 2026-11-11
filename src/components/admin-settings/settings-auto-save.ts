@@ -25,7 +25,7 @@ type SettingsAutoSaveOptions = {
   settingsStore: SettingsStore;
 };
 
-export type SettingsAutoSave = {
+type SettingsAutoSave = {
   /** Shows the settings the panel loaded and lets the auto-save start. */
   applyLoadedSettings: (loaded: AdminSettings) => void;
   clearSavedSecret: (target: ClearSecretTarget) => Promise<void>;

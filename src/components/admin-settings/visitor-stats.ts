@@ -9,7 +9,7 @@ const VISITOR_STATS_CATCH_UP_POLL_MS = 2_000;
 /** How soon the card asks again when the server was still computing the numbers. */
 const VISITOR_STATS_PENDING_POLL_MS = 1_000;
 
-export type VisitorStatsRefreshOptions = { refresh?: boolean; silent?: boolean };
+type VisitorStatsRefreshOptions = { refresh?: boolean; silent?: boolean };
 
 export type VisitorStats = {
   error: string | null;

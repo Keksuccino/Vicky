@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { fetchAdminModerators, fetchAdminSettings, formatApiError, getCurrentUser } from "@/components/api";
 import type { AdminSettings, ModeratorAccount } from "@/components/types";
 
-/** Delay before the localization status is requested, so the panel's own requests go first. */
+/** How long after the panel opened the localization status is requested. */
 const TRANSLATION_STATUS_INITIAL_DELAY_MS = 650;
 
 type PanelLoadOptions = {

@@ -13,21 +13,21 @@ import { isCircleFlagIconId, normalizeCircleFlagIconId } from "@/lib/circle-flag
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import type { AdminSettings, AutoTranslateLanguage } from "@/components/types";
 
-export type DomainFieldErrors = {
+type DomainFieldErrors = {
   customDomain: string | null;
   letsEncryptEmail: string | null;
 };
 
-export type AiChatFieldErrors = {
+type AiChatFieldErrors = {
   systemPrompt: string | null;
   openRouterModel: string | null;
 };
 
-export type OpenRouterFieldErrors = {
+type OpenRouterFieldErrors = {
   apiKey: string | null;
 };
 
-export type AutoTranslateFieldErrors = {
+type AutoTranslateFieldErrors = {
   openRouterModel: string | null;
   requestTimeout: string | null;
   localizationPath: string | null;
