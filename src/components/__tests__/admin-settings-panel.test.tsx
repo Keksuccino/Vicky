@@ -81,6 +81,17 @@ const findElement = async <T extends Element>(container: HTMLElement, selector: 
   return element as unknown as T;
 };
 
+/** Lets pending promises and React updates settle. */
+const settle = () => act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+
+/** Moves the focus out of `element`, as clicking elsewhere does. */
+const leave = async (element: HTMLElement) => {
+  act(() => element.blur());
+  await settle();
+};
+
+const lastSaved = (): AdminSettings => saveAdminSettingsMock.mock.lastCall?.[0] as AdminSettings;
+
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
   let reject!: (reason?: unknown) => void;
@@ -668,5 +679,49 @@ describe("AdminSettingsPanel", () => {
     });
 
     expect((saveAdminSettingsMock.mock.calls[1] ?? [])[0]?.githubToken).toBe("");
+  });
+
+  describe("a custom language row typed with the source language's ID", () => {
+    it("stays an editable custom row that reports the duplicate until the ID is corrected, while the source row stays locked", async () => {
+      saveAdminSettingsMock.mockImplementation(async (settings: AdminSettings) => settings);
+
+      const { container } = render(<AdminSettingsPanel />);
+      fireEvent.click(await findElement(container, ".translation-language-list + .action-row .btn-secondary"));
+      await settle();
+      const codeInput = container.querySelector<HTMLInputElement>("#auto-translate-language-code-2")!;
+      const row = codeInput.closest(".translation-language-item")!;
+      const sourceCodeInput = container.querySelector<HTMLInputElement>("#auto-translate-language-code-0")!;
+      const listError = (): Element | undefined =>
+        Array.from(container.querySelector(".translation-language-list")!.parentElement!.children).find((element) => element.classList.contains("error-text"));
+      const expectEditable = (value: string) => {
+        expect(codeInput.value).toBe(value);
+        expect(codeInput.disabled).toBe(false);
+        expect(row.classList.contains("translation-language-item-fixed")).toBe(false);
+        expect(row.querySelector<HTMLInputElement>(".translation-language-name-field input")?.disabled).toBe(false);
+        expect(row.querySelector<HTMLButtonElement>(".translation-language-remove")?.disabled).toBe(false);
+        expect(sourceCodeInput.disabled).toBe(true);
+        expect(sourceCodeInput.closest(".translation-language-item")?.classList.contains("translation-language-item-fixed")).toBe(true);
+      };
+
+      codeInput.focus();
+      for (const value of ["", "e", "en", "en-", "en-u", "en-us"]) {
+        fireEvent.change(codeInput, { target: { value } });
+        expectEditable(value);
+        expect(document.activeElement).toBe(codeInput);
+      }
+      expect(listError()).toBeDefined();
+
+      // Leaving the field normalizes the ID, and the row stays editable.
+      await leave(codeInput);
+      expectEditable("en-US");
+      expect(listError()).toBeDefined();
+
+      codeInput.focus();
+      fireEvent.change(codeInput, { target: { value: "nl-be" } });
+      expectEditable("nl-be");
+      expect(listError()).toBeUndefined();
+      await leave(codeInput);
+      expect(lastSaved().autoTranslateLanguages.map((language) => language.code)).toEqual(["en-US", "de", "nl-BE"]);
+    });
   });
 });

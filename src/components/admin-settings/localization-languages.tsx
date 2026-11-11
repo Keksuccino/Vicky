@@ -83,6 +83,11 @@ export function LocalizationLanguages() {
     [languages, statuses],
   );
 
+  // The list starts with the source language: the server stores it first, and the panel neither
+  // moves rows nor removes that one. A later row typed with its ID is a duplicate the admin can
+  // correct, never the locked source row.
+  const sourceRowIndex = languages.findIndex((language) => isDefaultAutoTranslateLanguageCode(language.code));
+
   const changeLanguages = (nextLanguages: AutoTranslateLanguage[], nextRowKeys = rowKeys) => {
     setRowKeys(nextRowKeys);
     settingsStore.setDraftField("autoTranslateLanguages", nextLanguages);
@@ -159,6 +164,7 @@ export function LocalizationLanguages() {
               // and its state (an open icon picker) stays with its language when other rows change.
               key={rowKeys[index]}
               index={index}
+              isSourceLanguage={index === sourceRowIndex}
               language={language}
               normalizedCode={normalizedCode}
               cacheStatus={normalizedCode && statusesShown ? statuses[translationCacheStatusKey(normalizedCode)] : undefined}

@@ -67,6 +67,8 @@ const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheS
 
 type LanguageRowProps = {
   index: number;
+  /** The row of the source language, which is locked; any other row stays editable, whatever its ID. */
+  isSourceLanguage: boolean;
   language: AutoTranslateLanguage;
   /** The language's code as the server keys it. */
   normalizedCode: string;
@@ -84,6 +86,7 @@ type LanguageRowProps = {
 /** One selectable language: visibility, name, ID, icon, its localization status, and its actions. */
 export function LanguageRow({
   index,
+  isSourceLanguage,
   language,
   normalizedCode,
   cacheStatus,
@@ -94,9 +97,8 @@ export function LanguageRow({
   onRemove,
   onRequestTranslations,
 }: LanguageRowProps) {
-  const isDefaultLanguage = isDefaultAutoTranslateLanguageCode(language.code);
-  const languageEnabled = isDefaultLanguage || language.enabled !== false;
-  const languageIcon = isDefaultLanguage
+  const languageEnabled = isSourceLanguage || language.enabled !== false;
+  const languageIcon = isSourceLanguage
     ? getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE)
     : normalizeCircleFlagIconId(language.icon) ||
       getDefaultAutoTranslateLanguageIcon(normalizedCode || language.code);
@@ -111,13 +113,13 @@ export function LanguageRow({
         : getTranslationCacheStatusTooltip(cacheStatus);
 
   return (
-    <div className={`translation-language-item${isDefaultLanguage ? " translation-language-item-fixed" : ""}`}>
+    <div className={`translation-language-item${isSourceLanguage ? " translation-language-item-fixed" : ""}`}>
       <div className="field-inline translation-language-fields">
         <label
           className={`toggle-row translation-language-visibility-toggle${
-            isDefaultLanguage ? " translation-language-visibility-toggle-disabled" : ""
+            isSourceLanguage ? " translation-language-visibility-toggle-disabled" : ""
           } ui-tooltip`}
-          data-ui-tooltip={isDefaultLanguage ? "Source language is always visible" : languageEnabled ? "Visible to visitors" : "Hidden from visitors"}
+          data-ui-tooltip={isSourceLanguage ? "Source language is always visible" : languageEnabled ? "Visible to visitors" : "Hidden from visitors"}
           htmlFor={`auto-translate-language-enabled-${index}`}
         >
           <input
@@ -125,8 +127,8 @@ export function LanguageRow({
             className="toggle-input"
             type="checkbox"
             checked={languageEnabled}
-            disabled={isDefaultLanguage}
-            aria-label={`${languageEnabled ? "Hide" : "Show"} ${isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name || "language"} in the public language selector`}
+            disabled={isSourceLanguage}
+            aria-label={`${languageEnabled ? "Hide" : "Show"} ${isSourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name || "language"} in the public language selector`}
             onChange={(event) => onChange(index, { enabled: event.target.checked })}
           />
           <span className="toggle-control" aria-hidden="true">
@@ -142,8 +144,8 @@ export function LanguageRow({
             id={`auto-translate-language-name-${index}`}
             className="input"
             aria-label="Display name"
-            value={isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name}
-            disabled={isDefaultLanguage}
+            value={isSourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME : language.name}
+            disabled={isSourceLanguage}
             onChange={(event) => onChange(index, { name: event.target.value })}
           />
         </label>
@@ -156,8 +158,8 @@ export function LanguageRow({
             id={`auto-translate-language-code-${index}`}
             className="input"
             aria-label="ID"
-            value={isDefaultLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code}
-            disabled={isDefaultLanguage}
+            value={isSourceLanguage ? DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE : language.code}
+            disabled={isSourceLanguage}
             onChange={(event) => onChange(index, { code: event.target.value })}
             onBlur={(event) => {
               const code = normalizeAutoTranslateLanguageCode(event.target.value);
@@ -171,7 +173,7 @@ export function LanguageRow({
         <CircleFlagIconPicker
           id={`auto-translate-language-icon-${index}`}
           value={languageIcon}
-          disabled={isDefaultLanguage}
+          disabled={isSourceLanguage}
           selectedDisplay="icon"
           showLabel={false}
           onChange={(icon) => onChange(index, { icon })}
@@ -205,7 +207,8 @@ export function LanguageRow({
             type="button"
             className="btn btn-icon translation-language-request"
             aria-label="Request Translations for All Pages"
-            disabled={isDefaultLanguage || requestBusy}
+            // The source language is never translated, whichever row carries its ID.
+            disabled={isDefaultAutoTranslateLanguageCode(language.code) || requestBusy}
             onClick={() => onRequestTranslations(language)}
           >
             <MaterialIcon name="download" />
@@ -219,10 +222,10 @@ export function LanguageRow({
             type="button"
             className="btn btn-icon danger translation-language-remove"
             aria-label="Remove"
-            disabled={isDefaultLanguage}
+            disabled={isSourceLanguage}
             onClick={() => onRemove(index)}
           >
-            <MaterialIcon name={isDefaultLanguage ? "lock" : "delete"} />
+            <MaterialIcon name={isSourceLanguage ? "lock" : "delete"} />
           </button>
         </span>
       </div>
