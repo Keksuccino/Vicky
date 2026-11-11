@@ -41,6 +41,40 @@ import {
   testAdminConnection,
   updateAdminModerator,
 } from "@/components/api";
+import { CardRefreshButton, ProgressPanel } from "@/components/admin-settings/panel-ui";
+import {
+  clampNumber,
+  formatByteSize,
+  formatChartCoordinate,
+  formatCount,
+  formatEtaSeconds,
+  formatStatusTimestamp,
+  formatUsagePercent,
+  progressPercent,
+} from "@/components/admin-settings/format";
+import { useNewestRequest, usePanelLifetimeSignal } from "@/components/admin-settings/request-lifetime";
+import { EnabledToggle, ResetToDefaultButton } from "@/components/admin-settings/settings-fields";
+import {
+  EMPTY_SETTINGS_FIELD_ERRORS,
+  hasSettingsFieldErrors,
+  normalizeAutoTranslateLanguagesForSave,
+  normalizeAutoTranslateRequestTimeoutSeconds,
+  normalizeSettingsForSave,
+  validateAutoTranslateLanguages,
+  validateAutoTranslateRequestTimeoutSeconds,
+  validateCustomDomainInput,
+  validateLetsEncryptEmailInput,
+  validateLocalizationPathInput,
+  validateOpenRouterApiKeyInput,
+  validateOpenRouterModelInput,
+  validateSettingsFields,
+  validateSystemPromptInput,
+  type AiChatFieldErrors,
+  type AutoTranslateFieldErrors,
+  type DomainFieldErrors,
+  type OpenRouterFieldErrors,
+  type SettingsFieldErrors,
+} from "@/components/admin-settings/settings-validation";
 import { CircleFlagIconPicker } from "@/components/circle-flag-icon-picker";
 import { ColorPickerField } from "@/components/color-picker-field";
 import { startJobStatusPolling } from "@/components/job-status-polling";
@@ -69,7 +103,6 @@ import {
   isDefaultAutoTranslateLanguageCode,
   languageCodesEqual,
   normalizeAutoTranslateLanguageCode,
-  normalizeAutoTranslateRequestTimeoutMs,
   normalizeLocalizationPath,
 } from "@/lib/auto-translate";
 import type {
@@ -87,12 +120,10 @@ import type {
   ThemeCustomization,
   VisitorAnalyticsStatus,
   VisitorStatsPeriod,
-  VisitorStatsResult,
   VisitorStatsScope,
   VisitorStatsSummary,
 } from "@/components/types";
-import { isCircleFlagIconId, normalizeCircleFlagIconId } from "@/lib/circle-flags";
-import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
+import { normalizeCircleFlagIconId } from "@/lib/circle-flags";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
 import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 
@@ -164,204 +195,6 @@ const INITIAL_SETTINGS: AdminSettings = {
   themeCustomCss: THEME_DEFAULTS.customCss,
 };
 
-type DomainFieldErrors = {
-  customDomain: string | null;
-  letsEncryptEmail: string | null;
-};
-
-const EMPTY_DOMAIN_FIELD_ERRORS: DomainFieldErrors = {
-  customDomain: null,
-  letsEncryptEmail: null,
-};
-
-type AiChatFieldErrors = {
-  systemPrompt: string | null;
-  openRouterModel: string | null;
-};
-
-const EMPTY_AI_CHAT_FIELD_ERRORS: AiChatFieldErrors = {
-  systemPrompt: null,
-  openRouterModel: null,
-};
-
-type OpenRouterFieldErrors = {
-  apiKey: string | null;
-};
-
-const EMPTY_OPENROUTER_FIELD_ERRORS: OpenRouterFieldErrors = {
-  apiKey: null,
-};
-
-type AutoTranslateFieldErrors = {
-  openRouterModel: string | null;
-  requestTimeout: string | null;
-  localizationPath: string | null;
-  languages: string | null;
-};
-
-const EMPTY_AUTO_TRANSLATE_FIELD_ERRORS: AutoTranslateFieldErrors = {
-  openRouterModel: null,
-  requestTimeout: null,
-  localizationPath: null,
-  languages: null,
-};
-
-const validateCustomDomainInput = (value: string): string | null => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  return normalizeCustomDomain(trimmed)
-    ? null
-    : "Enter a valid hostname only (example: docs.example.com, without protocol or path).";
-};
-
-const validateLetsEncryptEmailInput = (value: string): string | null => {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  return normalizeLetsEncryptEmail(trimmed) ? null : "Enter a valid email address for Let's Encrypt notifications.";
-};
-
-const validateDomainFields = (domain: string, email: string): DomainFieldErrors => ({
-  customDomain: validateCustomDomainInput(domain),
-  letsEncryptEmail: validateLetsEncryptEmailInput(email),
-});
-
-const hasDomainFieldErrors = (errors: DomainFieldErrors): boolean => Boolean(errors.customDomain || errors.letsEncryptEmail);
-
-const validateAiChatFields = (settings: AdminSettings): AiChatFieldErrors => {
-  if (!settings.aiChatEnabled) {
-    return EMPTY_AI_CHAT_FIELD_ERRORS;
-  }
-
-  return {
-    systemPrompt: settings.aiChatSystemPrompt.includes(AI_CHAT_DOCS_PLACEHOLDER)
-      ? null
-      : `Include ${AI_CHAT_DOCS_PLACEHOLDER} in the system prompt so the /docs.txt export can be injected.`,
-    openRouterModel: settings.openRouterModel.trim() ? null : "Enter an OpenRouter model identifier.",
-  };
-};
-
-const hasAiChatFieldErrors = (errors: AiChatFieldErrors): boolean => Boolean(errors.systemPrompt || errors.openRouterModel);
-
-const validateOpenRouterFields = (settings: AdminSettings): OpenRouterFieldErrors => ({
-  apiKey:
-    settings.aiChatEnabled || settings.autoTranslateEnabled
-      ? settings.openRouterApiKey.trim() || settings.openRouterApiKeyConfigured
-        ? null
-        : "Enter an OpenRouter API key before enabling AI features."
-      : null,
-});
-
-const hasOpenRouterFieldErrors = (errors: OpenRouterFieldErrors): boolean => Boolean(errors.apiKey);
-
-const validateAutoTranslateLanguages = (languages: AutoTranslateLanguage[]): string | null => {
-  const seenCodes = new Set<string>();
-  let hasDefaultLanguage = false;
-
-  for (const language of languages) {
-    const name = language.name.trim();
-    const code = normalizeAutoTranslateLanguageCode(language.code);
-
-    if (!name || !code) {
-      return "Each language needs a display name and a language code.";
-    }
-
-    if (!isCircleFlagIconId(language.icon)) {
-      return "Each language needs a Circle Flags icon.";
-    }
-
-    const codeKey = code.toLowerCase();
-    if (seenCodes.has(codeKey)) {
-      return "Language codes must be unique.";
-    }
-
-    seenCodes.add(codeKey);
-    if (isDefaultAutoTranslateLanguageCode(code)) {
-      hasDefaultLanguage = true;
-    }
-  }
-
-  return hasDefaultLanguage ? null : `${DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME} must stay in the language list.`;
-};
-
-const normalizeAutoTranslateRequestTimeoutSeconds = (value: number): number =>
-  Math.round(normalizeAutoTranslateRequestTimeoutMs(value * 1_000) / 1_000);
-
-const validateAutoTranslateRequestTimeoutSeconds = (value: number): string | null => {
-  if (!Number.isFinite(value)) {
-    return "Enter a timeout in seconds.";
-  }
-
-  const minSeconds = MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000;
-  return value >= minSeconds ? null : `Use at least ${minSeconds} seconds.`;
-};
-
-const validateAutoTranslateFields = (settings: AdminSettings): AutoTranslateFieldErrors => {
-  const rawLocalizationPath = settings.autoTranslateLocalizationPath.trim();
-  const localizationPath = normalizeLocalizationPath(settings.autoTranslateLocalizationPath);
-  const normalizedRawLocalizationPath = rawLocalizationPath.replace(/^\/+/, "").replace(/\/+$/, "");
-  const localizationPathError =
-    !rawLocalizationPath || localizationPath === normalizedRawLocalizationPath
-      ? null
-      : "Enter a repo-relative folder path without traversal segments.";
-
-  if (!settings.autoTranslateEnabled) {
-    return {
-      openRouterModel: null,
-      requestTimeout: validateAutoTranslateRequestTimeoutSeconds(settings.autoTranslateRequestTimeoutSeconds),
-      localizationPath: localizationPathError,
-      languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
-    };
-  }
-
-  return {
-    openRouterModel: settings.autoTranslateOpenRouterModel.trim() ? null : "Enter an OpenRouter model identifier.",
-    requestTimeout: validateAutoTranslateRequestTimeoutSeconds(settings.autoTranslateRequestTimeoutSeconds),
-    localizationPath: localizationPathError,
-    languages: validateAutoTranslateLanguages(settings.autoTranslateLanguages),
-  };
-};
-
-const hasAutoTranslateFieldErrors = (errors: AutoTranslateFieldErrors): boolean =>
-  Boolean(errors.openRouterModel || errors.requestTimeout || errors.localizationPath || errors.languages);
-
-const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
-  const output: AutoTranslateLanguage[] = [
-    {
-      name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
-      code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-      icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
-      enabled: true,
-    },
-  ];
-  const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
-
-  for (const language of languages) {
-    const code = normalizeAutoTranslateLanguageCode(language.code);
-    const name = language.name.trim().replace(/\s+/g, " ");
-    const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
-
-    if (!code || !name || isDefaultAutoTranslateLanguageCode(code)) {
-      continue;
-    }
-
-    const codeKey = code.toLowerCase();
-    if (seenCodes.has(codeKey)) {
-      continue;
-    }
-
-    seenCodes.add(codeKey);
-    output.push({ name, code, icon, enabled: language.enabled !== false });
-  }
-
-  return output;
-};
-
 const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage => {
   let index = 1;
   let code = "custom";
@@ -378,17 +211,6 @@ const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): 
     enabled: true,
   };
 };
-
-const normalizeDomainFieldsForSave = (settings: AdminSettings): AdminSettings => ({
-  ...settings,
-  customDomain: normalizeCustomDomain(settings.customDomain),
-  letsEncryptEmail: normalizeLetsEncryptEmail(settings.letsEncryptEmail),
-  autoTranslateLocalizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
-  autoTranslateRequestTimeoutSeconds: normalizeAutoTranslateRequestTimeoutSeconds(
-    settings.autoTranslateRequestTimeoutSeconds,
-  ),
-  autoTranslateLanguages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
-});
 
 const themeCustomizationFromSettings = (settings: AdminSettings): ThemeCustomization => ({
   lightAccent: settings.themeLightAccent,
@@ -420,86 +242,7 @@ const createThemePreviewStyle = (
   } as CSSProperties;
 };
 
-type ResetToDefaultButtonProps = {
-  disabled: boolean;
-  onClick: () => void;
-};
-
-function ResetToDefaultButton({ disabled, onClick }: ResetToDefaultButtonProps) {
-  return (
-    <button type="button" className="btn field-control-action" disabled={disabled} onClick={onClick}>
-      Reset To Default
-    </button>
-  );
-}
-
-type VisitorStatsLoadResult =
-  | { error: null; result: VisitorStatsResult }
-  | { error: string; result: null };
-
-type PerformanceStatsLoadResult =
-  | { error: null; stats: PerformanceStatsSnapshot }
-  | { error: string; stats: null };
-
-type MarkdownCacheStatusLoadResult =
-  | { error: null; status: AdminMarkdownCacheStatus }
-  | { error: string; status: null };
-
-const loadVisitorStatsResult = async (refresh: boolean, signal: AbortSignal): Promise<VisitorStatsLoadResult> => {
-  try {
-    return {
-      result: await fetchAdminVisitorStats({ refresh, signal }),
-      error: null,
-    };
-  } catch (error) {
-    return {
-      result: null,
-      error: formatApiError(error),
-    };
-  }
-};
-
-const loadPerformanceStatsResult = async (signal: AbortSignal): Promise<PerformanceStatsLoadResult> => {
-  try {
-    return {
-      stats: await fetchAdminPerformanceStats({ signal }),
-      error: null,
-    };
-  } catch (error) {
-    return {
-      stats: null,
-      error: formatApiError(error),
-    };
-  }
-};
-
-const loadMarkdownCacheStatusResult = async (signal: AbortSignal): Promise<MarkdownCacheStatusLoadResult> => {
-  try {
-    return {
-      status: await fetchAdminMarkdownCacheStatus({ signal }),
-      error: null,
-    };
-  } catch (error) {
-    return {
-      status: null,
-      error: formatApiError(error),
-    };
-  }
-};
-
-const visitorNumberFormatter = new Intl.NumberFormat();
-const usagePercentFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 1,
-  minimumFractionDigits: 0,
-});
-const byteSizeFormatter = new Intl.NumberFormat(undefined, {
-  maximumFractionDigits: 1,
-  minimumFractionDigits: 0,
-});
-
-const formatVisitorCount = (value: number): string => visitorNumberFormatter.format(value);
-
-const formatVisitorLabel = (value: number): string => `${formatVisitorCount(value)} visitor${value === 1 ? "" : "s"}`;
+const formatVisitorLabel = (value: number): string => `${formatCount(value)} visitor${value === 1 ? "" : "s"}`;
 
 type VisitorSparklineMetric = "visitors" | "visits";
 
@@ -524,27 +267,6 @@ const VISITOR_SPARKLINE_PADDING_Y = 7;
 const VISITOR_SPARKLINE_TOOLTIP_GAP = 14;
 const VISITOR_SPARKLINE_TOOLTIP_MARGIN_X = 14;
 const VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y = 10;
-
-const formatSparklineCoordinate = (value: number): string => value.toFixed(2).replace(/\.?0+$/, "");
-
-const clampNumber = (value: number, min: number, max: number): number => Math.min(Math.max(value, min), max);
-
-const BYTE_SIZE_UNITS = ["B", "KiB", "MiB", "GiB", "TiB", "PiB"];
-
-const formatUsagePercent = (value: number): string =>
-  `${usagePercentFormatter.format(clampNumber(value, 0, 100))}%`;
-
-const formatByteSize = (value: number): string => {
-  let size = Math.max(0, value);
-  let unitIndex = 0;
-
-  while (size >= 1024 && unitIndex < BYTE_SIZE_UNITS.length - 1) {
-    size /= 1024;
-    unitIndex += 1;
-  }
-
-  return `${byteSizeFormatter.format(size)} ${BYTE_SIZE_UNITS[unitIndex]}`;
-};
 
 type PerformanceMetricKind = "memory" | "cpu" | "drive";
 type PerformanceUsageTone = "low" | "medium" | "high";
@@ -580,22 +302,22 @@ const createPerformanceMeterGeometry = (usagePercent: number) => {
   const startX = PERFORMANCE_CHART_PADDING_X;
   const endX = PERFORMANCE_CHART_WIDTH - PERFORMANCE_CHART_PADDING_X;
   const y = baselineY - (normalizedPercent / 100) * chartHeight;
-  const linePath = `M ${formatSparklineCoordinate(startX)} ${formatSparklineCoordinate(
+  const linePath = `M ${formatChartCoordinate(startX)} ${formatChartCoordinate(
     y,
-  )} L ${formatSparklineCoordinate(endX)} ${formatSparklineCoordinate(y)}`;
+  )} L ${formatChartCoordinate(endX)} ${formatChartCoordinate(y)}`;
   const areaPath = [
     "M",
-    formatSparklineCoordinate(startX),
-    formatSparklineCoordinate(baselineY),
+    formatChartCoordinate(startX),
+    formatChartCoordinate(baselineY),
     "L",
-    formatSparklineCoordinate(startX),
-    formatSparklineCoordinate(y),
+    formatChartCoordinate(startX),
+    formatChartCoordinate(y),
     "L",
-    formatSparklineCoordinate(endX),
-    formatSparklineCoordinate(y),
+    formatChartCoordinate(endX),
+    formatChartCoordinate(y),
     "L",
-    formatSparklineCoordinate(endX),
-    formatSparklineCoordinate(baselineY),
+    formatChartCoordinate(endX),
+    formatChartCoordinate(baselineY),
     "Z",
   ].join(" ");
 
@@ -671,7 +393,7 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
     ? `${formatByteSize(stats.memory.usedBytes)} of ${formatByteSize(stats.memory.totalBytes)}`
     : "";
   const cpuDetail = stats
-    ? `Across ${formatVisitorCount(stats.cpu.logicalCores)} logical core${stats.cpu.logicalCores === 1 ? "" : "s"}`
+    ? `Across ${formatCount(stats.cpu.logicalCores)} logical core${stats.cpu.logicalCores === 1 ? "" : "s"}`
     : "";
   const driveDetail = stats
     ? `${formatByteSize(stats.drive.usedBytes)} of ${formatByteSize(stats.drive.totalBytes)}`
@@ -684,17 +406,7 @@ function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceS
           <h2>Performance Overview</h2>
           <p className="panel-description">Live server resource usage.</p>
         </div>
-        <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing performance" : "Refresh performance"}>
-          <button
-            type="button"
-            className="btn btn-icon visitor-refresh-button"
-            disabled={loading}
-            aria-label={loading ? "Refreshing performance" : "Refresh performance"}
-            onClick={onRefresh}
-          >
-            <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
-          </button>
-        </span>
+        <CardRefreshButton disabled={loading} label="Refresh performance" loading={loading} loadingLabel="Refreshing performance" onClick={onRefresh} />
       </div>
 
       {error ? <p className="error-text">{error}</p> : null}
@@ -780,17 +492,7 @@ function MarkdownCacheCard({
           <p className="panel-description">Persistent server-rendered HTML for current docs content.</p>
         </div>
         {status ? (
-          <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}>
-            <button
-              type="button"
-              className="btn btn-icon visitor-refresh-button"
-              disabled={loading || clearing}
-              aria-label={loading ? "Refreshing Markdown cache" : "Refresh Markdown cache"}
-              onClick={onRefresh}
-            >
-              <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
-            </button>
-          </span>
+          <CardRefreshButton disabled={loading || clearing} label="Refresh Markdown cache" loading={loading} loadingLabel="Refreshing Markdown cache" onClick={onRefresh} />
         ) : null}
       </div>
 
@@ -844,10 +546,10 @@ function MarkdownCacheStatusDetails({
   onClearPage,
   onWarmAll,
 }: MarkdownCacheStatusDetailsProps) {
-  const cacheRatio = `${formatVisitorCount(status.cachedVariants)}/${formatVisitorCount(status.totalVariants)}`;
-  const pageRatio = `${formatVisitorCount(status.sourcePagesCached)}/${formatVisitorCount(status.totalPages)}`;
+  const cacheRatio = `${formatCount(status.cachedVariants)}/${formatCount(status.totalVariants)}`;
+  const pageRatio = `${formatCount(status.sourcePagesCached)}/${formatCount(status.totalPages)}`;
   const lastMutationLabel = status.lastMutation
-    ? `${formatVisitorCount(status.lastMutation.deletedEntries)} removed ${formatStatusTimestamp(status.lastMutation.at)}`
+    ? `${formatCount(status.lastMutation.deletedEntries)} removed ${formatStatusTimestamp(status.lastMutation.at)}`
     : "No clear recorded";
 
   return (
@@ -862,7 +564,7 @@ function MarkdownCacheStatusDetails({
           <span>Source pages</span>
         </div>
         <div className="markdown-cache-summary-item">
-          <strong>{formatVisitorCount(status.translatedVariants)}</strong>
+          <strong>{formatCount(status.translatedVariants)}</strong>
           <span>Translations</span>
         </div>
         <div className="markdown-cache-summary-item">
@@ -873,8 +575,8 @@ function MarkdownCacheStatusDetails({
 
       <div className="markdown-cache-meta-row">
         <span>Renderer v{status.rendererVersion}</span>
-        <span>{formatVisitorCount(status.staleEntries)} unused entr{status.staleEntries === 1 ? "y" : "ies"}</span>
-        <span>{formatVisitorCount(status.globalEntries)} files globally</span>
+        <span>{formatCount(status.staleEntries)} unused entr{status.staleEntries === 1 ? "y" : "ies"}</span>
+        <span>{formatCount(status.globalEntries)} files globally</span>
         <span>{formatByteSize(status.globalHtmlBytes)} globally</span>
         <span>PID {status.processId}</span>
         <span>Updated {formatStatusTimestamp(status.updatedAt)}</span>
@@ -902,7 +604,7 @@ function MarkdownCacheStatusDetails({
         ) : (
           status.pages.map((page) => {
             const isClearing = clearingSlug === page.slug;
-            const pageRatio = `${formatVisitorCount(page.cachedVariants)}/${formatVisitorCount(page.totalVariants)}`;
+            const pageRatio = `${formatCount(page.cachedVariants)}/${formatCount(page.totalVariants)}`;
 
             return (
               <div className="markdown-cache-page-row" key={page.slug || page.path}>
@@ -1006,19 +708,19 @@ const createVisitorSparklinePath = (points: VisitorSparklinePoint[]): string => 
     return "";
   }
 
-  const move = `M ${formatSparklineCoordinate(firstPoint.x)} ${formatSparklineCoordinate(firstPoint.y)}`;
+  const move = `M ${formatChartCoordinate(firstPoint.x)} ${formatChartCoordinate(firstPoint.y)}`;
   const segments = points.slice(1).map((point, index) => {
     const previous = points[index];
     const controlX = previous.x + (point.x - previous.x) / 2;
 
     return [
       "C",
-      formatSparklineCoordinate(controlX),
-      formatSparklineCoordinate(previous.y),
-      formatSparklineCoordinate(controlX),
-      formatSparklineCoordinate(point.y),
-      formatSparklineCoordinate(point.x),
-      formatSparklineCoordinate(point.y),
+      formatChartCoordinate(controlX),
+      formatChartCoordinate(previous.y),
+      formatChartCoordinate(controlX),
+      formatChartCoordinate(point.y),
+      formatChartCoordinate(point.x),
+      formatChartCoordinate(point.y),
     ].join(" ");
   });
 
@@ -1049,9 +751,9 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
   const baselineY = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y;
   const areaPath =
     firstPoint && lastPoint && linePath
-      ? `${linePath} L ${formatSparklineCoordinate(lastPoint.x)} ${formatSparklineCoordinate(
+      ? `${linePath} L ${formatChartCoordinate(lastPoint.x)} ${formatChartCoordinate(
           baselineY,
-        )} L ${formatSparklineCoordinate(firstPoint.x)} ${formatSparklineCoordinate(baselineY)} Z`
+        )} L ${formatChartCoordinate(firstPoint.x)} ${formatChartCoordinate(baselineY)} Z`
       : "";
   const rangeLabel = formatVisitorTrendRange(periods);
   const activePointStyle = activePoint
@@ -1232,7 +934,7 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
   return (
     <div ref={chartCardRef} className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
       <div className="visitor-sparkline-meta">
-        <strong>{formatVisitorCount(value)}</strong>
+        <strong>{formatCount(value)}</strong>
         <span>{label}</span>
       </div>
       <span className="visitor-sparkline-range">{rangeLabel}</span>
@@ -1250,7 +952,7 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
         <svg
           className="visitor-sparkline"
           role="img"
-          aria-label={`${label}: ${formatVisitorCount(value)}. Trend range: ${rangeLabel}.`}
+          aria-label={`${label}: ${formatCount(value)}. Trend range: ${rangeLabel}.`}
           preserveAspectRatio="none"
           viewBox={`0 0 ${VISITOR_SPARKLINE_WIDTH} ${VISITOR_SPARKLINE_HEIGHT}`}
         >
@@ -1293,58 +995,15 @@ function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklin
           <dl>
             <div>
               <dt>Visitors</dt>
-              <dd>{formatVisitorCount(activePoint.period.visitors)}</dd>
+              <dd>{formatCount(activePoint.period.visitors)}</dd>
             </div>
             <div>
               <dt>Visits</dt>
-              <dd>{formatVisitorCount(activePoint.period.visits)}</dd>
+              <dd>{formatCount(activePoint.period.visits)}</dd>
             </div>
           </dl>
         </div>
       ) : null}
-    </div>
-  );
-}
-
-const formatRemainingTime = (seconds: number): string => {
-  if (seconds < 60) {
-    return "less than a minute left";
-  }
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) {
-    return `about ${minutes} min left`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const restMinutes = minutes % 60;
-  return `about ${hours} h${restMinutes > 0 ? ` ${restMinutes} min` : ""} left`;
-};
-
-/** Rounded down, so a bar never reads 100% before the last item is done. */
-const progressPercent = (processed: number, total: number): number => (total > 0 ? Math.min(99, Math.floor((processed / total) * 100)) : 0);
-
-const formatEtaSeconds = (etaSeconds: number | null): string => (etaSeconds === null ? "working out the time left" : formatRemainingTime(etaSeconds));
-
-type ProgressPanelProps = {
-  ariaLabel: string;
-  detail: string;
-  percent: number;
-  title: string;
-};
-
-/** Progress of a long-running background job: title, percentage, bar, and what is left. */
-function ProgressPanel({ ariaLabel, detail, percent, title }: ProgressPanelProps) {
-  const style = { "--progress-panel-size": `${percent}%` } as CSSProperties;
-
-  return (
-    <div className="progress-panel">
-      <div className="progress-panel-heading">
-        <strong>{title}</strong>
-        <span>{percent}%</span>
-      </div>
-      <div className="progress-panel-bar" role="progressbar" aria-label={ariaLabel} aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
-        <span style={style} />
-      </div>
-      <span className="progress-panel-detail">{detail}</span>
     </div>
   );
 }
@@ -1357,7 +1016,7 @@ function VisitorCatchUpProgress({ progress }: VisitorCatchUpProgressProps) {
   return (
     <ProgressPanel
       ariaLabel="Earlier visits added"
-      detail={`${formatVisitorCount(progress.processed)} of ${formatVisitorCount(progress.total)} visits, ${formatEtaSeconds(progress.etaSeconds)}. The numbers below fill in as it goes.`}
+      detail={`${formatCount(progress.processed)} of ${formatCount(progress.total)} visits, ${formatEtaSeconds(progress.etaSeconds)}. The numbers below fill in as it goes.`}
       percent={progressPercent(progress.processed, progress.total)}
       title="Catching up on earlier visits"
     />
@@ -1368,19 +1027,19 @@ function MarkdownCacheWarmProgress({ job }: { job: AdminMarkdownCacheWarmJob }) 
   const detail =
     job.phase === "planning"
       ? "Checking which pages and translations still need HTML."
-      : `${formatVisitorCount(job.processedVariants)} of ${formatVisitorCount(job.missingVariants)} variants, ${formatEtaSeconds(job.etaSeconds)}. It keeps going if you leave this page.`;
+      : `${formatCount(job.processedVariants)} of ${formatCount(job.missingVariants)} variants, ${formatEtaSeconds(job.etaSeconds)}. It keeps going if you leave this page.`;
 
   return <ProgressPanel ariaLabel="Missing HTML rendered" detail={detail} percent={progressPercent(job.processedVariants, job.missingVariants)} title="Rendering missing HTML" />;
 }
 
 /** What the card says once a warm job it watched has finished. */
 const markdownCacheWarmOutcome = (job: AdminMarkdownCacheWarmJob): MarkdownCacheActionMessage => {
-  const rendered = `${formatVisitorCount(job.renderedVariants)} Markdown HTML variant${job.renderedVariants === 1 ? "" : "s"}`;
+  const rendered = `${formatCount(job.renderedVariants)} Markdown HTML variant${job.renderedVariants === 1 ? "" : "s"}`;
   if (job.status === "failed") {
     return { tone: "error", text: job.error ?? "Rendering the missing HTML stopped." };
   }
   if (job.failedVariants > 0) {
-    return { tone: "warning", text: `Cached ${rendered}; ${formatVisitorCount(job.failedVariants)} failed.` };
+    return { tone: "warning", text: `Cached ${rendered}; ${formatCount(job.failedVariants)} failed.` };
   }
   if (job.renderedVariants === 0) {
     return { tone: "success", text: "All available Markdown HTML variants were already cached." };
@@ -1420,17 +1079,7 @@ function VisitorStatsCard({
           <h2>Analytics</h2>
           <p className="panel-description">Visits and unique visitors over time.</p>
         </div>
-        <span className="visitor-refresh-tooltip ui-tooltip" data-ui-tooltip={loading ? "Refreshing analytics" : "Refresh analytics"}>
-          <button
-            type="button"
-            className="btn btn-icon visitor-refresh-button"
-            disabled={loading}
-            aria-label={loading ? "Refreshing analytics" : "Refresh analytics"}
-            onClick={onRefresh}
-          >
-            <MaterialIcon name={loading ? "hourglass_top" : "refresh"} />
-          </button>
-        </span>
+        <CardRefreshButton disabled={loading} label="Refresh analytics" loading={loading} loadingLabel="Refreshing analytics" onClick={onRefresh} />
       </div>
 
       <div className="visitor-tabs" role="tablist" aria-label="Analytics range">
@@ -1480,7 +1129,7 @@ function VisitorStatsCard({
             <div className="visitor-page-section">
               <div className="visitor-section-heading">
                 <h3>Pages</h3>
-                <span>{formatVisitorCount(scopeStats.pages.length)}</span>
+                <span>{formatCount(scopeStats.pages.length)}</span>
               </div>
 
               {scopeStats.pages.length > 0 ? (
@@ -1496,7 +1145,7 @@ function VisitorStatsCard({
                           <span>{page.path} - {formatVisitorLabel(page.visitors)}</span>
                         </span>
                         <span className="visitor-page-count" title={formatVisitorLabel(page.visitors)}>
-                          {formatVisitorCount(page.visits)}
+                          {formatCount(page.visits)}
                         </span>
                         <span className="visitor-page-meter" aria-hidden="true">
                           <span className="visitor-page-meter-fill" style={style} />
@@ -1672,13 +1321,13 @@ const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheS
   }
 
   if (status.sourceLanguage) {
-    return `Source language: all ${formatVisitorCount(status.totalPages)} page${status.totalPages === 1 ? "" : "s"} are written in it`;
+    return `Source language: all ${formatCount(status.totalPages)} page${status.totalPages === 1 ? "" : "s"} are written in it`;
   }
 
   if (isTranslationStatusPending(status)) {
     const loading = status.loading;
     if (loading && loading.total > 0 && loading.downloaded < loading.total) {
-      return `Fetching this language's translations from GitHub for the first time: ${formatVisitorCount(loading.downloaded)} of ${formatVisitorCount(loading.total)} files`;
+      return `Fetching this language's translations from GitHub for the first time: ${formatCount(loading.downloaded)} of ${formatCount(loading.total)} files`;
     }
     return "Checking on GitHub when this language's translations were last changed";
   }
@@ -1690,19 +1339,14 @@ const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheS
 const translationOverviewSignature = (settings: AdminSettings): string =>
   JSON.stringify([normalizeLocalizationPath(settings.autoTranslateLocalizationPath), settings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code))]);
 
-const formatStatusTimestamp = (value: string): string => {
-  const parsed = new Date(value);
-
-  if (Number.isNaN(parsed.valueOf())) {
-    return value;
-  }
-
-  return parsed.toLocaleString();
-};
-
 export function AdminSettingsPanel() {
   const router = useRouter();
   const { setThemeSettings } = useTheme();
+  const lifetimeSignal = usePanelLifetimeSignal();
+  const runPerformanceStatsRequest = useNewestRequest(lifetimeSignal);
+  const runVisitorStatsRequest = useNewestRequest(lifetimeSignal);
+  const runMarkdownCacheStatusRequest = useNewestRequest(lifetimeSignal);
+  const runTranslationOverviewRequest = useNewestRequest(lifetimeSignal);
 
   const [settings, setSettings] = useState<AdminSettings>(INITIAL_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -1711,11 +1355,11 @@ export function AdminSettingsPanel() {
 
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [clearingSecret, setClearingSecret] = useState<ClearSecretTarget | null>(null);
-  const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_DOMAIN_FIELD_ERRORS);
-  const [aiChatFieldErrors, setAiChatFieldErrors] = useState<AiChatFieldErrors>(EMPTY_AI_CHAT_FIELD_ERRORS);
-  const [openRouterFieldErrors, setOpenRouterFieldErrors] = useState<OpenRouterFieldErrors>(EMPTY_OPENROUTER_FIELD_ERRORS);
+  const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.domain);
+  const [aiChatFieldErrors, setAiChatFieldErrors] = useState<AiChatFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.aiChat);
+  const [openRouterFieldErrors, setOpenRouterFieldErrors] = useState<OpenRouterFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.openRouter);
   const [autoTranslateFieldErrors, setAutoTranslateFieldErrors] =
-    useState<AutoTranslateFieldErrors>(EMPTY_AUTO_TRANSLATE_FIELD_ERRORS);
+    useState<AutoTranslateFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.autoTranslate);
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
@@ -1777,22 +1421,17 @@ export function AdminSettingsPanel() {
   const autoSaveQueuedRef = useRef(false);
   const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
   const lastSavedSnapshotRef = useRef<string | null>(null);
-  const lifetimeControllerRef = useRef<AbortController | null>(null);
   const translationJobStatusInFlightRef = useRef(false);
-  const translationOverviewRequestRef = useRef(0);
   /** Translation settings of the latest overview request, to fetch it again after a save changes them. */
   const translationOverviewSignatureRef = useRef<string | null>(null);
   const translationStatusesPendingRef = useRef(false);
   const translationJobRef = useRef<AdminTranslationJobSnapshot | null>(null);
   const translationLogRef = useRef<HTMLDivElement | null>(null);
   const lastTranslationJobStatusRef = useRef<AdminTranslationJobSnapshot["status"] | null>(null);
-  const markdownCacheStatusRequestRef = useRef(0);
   /** Set once the admin asks for the Markdown cache status; it is never loaded before that. */
   const markdownCacheStatusRequestedRef = useRef(false);
   const markdownCacheWarmJobRef = useRef<AdminMarkdownCacheWarmJob | null>(null);
   const lastMarkdownCacheWarmJobStatusRef = useRef<AdminMarkdownCacheWarmJob["status"] | null>(null);
-  const performanceStatsRequestRef = useRef(0);
-  const visitorStatsRequestRef = useRef(0);
   const lastSavedDomainRef = useRef({
     customDomain: INITIAL_SETTINGS.customDomain,
     letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
@@ -1821,22 +1460,6 @@ export function AdminSettingsPanel() {
       ),
     [settings.autoTranslateLanguages, translationCacheStatuses],
   );
-
-  /**
-   * Aborted when the panel unmounts: every read the panel starts passes this signal, so its
-   * requests stop, and every request checks it before updating state, writes included (those run
-   * to completion, since the server may already be applying them). Server-side jobs keep running.
-   */
-  const lifetimeSignal = useCallback((): AbortSignal => (lifetimeControllerRef.current ??= new AbortController()).signal, []);
-
-  useEffect(() => {
-    const controller = lifetimeControllerRef.current ?? new AbortController();
-    lifetimeControllerRef.current = controller;
-    return () => {
-      controller.abort();
-      lifetimeControllerRef.current = null;
-    };
-  }, []);
 
   useEffect(() => {
     translationStatusesPendingRef.current = translationStatusesPending;
@@ -1870,21 +1493,18 @@ export function AdminSettingsPanel() {
   }, [lifetimeSignal]);
 
   const refreshPerformanceStats = useCallback(async () => {
-    const signal = lifetimeSignal();
-    const requestId = performanceStatsRequestRef.current + 1;
-    performanceStatsRequestRef.current = requestId;
     setPerformanceStatsLoading(true);
     setPerformanceStatsError(null);
 
-    const result = await loadPerformanceStatsResult(signal);
-    if (signal.aborted || performanceStatsRequestRef.current !== requestId) {
+    const result = await runPerformanceStatsRequest((signal) => fetchAdminPerformanceStats({ signal }));
+    if (!result) {
       return;
     }
 
-    setPerformanceStats(result.stats);
+    setPerformanceStats(result.value);
     setPerformanceStatsError(result.error);
     setPerformanceStatsLoading(false);
-  }, [lifetimeSignal]);
+  }, [runPerformanceStatsRequest]);
 
   /**
    * Loads the analytics numbers. Only the newest request may update the card, so a slow older
@@ -1892,28 +1512,25 @@ export function AdminSettingsPanel() {
    * alone, and numbers already shown stay until newer ones arrive.
    */
   const refreshVisitorStats = useCallback(async ({ refresh = false, silent = false }: { refresh?: boolean; silent?: boolean } = {}) => {
-    const signal = lifetimeSignal();
-    const requestId = visitorStatsRequestRef.current + 1;
-    visitorStatsRequestRef.current = requestId;
     if (!silent) {
       setVisitorStatsLoading(true);
       setVisitorStatsError(null);
     }
 
-    const result = await loadVisitorStatsResult(refresh, signal);
-    if (signal.aborted || visitorStatsRequestRef.current !== requestId) {
+    const result = await runVisitorStatsRequest((signal) => fetchAdminVisitorStats({ refresh, signal }));
+    if (!result) {
       return;
     }
 
-    if (result.result) {
-      if (result.result.stats) {
-        setVisitorStats(result.result.stats);
+    if (result.value) {
+      if (result.value.stats) {
+        setVisitorStats(result.value.stats);
       }
-      setVisitorStatsStatus(result.result.status);
+      setVisitorStatsStatus(result.value.status);
     }
     setVisitorStatsError(result.error);
     setVisitorStatsLoading(false);
-  }, [lifetimeSignal]);
+  }, [runVisitorStatsRequest]);
 
   const resetModeratorEditor = useCallback(() => {
     setEditingModeratorId(null);
@@ -2038,6 +1655,13 @@ export function AdminSettingsPanel() {
 
   const getLatestSaveSnapshot = useCallback((): string => createSaveSnapshot(latestSettingsRef.current), [createSaveSnapshot]);
 
+  const showFieldErrors = useCallback((errors: SettingsFieldErrors): void => {
+    setDomainFieldErrors(errors.domain);
+    setAiChatFieldErrors(errors.aiChat);
+    setOpenRouterFieldErrors(errors.openRouter);
+    setAutoTranslateFieldErrors(errors.autoTranslate);
+  }, []);
+
   /** Shows statuses computed for the localization directory the panel has saved; `merge` keeps the other languages. */
   const applyTranslationStatuses = useCallback((statuses: AdminLanguageTranslationCacheStatus[], localizationPath: string, merge: boolean) => {
     const currentSettings = latestSettingsRef.current;
@@ -2058,28 +1682,24 @@ export function AdminSettingsPanel() {
    * the floor: it reports its languages live and the overview is loaded again once it finished.
    */
   const refreshTranslationOverview = useCallback(async () => {
-    const signal = lifetimeSignal();
-    const requestId = translationOverviewRequestRef.current + 1;
-    translationOverviewRequestRef.current = requestId;
     translationOverviewSignatureRef.current = translationOverviewSignature(latestSettingsRef.current);
     setTranslationCacheStatusLoading(true);
     setTranslationCacheStatusError(null);
 
-    try {
-      const overview = await fetchAdminLanguageTranslationOverview({ signal });
-      if (!signal.aborted && translationOverviewRequestRef.current === requestId && translationJobRef.current?.status !== "running") {
-        applyTranslationStatuses(overview.statuses, overview.localizationPath, false);
-      }
-    } catch (error) {
-      if (!signal.aborted && translationOverviewRequestRef.current === requestId) {
-        setTranslationCacheStatusError(formatApiError(error));
-      }
-    } finally {
-      if (!signal.aborted && translationOverviewRequestRef.current === requestId) {
-        setTranslationCacheStatusLoading(false);
-      }
+    const result = await runTranslationOverviewRequest((signal) => fetchAdminLanguageTranslationOverview({ signal }));
+    if (!result) {
+      return;
     }
-  }, [applyTranslationStatuses, lifetimeSignal]);
+
+    if (result.value) {
+      if (translationJobRef.current?.status !== "running") {
+        applyTranslationStatuses(result.value.statuses, result.value.localizationPath, false);
+      }
+    } else {
+      setTranslationCacheStatusError(result.error);
+    }
+    setTranslationCacheStatusLoading(false);
+  }, [applyTranslationStatuses, runTranslationOverviewRequest]);
 
   /** Reads the latest translation job of the server; while it runs, its statuses follow its uploads. */
   const refreshTranslationJobStatus = useCallback(async () => {
@@ -2128,21 +1748,10 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    const domainErrors = validateDomainFields(draft.customDomain, draft.letsEncryptEmail);
-    const aiErrors = validateAiChatFields(draft);
-    const openRouterErrors = validateOpenRouterFields(draft);
-    const autoTranslateErrors = validateAutoTranslateFields(draft);
-    setDomainFieldErrors(domainErrors);
-    setAiChatFieldErrors(aiErrors);
-    setOpenRouterFieldErrors(openRouterErrors);
-    setAutoTranslateFieldErrors(autoTranslateErrors);
+    const fieldErrors = validateSettingsFields(draft);
+    showFieldErrors(fieldErrors);
 
-    if (
-      hasDomainFieldErrors(domainErrors) ||
-      hasAiChatFieldErrors(aiErrors) ||
-      hasOpenRouterFieldErrors(openRouterErrors) ||
-      hasAutoTranslateFieldErrors(autoTranslateErrors)
-    ) {
+    if (hasSettingsFieldErrors(fieldErrors)) {
       setSaveError(null);
       return;
     }
@@ -2156,7 +1765,7 @@ export function AdminSettingsPanel() {
       const shouldRefreshSslStatus =
         draft.customDomain !== lastSavedDomainRef.current.customDomain ||
         draft.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
-      const saved = await saveAdminSettings(normalizeDomainFieldsForSave(draft));
+      const saved = await saveAdminSettings(normalizeSettingsForSave(draft));
       if (signal.aborted) {
         return;
       }
@@ -2194,10 +1803,7 @@ export function AdminSettingsPanel() {
         latestSettingsRef.current = persistedSettings;
         setSettings(persistedSettings);
         setThemeSettings(themeCustomizationFromSettings(persistedSettings));
-        setDomainFieldErrors(validateDomainFields(persistedSettings.customDomain, persistedSettings.letsEncryptEmail));
-        setAiChatFieldErrors(validateAiChatFields(persistedSettings));
-        setOpenRouterFieldErrors(validateOpenRouterFields(persistedSettings));
-        setAutoTranslateFieldErrors(validateAutoTranslateFields(persistedSettings));
+        showFieldErrors(validateSettingsFields(persistedSettings));
       }
 
       // The overview reads the saved languages and directory, so it is loaded again once they changed.
@@ -2222,7 +1828,7 @@ export function AdminSettingsPanel() {
         void persistLatestSettings();
       }
     }
-  }, [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, refreshSslStatus, refreshTranslationOverview, setThemeSettings]);
+  }, [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, refreshSslStatus, refreshTranslationOverview, setThemeSettings, showFieldErrors]);
 
   const clearSavedSecret = useCallback(
     async (target: ClearSecretTarget) => {
@@ -2283,10 +1889,7 @@ export function AdminSettingsPanel() {
             letsEncryptEmail: nextSettings.letsEncryptEmail,
           };
           setThemeSettings(themeCustomizationFromSettings(nextSettings));
-          setDomainFieldErrors(validateDomainFields(nextSettings.customDomain, nextSettings.letsEncryptEmail));
-          setAiChatFieldErrors(validateAiChatFields(nextSettings));
-          setOpenRouterFieldErrors(validateOpenRouterFields(nextSettings));
-          setAutoTranslateFieldErrors(validateAutoTranslateFields(nextSettings));
+          showFieldErrors(validateSettingsFields(nextSettings));
         }
       } catch (error) {
         if (!signal.aborted) {
@@ -2305,27 +1908,24 @@ export function AdminSettingsPanel() {
         }
       }
     },
-    [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, persistLatestSettings, setThemeSettings],
+    [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, persistLatestSettings, setThemeSettings, showFieldErrors],
   );
 
   const refreshMarkdownCacheStatus = useCallback(async () => {
-    const signal = lifetimeSignal();
     markdownCacheStatusRequestedRef.current = true;
-    const requestId = markdownCacheStatusRequestRef.current + 1;
-    markdownCacheStatusRequestRef.current = requestId;
     setMarkdownCacheStatusLoading(true);
     setMarkdownCacheStatusError(null);
 
-    const result = await loadMarkdownCacheStatusResult(signal);
-    if (signal.aborted || markdownCacheStatusRequestRef.current !== requestId) {
+    const result = await runMarkdownCacheStatusRequest((signal) => fetchAdminMarkdownCacheStatus({ signal }));
+    if (!result) {
       return;
     }
 
     // A failed refresh keeps the last status on screen next to the error.
-    setMarkdownCacheStatus((current) => result.status ?? current);
+    setMarkdownCacheStatus((current) => result.value ?? current);
     setMarkdownCacheStatusError(result.error);
     setMarkdownCacheStatusLoading(false);
-  }, [lifetimeSignal]);
+  }, [runMarkdownCacheStatusRequest]);
 
   /** Keeps a Markdown cache status the admin has opened up to date after changes that affect it. */
   const refreshRequestedMarkdownCacheStatus = useCallback(() => {
@@ -2428,7 +2028,7 @@ export function AdminSettingsPanel() {
       setMarkdownCacheStatus(status);
       setMarkdownCacheActionMessage({
         tone: "success",
-        text: `Cleared ${formatVisitorCount(result.clearedEntries)} Markdown HTML cache entr${
+        text: `Cleared ${formatCount(result.clearedEntries)} Markdown HTML cache entr${
           result.clearedEntries === 1 ? "y" : "ies"
         }.`,
       });
@@ -2466,7 +2066,7 @@ export function AdminSettingsPanel() {
         setMarkdownCacheStatus(status);
         setMarkdownCacheActionMessage({
           tone: "success",
-          text: `Cleared ${formatVisitorCount(result.clearedEntries)} Markdown HTML cache entr${
+          text: `Cleared ${formatCount(result.clearedEntries)} Markdown HTML cache entr${
             result.clearedEntries === 1 ? "y" : "ies"
           } for ${page.title}.`,
         });
@@ -2499,7 +2099,7 @@ export function AdminSettingsPanel() {
         return;
       }
       setDocsRefreshMessage(
-        `Fetched ${formatVisitorCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
+        `Fetched ${formatCount(result.pageCount)} page${result.pageCount === 1 ? "" : "s"}. Cache expires ${formatStatusTimestamp(result.expiresAt)}.`,
       );
       void refreshTranslationOverview();
       refreshRequestedMarkdownCacheStatus();
@@ -2641,11 +2241,11 @@ export function AdminSettingsPanel() {
       return;
     }
 
-    const files = `${formatVisitorCount(count)} translation${count === 1 ? "" : "s"}`;
+    const files = `${formatCount(count)} translation${count === 1 ? "" : "s"}`;
     const repository = `${settings.githubOwner.trim()}/${settings.githubRepo.trim()} (${settings.githubBranch.trim() || "main"})`;
     if (
       !window.confirm(
-        `Record the source version in ${files}?\n\nThis commits ${count === 1 ? "1 file" : `${formatVisitorCount(count)} files`} to ${repository} in a single commit. Only the front matter changes, so the pages stay exactly as they are. Outdated translations are left alone.`,
+        `Record the source version in ${files}?\n\nThis commits ${count === 1 ? "1 file" : `${formatCount(count)} files`} to ${repository} in a single commit. Only the front matter changes, so the pages stay exactly as they are. Outdated translations are left alone.`,
       )
     ) {
       return;
@@ -2823,10 +2423,7 @@ export function AdminSettingsPanel() {
         setSettings(loadedSettings);
         setModerators(loadedModerators);
         setThemeSettings(themeCustomizationFromSettings(loadedSettings));
-        setDomainFieldErrors(validateDomainFields(loadedSettings.customDomain, loadedSettings.letsEncryptEmail));
-        setAiChatFieldErrors(validateAiChatFields(loadedSettings));
-        setOpenRouterFieldErrors(validateOpenRouterFields(loadedSettings));
-        setAutoTranslateFieldErrors(validateAutoTranslateFields(loadedSettings));
+        showFieldErrors(validateSettingsFields(loadedSettings));
         autoSaveReadyRef.current = true;
         void refreshSslStatus();
         void refreshPerformanceStats();
@@ -2852,7 +2449,7 @@ export function AdminSettingsPanel() {
       isActive = false;
       autoSaveReadyRef.current = false;
     };
-  }, [createSaveSnapshot, lifetimeSignal, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings]);
+  }, [createSaveSnapshot, lifetimeSignal, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings, showFieldErrors]);
 
   if (loading) {
     return <LoadingState label="Loading admin settings..." />;
@@ -3544,19 +3141,11 @@ export function AdminSettingsPanel() {
                 <div className="settings-subcard-fields">
                   <div className="field-row">
                     <span className="field-label">Enable AI chat</span>
-                    <label className="toggle-row" htmlFor="ai-chat-enabled">
-                      <input
-                        id="ai-chat-enabled"
-                        className="toggle-input"
-                        type="checkbox"
-                        checked={settings.aiChatEnabled}
-                        onChange={(event) => setSettings((prev) => ({ ...prev, aiChatEnabled: event.target.checked }))}
-                      />
-                      <span className="toggle-control" aria-hidden="true">
-                        <span className="toggle-thumb" />
-                      </span>
-                      <span>{settings.aiChatEnabled ? "Enabled" : "Disabled"}</span>
-                    </label>
+                    <EnabledToggle
+                      id="ai-chat-enabled"
+                      checked={settings.aiChatEnabled}
+                      onChange={(enabled) => setSettings((prev) => ({ ...prev, aiChatEnabled: enabled }))}
+                    />
                     <span className="field-hint">
                       Shows the floating Ask Docs button on docs pages and enables the public chat API route.
                     </span>
@@ -3679,7 +3268,7 @@ export function AdminSettingsPanel() {
                           setSettings((prev) => ({ ...prev, openRouterModel: value }));
                           setAiChatFieldErrors((prev) => ({
                             ...prev,
-                            openRouterModel: value.trim() || !settings.aiChatEnabled ? null : "Enter an OpenRouter model identifier.",
+                            openRouterModel: validateOpenRouterModelInput(value, settings.aiChatEnabled),
                           }));
                         }}
                         placeholder={DEFAULT_AI_CHAT_OPENROUTER_MODEL}
@@ -3718,10 +3307,7 @@ export function AdminSettingsPanel() {
                           setSettings((prev) => ({ ...prev, aiChatSystemPrompt: value }));
                           setAiChatFieldErrors((prev) => ({
                             ...prev,
-                            systemPrompt:
-                              !settings.aiChatEnabled || value.includes(AI_CHAT_DOCS_PLACEHOLDER)
-                                ? null
-                                : `Include ${AI_CHAT_DOCS_PLACEHOLDER} in the system prompt so the /docs.txt export can be injected.`,
+                            systemPrompt: validateSystemPromptInput(value, settings.aiChatEnabled),
                           }));
                         }}
                         placeholder={DEFAULT_AI_CHAT_SYSTEM_PROMPT}
@@ -3905,12 +3491,11 @@ export function AdminSettingsPanel() {
                           setSettings((prev) => ({ ...prev, openRouterApiKey: value }));
                           setOpenRouterFieldErrors((prev) => ({
                             ...prev,
-                            apiKey:
-                              settings.aiChatEnabled || settings.autoTranslateEnabled
-                                ? value.trim() || settings.openRouterApiKeyConfigured
-                                  ? null
-                                  : "Enter an OpenRouter API key before enabling AI features."
-                                : null,
+                            apiKey: validateOpenRouterApiKeyInput(
+                              value,
+                              settings.openRouterApiKeyConfigured,
+                              settings.aiChatEnabled || settings.autoTranslateEnabled,
+                            ),
                           }));
                         }}
                         placeholder={
@@ -3958,31 +3543,21 @@ export function AdminSettingsPanel() {
                 <div className="settings-subcard-fields">
                   <div className="field-row">
                     <span className="field-label">Automatic translation updates</span>
-                    <label className="toggle-row" htmlFor="auto-translate-enabled">
-                      <input
-                        id="auto-translate-enabled"
-                        className="toggle-input"
-                        type="checkbox"
-                        checked={settings.autoTranslateEnabled}
-                        onChange={(event) => {
-                          const enabled = event.target.checked;
-                          setSettings((prev) => ({ ...prev, autoTranslateEnabled: enabled }));
-                          setOpenRouterFieldErrors((prev) => ({
-                            ...prev,
-                            apiKey:
-                              enabled || settings.aiChatEnabled
-                                ? settings.openRouterApiKey.trim() || settings.openRouterApiKeyConfigured
-                                  ? null
-                                  : "Enter an OpenRouter API key before enabling AI features."
-                                : null,
-                          }));
-                        }}
-                      />
-                      <span className="toggle-control" aria-hidden="true">
-                        <span className="toggle-thumb" />
-                      </span>
-                      <span>{settings.autoTranslateEnabled ? "Enabled" : "Disabled"}</span>
-                    </label>
+                    <EnabledToggle
+                      id="auto-translate-enabled"
+                      checked={settings.autoTranslateEnabled}
+                      onChange={(enabled) => {
+                        setSettings((prev) => ({ ...prev, autoTranslateEnabled: enabled }));
+                        setOpenRouterFieldErrors((prev) => ({
+                          ...prev,
+                          apiKey: validateOpenRouterApiKeyInput(
+                            settings.openRouterApiKey,
+                            settings.openRouterApiKeyConfigured,
+                            enabled || settings.aiChatEnabled,
+                          ),
+                        }));
+                      }}
+                    />
                     <span className="field-hint">
                       When enabled, requested outdated existing localization files are updated automatically. Missing files are only created by admin actions.
                     </span>
@@ -4007,10 +3582,7 @@ export function AdminSettingsPanel() {
                           setSettings((prev) => ({ ...prev, autoTranslateLocalizationPath: value }));
                           setAutoTranslateFieldErrors((prev) => ({
                             ...prev,
-                            localizationPath: validateAutoTranslateFields({
-                              ...settings,
-                              autoTranslateLocalizationPath: value,
-                            }).localizationPath,
+                            localizationPath: validateLocalizationPathInput(value),
                           }));
                         }}
                         onBlur={(event) => {
@@ -4054,8 +3626,7 @@ export function AdminSettingsPanel() {
                           setSettings((prev) => ({ ...prev, autoTranslateOpenRouterModel: value }));
                           setAutoTranslateFieldErrors((prev) => ({
                             ...prev,
-                            openRouterModel:
-                              value.trim() || !settings.autoTranslateEnabled ? null : "Enter an OpenRouter model identifier.",
+                            openRouterModel: validateOpenRouterModelInput(value, settings.autoTranslateEnabled),
                           }));
                         }}
                         placeholder={DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL}
@@ -4181,7 +3752,7 @@ export function AdminSettingsPanel() {
                 </div>
                 {unrecordedTranslationCount > 0 && activeTranslationMode !== "source-versions" ? (
                   <span className="field-hint">
-                    {formatVisitorCount(unrecordedTranslationCount)} current translation{unrecordedTranslationCount === 1 ? " doesn't" : "s don't"} say
+                    {formatCount(unrecordedTranslationCount)} current translation{unrecordedTranslationCount === 1 ? " doesn't" : "s don't"} say
                     which version of {unrecordedTranslationCount === 1 ? "its" : "their"} page {unrecordedTranslationCount === 1 ? "it was" : "they were"} translated from yet.
                     Record it once and outdated checks become exact. Outdated translations get it the next time they&apos;re translated.
                   </span>
