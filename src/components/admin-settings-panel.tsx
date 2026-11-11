@@ -1,65 +1,32 @@
 "use client";
 
-import {
-  type CSSProperties,
-  type KeyboardEvent,
-  type PointerEvent,
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import { useRouter } from "next/navigation";
+import { type CSSProperties, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
-  clearAdminMarkdownCache,
-  clearAdminGitHubToken,
-  clearAdminOpenRouterApiKey,
   createAdminModerator,
   deleteAdminModerator,
-  fetchAdminDomainSslStatus,
-  fetchAdminLanguageTranslationOverview,
-  fetchAdminLanguageTranslationStatus,
-  fetchAdminMarkdownCacheStatus,
-  fetchAdminMarkdownCacheWarmJob,
-  fetchAdminModerators,
-  fetchAdminPerformanceStats,
-  fetchAdminSettings,
-  fetchAdminVisitorStats,
   formatApiError,
-  getCurrentUser,
   MAX_DOCS_REFRESH_INTERVAL_MINUTES,
   MIN_DOCS_REFRESH_INTERVAL_MINUTES,
   refreshAdminDocsCache,
-  requestAdminLanguageTranslations,
-  requestAdminSourceVersionRecording,
-  saveAdminSettings,
-  startAdminMarkdownCacheWarmJob,
   testAdminConnection,
   updateAdminModerator,
 } from "@/components/api";
-import { CardRefreshButton, ProgressPanel } from "@/components/admin-settings/panel-ui";
+import { formatCount, formatStatusTimestamp } from "@/components/admin-settings/format";
+import { useLocalizationRequests } from "@/components/admin-settings/localization-requests";
 import {
-  clampNumber,
-  formatByteSize,
-  formatChartCoordinate,
-  formatCount,
-  formatEtaSeconds,
-  formatStatusTimestamp,
-  formatUsagePercent,
-  progressPercent,
-} from "@/components/admin-settings/format";
-import { useNewestRequest, usePanelLifetimeSignal } from "@/components/admin-settings/request-lifetime";
+  getTranslationStatusProgressPercent,
+  isTranslationStatusPending,
+  translationCacheStatusKey,
+} from "@/components/admin-settings/localization-status";
+import { MarkdownCacheCard } from "@/components/admin-settings/markdown-cache-card";
+import { useAdminPanel, useLocalizationContext, usePanelLoad, useSslStatusContext } from "@/components/admin-settings/panel-context";
+import { AdminPanelProvider } from "@/components/admin-settings/panel-provider";
+import { PerformanceStatsCard } from "@/components/admin-settings/performance-stats-card";
 import { EnabledToggle, ResetToDefaultButton } from "@/components/admin-settings/settings-fields";
+import { themeCustomizationFromSettings, useSettingsSelector, type SettingsState } from "@/components/admin-settings/settings-store";
 import {
-  EMPTY_SETTINGS_FIELD_ERRORS,
-  hasSettingsFieldErrors,
-  normalizeAutoTranslateLanguagesForSave,
   normalizeAutoTranslateRequestTimeoutSeconds,
-  normalizeSettingsForSave,
   validateAutoTranslateLanguages,
   validateAutoTranslateRequestTimeoutSeconds,
   validateCustomDomainInput,
@@ -67,20 +34,17 @@ import {
   validateLocalizationPathInput,
   validateOpenRouterApiKeyInput,
   validateOpenRouterModelInput,
-  validateSettingsFields,
   validateSystemPromptInput,
   type AiChatFieldErrors,
   type AutoTranslateFieldErrors,
   type DomainFieldErrors,
   type OpenRouterFieldErrors,
-  type SettingsFieldErrors,
 } from "@/components/admin-settings/settings-validation";
+import { VisitorStatsCard } from "@/components/admin-settings/visitor-stats-card";
 import { CircleFlagIconPicker } from "@/components/circle-flag-icon-picker";
 import { ColorPickerField } from "@/components/color-picker-field";
-import { startJobStatusPolling } from "@/components/job-status-polling";
 import { MaterialIcon } from "@/components/material-icon";
 import { ErrorState, LoadingState } from "@/components/states";
-import { useTheme } from "@/components/theme-provider";
 import {
   AI_CHAT_ASSISTANT_NAME_PLACEHOLDER,
   AI_CHAT_DOCS_PLACEHOLDER,
@@ -107,21 +71,12 @@ import {
 } from "@/lib/auto-translate";
 import type {
   AdminLanguageTranslationCacheStatus,
-  AdminMarkdownCachePageStatus,
-  AdminMarkdownCacheStatus,
-  AdminMarkdownCacheWarmJob,
-  AdminSettings,
   AdminTranslationJobLogEntry,
   AdminTranslationJobSnapshot,
   AutoTranslateLanguage,
   DomainSslRuntimeStatus,
   ModeratorAccount,
-  PerformanceStatsSnapshot,
   ThemeCustomization,
-  VisitorAnalyticsStatus,
-  VisitorStatsPeriod,
-  VisitorStatsScope,
-  VisitorStatsSummary,
 } from "@/components/types";
 import { normalizeCircleFlagIconId } from "@/lib/circle-flags";
 import { DEFAULT_FOOTER_TEXT } from "@/lib/footer";
@@ -130,70 +85,6 @@ import { buildThemeVariables, DEFAULT_THEME_CUSTOMIZATION } from "@/lib/theme";
 const THEME_DEFAULTS = DEFAULT_THEME_CUSTOMIZATION();
 const DEFAULT_SITE_TITLE_GRADIENT_FROM = "#3b82f6";
 const DEFAULT_SITE_TITLE_GRADIENT_TO = "#22d3ee";
-const VISITOR_STATS_TABS: Array<{ icon: string; label: string; scope: VisitorStatsScope }> = [
-  { icon: "all_inclusive", label: "All-time", scope: "allTime" },
-  { icon: "today", label: "Day", scope: "daily" },
-  { icon: "view_week", label: "Week", scope: "weekly" },
-  { icon: "calendar_month", label: "Month", scope: "monthly" },
-  { icon: "event_available", label: "Year", scope: "yearly" },
-];
-const VISITOR_STATS_TREND_LABELS: Record<VisitorStatsScope, string> = {
-  allTime: "All-time trend",
-  daily: "Trend of the last 24 hours",
-  weekly: "Trend of the last 7 days",
-  monthly: "Trend of the last 30 days",
-  yearly: "Trend of the last 365 days",
-};
-/** How often the card asks again while earlier visits are still being added to the numbers. */
-const VISITOR_STATS_CATCH_UP_POLL_MS = 2_000;
-/** How soon the card asks again when the server was still computing the numbers. */
-const VISITOR_STATS_PENDING_POLL_MS = 1_000;
-const TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS = 650;
-const TRANSLATION_CACHE_STATUS_POLL_MS = 4_000;
-/** How often the card asks again while a language's translations are fetched for the first time. */
-const TRANSLATION_OVERVIEW_POLL_MS = 1_500;
-const MARKDOWN_CACHE_WARM_JOB_POLL_MS = 1_000;
-const PERFORMANCE_REFRESH_INTERVAL_MS = 60_000;
-
-const INITIAL_SETTINGS: AdminSettings = {
-  siteTitle: "Vicky Docs",
-  siteDescription: "Documentation knowledge base",
-  footerText: DEFAULT_FOOTER_TEXT,
-  startPage: "/home",
-  siteTitleGradientFrom: "",
-  siteTitleGradientTo: "",
-  docsIconPng16Url: "",
-  docsIconPng32Url: "",
-  docsIconPng180Url: "",
-  docsRefreshIntervalMinutes: 60,
-  customDomain: "",
-  letsEncryptEmail: "",
-  githubOwner: "",
-  githubRepo: "",
-  githubBranch: "main",
-  githubDocsPath: "docs",
-  githubToken: "",
-  tokenConfigured: false,
-  aiChatEnabled: false,
-  aiChatAssistantName: DEFAULT_AI_CHAT_ASSISTANT_NAME,
-  aiChatAvatarUrl: "",
-  aiChatHeaderSubtitle: DEFAULT_AI_CHAT_HEADER_SUBTITLE,
-  aiChatWelcomeMessage: DEFAULT_AI_CHAT_WELCOME_MESSAGE,
-  aiChatSystemPrompt: DEFAULT_AI_CHAT_SYSTEM_PROMPT,
-  openRouterModel: DEFAULT_AI_CHAT_OPENROUTER_MODEL,
-  openRouterApiKey: "",
-  openRouterApiKeyConfigured: false,
-  autoTranslateEnabled: false,
-  autoTranslateOpenRouterModel: DEFAULT_AUTO_TRANSLATE_OPENROUTER_MODEL,
-  autoTranslateRequestTimeoutSeconds: DEFAULT_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS / 1_000,
-  autoTranslateLanguages: DEFAULT_AUTO_TRANSLATE_LANGUAGES.map((language) => ({ ...language })),
-  autoTranslateLocalizationPath: DEFAULT_LOCALIZATION_PATH,
-  themeLightAccent: THEME_DEFAULTS.lightAccent,
-  themeLightSurfaceAccent: THEME_DEFAULTS.lightSurfaceAccent,
-  themeDarkAccent: THEME_DEFAULTS.darkAccent,
-  themeDarkSurfaceAccent: THEME_DEFAULTS.darkSurfaceAccent,
-  themeCustomCss: THEME_DEFAULTS.customCss,
-};
 
 const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage => {
   let index = 1;
@@ -211,14 +102,6 @@ const createCustomAutoTranslateLanguage = (languages: AutoTranslateLanguage[]): 
     enabled: true,
   };
 };
-
-const themeCustomizationFromSettings = (settings: AdminSettings): ThemeCustomization => ({
-  lightAccent: settings.themeLightAccent,
-  lightSurfaceAccent: settings.themeLightSurfaceAccent,
-  darkAccent: settings.themeDarkAccent,
-  darkSurfaceAccent: settings.themeDarkSurfaceAccent,
-  customCss: settings.themeCustomCss,
-});
 
 const createThemePreviewStyle = (
   mode: "light" | "dark",
@@ -241,929 +124,6 @@ const createThemePreviewStyle = (
     "--theme-preview-accent-surface-contrast": variables["--accent-surface-contrast"],
   } as CSSProperties;
 };
-
-const formatVisitorLabel = (value: number): string => `${formatCount(value)} visitor${value === 1 ? "" : "s"}`;
-
-type VisitorSparklineMetric = "visitors" | "visits";
-
-type VisitorSparklinePoint = {
-  key: string;
-  label: string;
-  period: VisitorStatsPeriod;
-  value: number;
-  x: number;
-  y: number;
-};
-
-type VisitorSparklineTooltipPosition = {
-  left: number;
-  top: number;
-};
-
-const VISITOR_SPARKLINE_WIDTH = 240;
-const VISITOR_SPARKLINE_HEIGHT = 84;
-const VISITOR_SPARKLINE_PADDING_X = 5;
-const VISITOR_SPARKLINE_PADDING_Y = 7;
-const VISITOR_SPARKLINE_TOOLTIP_GAP = 14;
-const VISITOR_SPARKLINE_TOOLTIP_MARGIN_X = 14;
-const VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y = 10;
-
-type PerformanceMetricKind = "memory" | "cpu" | "drive";
-type PerformanceUsageTone = "low" | "medium" | "high";
-
-type PerformanceMetricCardProps = {
-  detail: string;
-  kind: PerformanceMetricKind;
-  label: string;
-  usagePercent: number;
-};
-
-const PERFORMANCE_CHART_WIDTH = 240;
-const PERFORMANCE_CHART_HEIGHT = 84;
-const PERFORMANCE_CHART_PADDING_X = 5;
-const PERFORMANCE_CHART_PADDING_Y = 8;
-
-const getPerformanceUsageTone = (usagePercent: number): PerformanceUsageTone => {
-  if (usagePercent < 30) {
-    return "low";
-  }
-
-  if (usagePercent < 65) {
-    return "medium";
-  }
-
-  return "high";
-};
-
-const createPerformanceMeterGeometry = (usagePercent: number) => {
-  const normalizedPercent = clampNumber(usagePercent, 0, 100);
-  const baselineY = PERFORMANCE_CHART_HEIGHT - PERFORMANCE_CHART_PADDING_Y;
-  const chartHeight = PERFORMANCE_CHART_HEIGHT - PERFORMANCE_CHART_PADDING_Y * 2;
-  const startX = PERFORMANCE_CHART_PADDING_X;
-  const endX = PERFORMANCE_CHART_WIDTH - PERFORMANCE_CHART_PADDING_X;
-  const y = baselineY - (normalizedPercent / 100) * chartHeight;
-  const linePath = `M ${formatChartCoordinate(startX)} ${formatChartCoordinate(
-    y,
-  )} L ${formatChartCoordinate(endX)} ${formatChartCoordinate(y)}`;
-  const areaPath = [
-    "M",
-    formatChartCoordinate(startX),
-    formatChartCoordinate(baselineY),
-    "L",
-    formatChartCoordinate(startX),
-    formatChartCoordinate(y),
-    "L",
-    formatChartCoordinate(endX),
-    formatChartCoordinate(y),
-    "L",
-    formatChartCoordinate(endX),
-    formatChartCoordinate(baselineY),
-    "Z",
-  ].join(" ");
-
-  return {
-    areaPath,
-    baselineY,
-    endX,
-    linePath,
-    y,
-  };
-};
-
-function PerformanceMetricCard({ detail, kind, label, usagePercent }: PerformanceMetricCardProps) {
-  const percent = clampNumber(usagePercent, 0, 100);
-  const percentLabel = formatUsagePercent(percent);
-  const usageTone = getPerformanceUsageTone(percent);
-  const geometry = createPerformanceMeterGeometry(percent);
-  const tickLines = [25, 50, 75].map((tick) => {
-    const chartHeight = PERFORMANCE_CHART_HEIGHT - PERFORMANCE_CHART_PADDING_Y * 2;
-    const y = geometry.baselineY - (tick / 100) * chartHeight;
-
-    return {
-      key: tick,
-      y,
-    };
-  });
-
-  return (
-    <div
-      className={`visitor-sparkline-card performance-meter-card performance-meter-card-${kind} performance-meter-card-${usageTone}`}
-    >
-      <div className="visitor-sparkline-meta">
-        <strong>{percentLabel}</strong>
-        <span>{label}</span>
-      </div>
-      <span className="visitor-sparkline-range">{detail}</span>
-      <div className="performance-meter-stage">
-        <svg
-          className="performance-meter"
-          role="img"
-          aria-label={`${label}: ${percentLabel} used. ${detail}.`}
-          preserveAspectRatio="none"
-          viewBox={`0 0 ${PERFORMANCE_CHART_WIDTH} ${PERFORMANCE_CHART_HEIGHT}`}
-        >
-          {tickLines.map((tick) => (
-            <line
-              key={tick.key}
-              className="performance-meter-grid-line"
-              x1={PERFORMANCE_CHART_PADDING_X}
-              x2={PERFORMANCE_CHART_WIDTH - PERFORMANCE_CHART_PADDING_X}
-              y1={tick.y}
-              y2={tick.y}
-            />
-          ))}
-          <path className="visitor-sparkline-area performance-meter-area" d={geometry.areaPath} />
-          <path className="visitor-sparkline-glow performance-meter-glow" d={geometry.linePath} />
-          <path className="visitor-sparkline-line performance-meter-line" d={geometry.linePath} />
-        </svg>
-      </div>
-    </div>
-  );
-}
-
-type PerformanceStatsCardProps = {
-  error: string | null;
-  loading: boolean;
-  stats: PerformanceStatsSnapshot | null;
-  onRefresh: () => void;
-};
-
-function PerformanceStatsCard({ error, loading, stats, onRefresh }: PerformanceStatsCardProps) {
-  const memoryDetail = stats
-    ? `${formatByteSize(stats.memory.usedBytes)} of ${formatByteSize(stats.memory.totalBytes)}`
-    : "";
-  const cpuDetail = stats
-    ? `Across ${formatCount(stats.cpu.logicalCores)} logical core${stats.cpu.logicalCores === 1 ? "" : "s"}`
-    : "";
-  const driveDetail = stats
-    ? `${formatByteSize(stats.drive.usedBytes)} of ${formatByteSize(stats.drive.totalBytes)}`
-    : "";
-
-  return (
-    <section className="panel-card panel-card-performance">
-      <div className="panel-header">
-        <div>
-          <h2>Performance Overview</h2>
-          <p className="panel-description">Live server resource usage.</p>
-        </div>
-        <CardRefreshButton disabled={loading} label="Refresh performance" loading={loading} loadingLabel="Refreshing performance" onClick={onRefresh} />
-      </div>
-
-      {error ? <p className="error-text">{error}</p> : null}
-
-      <div className="performance-stats-scroll">
-        {!stats ? (
-          <p className="muted-caption">{loading ? "Loading performance..." : "No performance data available."}</p>
-        ) : (
-          <>
-            <div className="visitor-section-heading performance-section-heading">
-              <span>{loading ? "Refreshing..." : `Updated ${formatStatusTimestamp(stats.updatedAt)}`}</span>
-            </div>
-            <div className="visitor-sparkline-grid performance-meter-grid">
-              <PerformanceMetricCard
-                detail={memoryDetail}
-                kind="memory"
-                label="Memory Usage"
-                usagePercent={stats.memory.usagePercent}
-              />
-              <PerformanceMetricCard
-                detail={cpuDetail}
-                kind="cpu"
-                label="CPU Usage"
-                usagePercent={stats.cpu.usagePercent}
-              />
-              <PerformanceMetricCard
-                detail={driveDetail}
-                kind="drive"
-                label="Drive Usage"
-                usagePercent={stats.drive.usagePercent}
-              />
-            </div>
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
-
-type MarkdownCacheActionMessage = { tone: "success" | "warning" | "error"; text: string };
-
-type MarkdownCacheCardProps = {
-  actionMessage: MarkdownCacheActionMessage | null;
-  clearingAll: boolean;
-  clearingSlug: string | null;
-  error: string | null;
-  loading: boolean;
-  status: AdminMarkdownCacheStatus | null;
-  /** The latest warm job; while it runs, the card shows its progress. */
-  warmJob: AdminMarkdownCacheWarmJob | null;
-  /** The request that starts a warm job is on its way. */
-  warmStarting: boolean;
-  onClearAll: () => void;
-  onClearPage: (page: AdminMarkdownCachePageStatus) => void;
-  onRefresh: () => void;
-  onWarmAll: () => void;
-};
-
-function MarkdownCacheCard({
-  actionMessage,
-  clearingAll,
-  clearingSlug,
-  error,
-  loading,
-  status,
-  warmJob,
-  warmStarting,
-  onClearAll,
-  onClearPage,
-  onRefresh,
-  onWarmAll,
-}: MarkdownCacheCardProps) {
-  const warmJobRunning = warmJob?.status === "running";
-  const warming = warmStarting || warmJobRunning;
-  const clearing = clearingAll || Boolean(clearingSlug);
-  const busy = loading || warming || clearing;
-
-  return (
-    <section className="panel-card panel-card-markdown-cache">
-      <div className="panel-header">
-        <div>
-          <h2>Markdown HTML Cache</h2>
-          <p className="panel-description">Persistent server-rendered HTML for current docs content.</p>
-        </div>
-        {status ? (
-          <CardRefreshButton disabled={loading || clearing} label="Refresh Markdown cache" loading={loading} loadingLabel="Refreshing Markdown cache" onClick={onRefresh} />
-        ) : null}
-      </div>
-
-      {error ? <p className="error-text">{error}</p> : null}
-      {actionMessage ? <p className={`${actionMessage.tone}-text`}>{actionMessage.text}</p> : null}
-      {warmJob && warmJobRunning ? <MarkdownCacheWarmProgress job={warmJob} /> : null}
-
-      {status ? (
-        <MarkdownCacheStatusDetails
-          busy={busy}
-          clearingAll={clearingAll}
-          clearingSlug={clearingSlug}
-          status={status}
-          warming={warming}
-          onClearAll={onClearAll}
-          onClearPage={onClearPage}
-          onWarmAll={onWarmAll}
-        />
-      ) : (
-        <div className="markdown-cache-idle">
-          <div className="markdown-cache-idle-text">
-            <strong>Cache status loads on request</strong>
-            <span>Check which pages and translations already have rendered HTML. It only loads when you ask, so the admin panel opens faster.</span>
-          </div>
-          <button type="button" className="btn btn-primary" disabled={loading || clearing} onClick={onRefresh}>
-            <MaterialIcon name={loading ? "hourglass_top" : "query_stats"} />
-            <span>{loading ? "Loading..." : "Show cache status"}</span>
-          </button>
-        </div>
-      )}
-    </section>
-  );
-}
-
-type MarkdownCacheStatusDetailsProps = Pick<
-  MarkdownCacheCardProps,
-  "clearingAll" | "clearingSlug" | "onClearAll" | "onClearPage" | "onWarmAll"
-> & {
-  busy: boolean;
-  status: AdminMarkdownCacheStatus;
-  warming: boolean;
-};
-
-function MarkdownCacheStatusDetails({
-  busy,
-  clearingAll,
-  clearingSlug,
-  status,
-  warming,
-  onClearAll,
-  onClearPage,
-  onWarmAll,
-}: MarkdownCacheStatusDetailsProps) {
-  const cacheRatio = `${formatCount(status.cachedVariants)}/${formatCount(status.totalVariants)}`;
-  const pageRatio = `${formatCount(status.sourcePagesCached)}/${formatCount(status.totalPages)}`;
-  const lastMutationLabel = status.lastMutation
-    ? `${formatCount(status.lastMutation.deletedEntries)} removed ${formatStatusTimestamp(status.lastMutation.at)}`
-    : "No clear recorded";
-
-  return (
-    <>
-      <div className="markdown-cache-summary-grid">
-        <div className="markdown-cache-summary-item">
-          <strong>{cacheRatio}</strong>
-          <span>HTML variants</span>
-        </div>
-        <div className="markdown-cache-summary-item">
-          <strong>{pageRatio}</strong>
-          <span>Source pages</span>
-        </div>
-        <div className="markdown-cache-summary-item">
-          <strong>{formatCount(status.translatedVariants)}</strong>
-          <span>Translations</span>
-        </div>
-        <div className="markdown-cache-summary-item">
-          <strong>{formatByteSize(status.totalHtmlBytes)}</strong>
-          <span>Storage</span>
-        </div>
-      </div>
-
-      <div className="markdown-cache-meta-row">
-        <span>Renderer v{status.rendererVersion}</span>
-        <span>{formatCount(status.staleEntries)} unused entr{status.staleEntries === 1 ? "y" : "ies"}</span>
-        <span>{formatCount(status.globalEntries)} files globally</span>
-        <span>{formatByteSize(status.globalHtmlBytes)} globally</span>
-        <span>PID {status.processId}</span>
-        <span>Updated {formatStatusTimestamp(status.updatedAt)}</span>
-      </div>
-      <div className="markdown-cache-meta-row markdown-cache-cache-path-row">
-        <span className="markdown-cache-cache-path">{status.cacheDirectory}</span>
-        <span>{lastMutationLabel}</span>
-      </div>
-
-      <div className="action-row">
-        <button type="button" className="btn btn-primary" disabled={status.uncachedVariants === 0 || busy} onClick={onWarmAll}>
-          <MaterialIcon name={warming ? "hourglass_top" : "cached"} />
-          <span>{warming ? "Caching..." : "Cache missing HTML"}</span>
-        </button>
-
-        <button type="button" className="btn danger" disabled={busy} onClick={onClearAll}>
-          <MaterialIcon name={clearingAll ? "hourglass_top" : "delete_sweep"} />
-          <span>{clearingAll ? "Clearing..." : "Clear all"}</span>
-        </button>
-      </div>
-
-      <div className="markdown-cache-page-list">
-        {status.pages.length === 0 ? (
-          <p className="muted-caption">No docs pages found.</p>
-        ) : (
-          status.pages.map((page) => {
-            const isClearing = clearingSlug === page.slug;
-            const pageRatio = `${formatCount(page.cachedVariants)}/${formatCount(page.totalVariants)}`;
-
-            return (
-              <div className="markdown-cache-page-row" key={page.slug || page.path}>
-                <div className="markdown-cache-page-main">
-                  <div className="markdown-cache-page-heading">
-                    <strong>{page.title}</strong>
-                    <span>{pageRatio}</span>
-                  </div>
-                  <span className="markdown-cache-page-path">{page.path || page.slug}</span>
-                  <div className="markdown-cache-language-list">
-                    {page.languages.map((language) => (
-                      <span
-                        className={`markdown-cache-language-chip${
-                          language.cached ? " markdown-cache-language-cached" : " markdown-cache-language-missing"
-                        }`}
-                        key={`${page.slug}-${language.languageCode}-${language.contentHash}`}
-                        title={
-                          language.cached && language.savedAt
-                            ? `${language.languageName} cached ${formatStatusTimestamp(language.savedAt)}`
-                            : `${language.languageName} is not cached`
-                        }
-                      >
-                        {language.sourceLanguage ? "Source" : language.languageCode}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
-                <span className="markdown-cache-page-action-tooltip ui-tooltip" data-ui-tooltip="Clear page cache">
-                  <button
-                    type="button"
-                    className="btn btn-icon danger markdown-cache-page-clear"
-                    aria-label={`Clear rendered Markdown cache for ${page.title}`}
-                    disabled={busy}
-                    onClick={() => onClearPage(page)}
-                  >
-                    <MaterialIcon name={isClearing ? "hourglass_top" : "delete"} />
-                  </button>
-                </span>
-              </div>
-            );
-          })
-        )}
-      </div>
-    </>
-  );
-}
-
-const getVisitorSparklineValue = (period: VisitorStatsPeriod, metric: VisitorSparklineMetric): number =>
-  metric === "visitors" ? period.visitors : period.visits;
-
-const formatVisitorTrendRange = (periods: VisitorStatsPeriod[]): string => {
-  const first = periods[0];
-  const last = periods.at(-1);
-
-  if (!first || !last) {
-    return "No activity";
-  }
-
-  return first.key === last.key ? first.label : `${first.label} - ${last.label}`;
-};
-
-const createVisitorSparklinePoints = (
-  periods: VisitorStatsPeriod[],
-  metric: VisitorSparklineMetric,
-): VisitorSparklinePoint[] => {
-  if (periods.length === 0) {
-    return [];
-  }
-
-  const chartWidth = VISITOR_SPARKLINE_WIDTH - VISITOR_SPARKLINE_PADDING_X * 2;
-  const chartHeight = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y * 2;
-  const sourcePeriods = periods.length === 1 ? [periods[0], periods[0]] : periods;
-  const sourceValues = periods.map((period) => getVisitorSparklineValue(period, metric));
-  const minValue = Math.min(...sourceValues);
-  const maxValue = Math.max(...sourceValues);
-  const range = maxValue - minValue;
-
-  return sourcePeriods.map((period, index) => {
-    const value = getVisitorSparklineValue(period, metric);
-    const normalized = range > 0 ? (value - minValue) / range : maxValue > 0 ? 0.56 : 0;
-    const x =
-      VISITOR_SPARKLINE_PADDING_X +
-      (sourcePeriods.length === 1 ? chartWidth : (index / (sourcePeriods.length - 1)) * chartWidth);
-    const y = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y - normalized * chartHeight;
-
-    return {
-      key: `${period.key}-${index}`,
-      label: period.label,
-      period,
-      value,
-      x,
-      y,
-    };
-  });
-};
-
-const createVisitorSparklinePath = (points: VisitorSparklinePoint[]): string => {
-  const firstPoint = points[0];
-  if (!firstPoint) {
-    return "";
-  }
-
-  const move = `M ${formatChartCoordinate(firstPoint.x)} ${formatChartCoordinate(firstPoint.y)}`;
-  const segments = points.slice(1).map((point, index) => {
-    const previous = points[index];
-    const controlX = previous.x + (point.x - previous.x) / 2;
-
-    return [
-      "C",
-      formatChartCoordinate(controlX),
-      formatChartCoordinate(previous.y),
-      formatChartCoordinate(controlX),
-      formatChartCoordinate(point.y),
-      formatChartCoordinate(point.x),
-      formatChartCoordinate(point.y),
-    ].join(" ");
-  });
-
-  return [move, ...segments].join(" ");
-};
-
-type VisitorSparklineCardProps = {
-  label: string;
-  metric: VisitorSparklineMetric;
-  periods: VisitorStatsPeriod[];
-  value: number;
-};
-
-function VisitorSparklineCard({ label, metric, periods, value }: VisitorSparklineCardProps) {
-  const chartId = useId().replace(/[^a-zA-Z0-9_-]/g, "");
-  const gradientId = `visitor-sparkline-fill-${chartId}`;
-  const tooltipId = `visitor-sparkline-tooltip-${chartId}`;
-  const chartCardRef = useRef<HTMLDivElement>(null);
-  const chartStageRef = useRef<HTMLDivElement>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const [activePointIndex, setActivePointIndex] = useState<number | null>(null);
-  const [tooltipPosition, setTooltipPosition] = useState<VisitorSparklineTooltipPosition | null>(null);
-  const points = createVisitorSparklinePoints(periods, metric);
-  const activePoint = activePointIndex === null ? null : points[activePointIndex] ?? null;
-  const firstPoint = points[0];
-  const lastPoint = points[points.length - 1];
-  const linePath = createVisitorSparklinePath(points);
-  const baselineY = VISITOR_SPARKLINE_HEIGHT - VISITOR_SPARKLINE_PADDING_Y;
-  const areaPath =
-    firstPoint && lastPoint && linePath
-      ? `${linePath} L ${formatChartCoordinate(lastPoint.x)} ${formatChartCoordinate(
-          baselineY,
-        )} L ${formatChartCoordinate(firstPoint.x)} ${formatChartCoordinate(baselineY)} Z`
-      : "";
-  const rangeLabel = formatVisitorTrendRange(periods);
-  const activePointStyle = activePoint
-    ? ({
-        "--visitor-active-x": `${(activePoint.x / VISITOR_SPARKLINE_WIDTH) * 100}%`,
-        "--visitor-active-y": `${(activePoint.y / VISITOR_SPARKLINE_HEIGHT) * 100}%`,
-      } as CSSProperties)
-    : undefined;
-  const tooltipStyle = activePoint
-    ? ({
-        left: tooltipPosition ? `${tooltipPosition.left}px` : 0,
-        top: tooltipPosition ? `${tooltipPosition.top}px` : 0,
-        visibility: tooltipPosition ? "visible" : "hidden",
-      } as CSSProperties)
-    : undefined;
-  const activePointKey = activePoint?.key;
-  const activePointX = activePoint?.x;
-  const activePointY = activePoint?.y;
-
-  useLayoutEffect(() => {
-    if (!activePointKey || activePointX === undefined || activePointY === undefined) {
-      return undefined;
-    }
-
-    const updateTooltipPosition = () => {
-      const chartStage = chartStageRef.current;
-      const chartCard = chartCardRef.current;
-      const tooltip = tooltipRef.current;
-
-      if (!chartStage || !chartCard || !tooltip) {
-        return;
-      }
-
-      const stageBounds = chartStage.getBoundingClientRect();
-      const cardBounds = chartCard.getBoundingClientRect();
-      const tooltipBounds = tooltip.getBoundingClientRect();
-
-      if (
-        stageBounds.width <= 0 ||
-        stageBounds.height <= 0 ||
-        cardBounds.width <= 0 ||
-        cardBounds.height <= 0 ||
-        tooltipBounds.width <= 0 ||
-        tooltipBounds.height <= 0
-      ) {
-        return;
-      }
-
-      const pointX = stageBounds.left - cardBounds.left + (activePointX / VISITOR_SPARKLINE_WIDTH) * stageBounds.width;
-      const pointY = stageBounds.top - cardBounds.top + (activePointY / VISITOR_SPARKLINE_HEIGHT) * stageBounds.height;
-      const maxLeft = Math.max(
-        VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
-        cardBounds.width - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_MARGIN_X,
-      );
-      const maxTop = Math.max(
-        VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
-        cardBounds.height - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y,
-      );
-      const leftSide = pointX - tooltipBounds.width - VISITOR_SPARKLINE_TOOLTIP_GAP;
-      const rightSide = pointX + VISITOR_SPARKLINE_TOOLTIP_GAP;
-      const upperSide = pointY - tooltipBounds.height - VISITOR_SPARKLINE_TOOLTIP_GAP;
-      const lowerSide = pointY + VISITOR_SPARKLINE_TOOLTIP_GAP;
-      const horizontalPreference = pointX <= cardBounds.width / 2 ? "right" : "left";
-      const verticalPreference = pointY <= cardBounds.height / 2 ? "lower" : "upper";
-      const fallbackHorizontalPreference = horizontalPreference === "right" ? "left" : "right";
-      const fallbackVerticalPreference = verticalPreference === "lower" ? "upper" : "lower";
-      const candidates = [
-        { horizontal: horizontalPreference, vertical: verticalPreference },
-        { horizontal: fallbackHorizontalPreference, vertical: verticalPreference },
-        { horizontal: horizontalPreference, vertical: fallbackVerticalPreference },
-        { horizontal: fallbackHorizontalPreference, vertical: fallbackVerticalPreference },
-      ].map((placement) => ({
-        left: placement.horizontal === "right" ? rightSide : leftSide,
-        top: placement.vertical === "lower" ? lowerSide : upperSide,
-      }));
-      const selectedPosition =
-        candidates.find(
-          (candidate) =>
-            candidate.left >= VISITOR_SPARKLINE_TOOLTIP_MARGIN_X &&
-            candidate.left <= maxLeft &&
-            candidate.top >= VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y &&
-            candidate.top <= maxTop,
-        ) ?? candidates[0];
-      const nextPosition = {
-        left: Math.round(clampNumber(selectedPosition.left, VISITOR_SPARKLINE_TOOLTIP_MARGIN_X, maxLeft)),
-        top: Math.round(clampNumber(selectedPosition.top, VISITOR_SPARKLINE_TOOLTIP_MARGIN_Y, maxTop)),
-      };
-
-      setTooltipPosition((currentPosition) =>
-        currentPosition?.left === nextPosition.left && currentPosition.top === nextPosition.top
-          ? currentPosition
-          : nextPosition,
-      );
-    };
-
-    updateTooltipPosition();
-
-    const resizeObserver = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(updateTooltipPosition);
-
-    if (resizeObserver && chartCardRef.current && chartStageRef.current && tooltipRef.current) {
-      resizeObserver.observe(chartCardRef.current);
-      resizeObserver.observe(chartStageRef.current);
-      resizeObserver.observe(tooltipRef.current);
-    }
-
-    window.addEventListener("resize", updateTooltipPosition);
-
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener("resize", updateTooltipPosition);
-    };
-  }, [activePointKey, activePointX, activePointY]);
-
-  const activateNearestPoint = (clientX: number) => {
-    const chartStage = chartStageRef.current;
-
-    if (!chartStage || points.length === 0) {
-      return;
-    }
-
-    const bounds = chartStage.getBoundingClientRect();
-
-    if (bounds.width <= 0) {
-      return;
-    }
-
-    const chartX = ((clientX - bounds.left) / bounds.width) * VISITOR_SPARKLINE_WIDTH;
-    let nearestIndex = 0;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-
-    points.forEach((point, index) => {
-      const distance = Math.abs(point.x - chartX);
-
-      if (distance < nearestDistance) {
-        nearestIndex = index;
-        nearestDistance = distance;
-      }
-    });
-
-    setActivePointIndex((currentIndex) => (currentIndex === nearestIndex ? currentIndex : nearestIndex));
-  };
-
-  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
-    activateNearestPoint(event.clientX);
-  };
-
-  const handlePointFocus = () => {
-    if (points.length === 0) {
-      return;
-    }
-
-    setActivePointIndex((currentIndex) => currentIndex ?? points.length - 1);
-  };
-
-  const handlePointKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (points.length === 0) {
-      return;
-    }
-
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      const direction = event.key === "ArrowRight" ? 1 : -1;
-
-      event.preventDefault();
-      setActivePointIndex((currentIndex) => {
-        if (currentIndex === null) {
-          return direction > 0 ? 0 : points.length - 1;
-        }
-
-        return Math.max(0, Math.min(points.length - 1, currentIndex + direction));
-      });
-    }
-
-    if (event.key === "Escape") {
-      setActivePointIndex(null);
-    }
-  };
-
-  return (
-    <div ref={chartCardRef} className={`visitor-sparkline-card visitor-sparkline-card-${metric}`}>
-      <div className="visitor-sparkline-meta">
-        <strong>{formatCount(value)}</strong>
-        <span>{label}</span>
-      </div>
-      <span className="visitor-sparkline-range">{rangeLabel}</span>
-      <div
-        ref={chartStageRef}
-        className="visitor-sparkline-stage"
-        tabIndex={points.length > 0 ? 0 : -1}
-        aria-describedby={activePoint ? tooltipId : undefined}
-        onBlur={() => setActivePointIndex(null)}
-        onFocus={handlePointFocus}
-        onKeyDown={handlePointKeyDown}
-        onPointerLeave={() => setActivePointIndex(null)}
-        onPointerMove={handlePointerMove}
-      >
-        <svg
-          className="visitor-sparkline"
-          role="img"
-          aria-label={`${label}: ${formatCount(value)}. Trend range: ${rangeLabel}.`}
-          preserveAspectRatio="none"
-          viewBox={`0 0 ${VISITOR_SPARKLINE_WIDTH} ${VISITOR_SPARKLINE_HEIGHT}`}
-        >
-          <defs>
-            <linearGradient id={gradientId} x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor="var(--visitor-chart-line)" stopOpacity="0.34" />
-              <stop offset="100%" stopColor="var(--visitor-chart-line)" stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          {areaPath ? <path className="visitor-sparkline-area" d={areaPath} fill={`url(#${gradientId})`} /> : null}
-          {linePath ? (
-            <>
-              {activePoint ? (
-                <line
-                  className="visitor-sparkline-guide"
-                  x1={activePoint.x}
-                  x2={activePoint.x}
-                  y1={VISITOR_SPARKLINE_PADDING_Y}
-                  y2={baselineY}
-                />
-              ) : null}
-              <path className="visitor-sparkline-glow" d={linePath} />
-              <path className="visitor-sparkline-line" d={linePath} />
-            </>
-          ) : null}
-        </svg>
-        {activePoint && activePointStyle ? (
-          <span className="visitor-sparkline-active-dot" style={activePointStyle} aria-hidden="true" />
-        ) : null}
-      </div>
-      {activePoint ? (
-        <div
-          ref={tooltipRef}
-          id={tooltipId}
-          className="visitor-sparkline-tooltip"
-          role="tooltip"
-          style={tooltipStyle}
-        >
-          <strong>{activePoint.label}</strong>
-          <dl>
-            <div>
-              <dt>Visitors</dt>
-              <dd>{formatCount(activePoint.period.visitors)}</dd>
-            </div>
-            <div>
-              <dt>Visits</dt>
-              <dd>{formatCount(activePoint.period.visits)}</dd>
-            </div>
-          </dl>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-type VisitorCatchUpProgressProps = {
-  progress: NonNullable<VisitorAnalyticsStatus["catchingUp"]>;
-};
-
-function VisitorCatchUpProgress({ progress }: VisitorCatchUpProgressProps) {
-  return (
-    <ProgressPanel
-      ariaLabel="Earlier visits added"
-      detail={`${formatCount(progress.processed)} of ${formatCount(progress.total)} visits, ${formatEtaSeconds(progress.etaSeconds)}. The numbers below fill in as it goes.`}
-      percent={progressPercent(progress.processed, progress.total)}
-      title="Catching up on earlier visits"
-    />
-  );
-}
-
-function MarkdownCacheWarmProgress({ job }: { job: AdminMarkdownCacheWarmJob }) {
-  const detail =
-    job.phase === "planning"
-      ? "Checking which pages and translations still need HTML."
-      : `${formatCount(job.processedVariants)} of ${formatCount(job.missingVariants)} variants, ${formatEtaSeconds(job.etaSeconds)}. It keeps going if you leave this page.`;
-
-  return <ProgressPanel ariaLabel="Missing HTML rendered" detail={detail} percent={progressPercent(job.processedVariants, job.missingVariants)} title="Rendering missing HTML" />;
-}
-
-/** What the card says once a warm job it watched has finished. */
-const markdownCacheWarmOutcome = (job: AdminMarkdownCacheWarmJob): MarkdownCacheActionMessage => {
-  const rendered = `${formatCount(job.renderedVariants)} Markdown HTML variant${job.renderedVariants === 1 ? "" : "s"}`;
-  if (job.status === "failed") {
-    return { tone: "error", text: job.error ?? "Rendering the missing HTML stopped." };
-  }
-  if (job.failedVariants > 0) {
-    return { tone: "warning", text: `Cached ${rendered}; ${formatCount(job.failedVariants)} failed.` };
-  }
-  if (job.renderedVariants === 0) {
-    return { tone: "success", text: "All available Markdown HTML variants were already cached." };
-  }
-  return { tone: "success", text: `Cached ${rendered}.` };
-};
-
-type VisitorStatsCardProps = {
-  activeScope: VisitorStatsScope;
-  error: string | null;
-  loading: boolean;
-  stats: VisitorStatsSummary | null;
-  status: VisitorAnalyticsStatus | null;
-  onRefresh: () => void;
-  onScopeChange: (scope: VisitorStatsScope) => void;
-};
-
-function VisitorStatsCard({
-  activeScope,
-  error,
-  loading,
-  stats,
-  status,
-  onRefresh,
-  onScopeChange,
-}: VisitorStatsCardProps) {
-  const scopeStats = stats?.scopes[activeScope] ?? null;
-  const maxPageVisits = Math.max(1, ...(scopeStats?.pages.map((page) => page.visits) ?? [0]));
-  const trendPeriods = scopeStats?.periods ?? [];
-  const displayedError = error ?? status?.error ?? null;
-  const waitingForNumbers = loading || Boolean(status?.refreshing);
-
-  return (
-    <section className="panel-card panel-card-visitors">
-      <div className="panel-header">
-        <div>
-          <h2>Analytics</h2>
-          <p className="panel-description">Visits and unique visitors over time.</p>
-        </div>
-        <CardRefreshButton disabled={loading} label="Refresh analytics" loading={loading} loadingLabel="Refreshing analytics" onClick={onRefresh} />
-      </div>
-
-      <div className="visitor-tabs" role="tablist" aria-label="Analytics range">
-        {VISITOR_STATS_TABS.map((tab) => (
-          <button
-            key={tab.scope}
-            type="button"
-            className={`btn visitor-tab${activeScope === tab.scope ? " visitor-tab-active" : ""}`}
-            role="tab"
-            aria-selected={activeScope === tab.scope}
-            onClick={() => onScopeChange(tab.scope)}
-          >
-            <MaterialIcon name={tab.icon} />
-            <span>{tab.label}</span>
-          </button>
-        ))}
-      </div>
-
-      {displayedError ? <p className="error-text">{displayedError}</p> : null}
-      {status?.catchingUp ? <VisitorCatchUpProgress progress={status.catchingUp} /> : null}
-
-      <div className="visitor-stats-scroll">
-        {!stats || !scopeStats ? (
-          displayedError && !waitingForNumbers ? null : (
-            <p className="muted-caption">{waitingForNumbers ? "Loading analytics..." : "No analytics recorded yet."}</p>
-          )
-        ) : (
-          <>
-            <div className="visitor-chart-wrap">
-              <div className="visitor-section-heading">
-                <h3>{VISITOR_STATS_TREND_LABELS[activeScope]}</h3>
-                <span title={formatStatusTimestamp(stats.computedAt)}>
-                  {loading ? "Refreshing..." : `Updated ${formatStatusTimestamp(stats.computedAt)}`}
-                </span>
-              </div>
-              <div className="visitor-sparkline-grid">
-                <VisitorSparklineCard
-                  label="Unique visitors"
-                  metric="visitors"
-                  periods={trendPeriods}
-                  value={scopeStats.totalVisitors}
-                />
-                <VisitorSparklineCard label="Visits" metric="visits" periods={trendPeriods} value={scopeStats.totalVisits} />
-              </div>
-            </div>
-
-            <div className="visitor-page-section">
-              <div className="visitor-section-heading">
-                <h3>Pages</h3>
-                <span>{formatCount(scopeStats.pages.length)}</span>
-              </div>
-
-              {scopeStats.pages.length > 0 ? (
-                <div className="visitor-page-list">
-                  {scopeStats.pages.map((page) => {
-                    const size = page.visits > 0 ? Math.max(5, (page.visits / maxPageVisits) * 100) : 0;
-                    const style = { "--visitor-bar-size": `${size}%` } as CSSProperties;
-
-                    return (
-                      <a className="visitor-page-row" href={`/docs/${page.slug}`} key={page.slug}>
-                        <span className="visitor-page-main">
-                          <strong>{page.title}</strong>
-                          <span>{page.path} - {formatVisitorLabel(page.visitors)}</span>
-                        </span>
-                        <span className="visitor-page-count" title={formatVisitorLabel(page.visitors)}>
-                          {formatCount(page.visits)}
-                        </span>
-                        <span className="visitor-page-meter" aria-hidden="true">
-                          <span className="visitor-page-meter-fill" style={style} />
-                        </span>
-                      </a>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="muted-caption">No visitors recorded for this range yet.</p>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    </section>
-  );
-}
 
 const statusToneClassName = (status: DomainSslRuntimeStatus): "success-text" | "warning-text" | "error-text" => {
   if (status.configured && !status.httpsAvailable) {
@@ -1194,12 +154,6 @@ const formatCustomDomainHttpPolicy = (status: DomainSslRuntimeStatus): string =>
     default:
       return "serve application";
   }
-};
-
-type ClearSecretTarget = "githubToken" | "openRouterApiKey";
-type TranslationRequestStatus = {
-  tone: "success" | "warning" | "error";
-  message: string;
 };
 
 type TranslationCacheStatusTone = "loading" | "empty" | "partial" | "complete";
@@ -1262,32 +216,6 @@ const getTranslationLogIcon = (level: AdminTranslationJobLogEntry["level"]): str
   return "info";
 };
 
-const translationCacheStatusKey = (languageCode: string): string =>
-  normalizeAutoTranslateLanguageCode(languageCode).toLowerCase();
-
-const createTranslationCacheStatusMap = (
-  statuses: AdminLanguageTranslationCacheStatus[],
-): Record<string, AdminLanguageTranslationCacheStatus> => {
-  const output: Record<string, AdminLanguageTranslationCacheStatus> = {};
-
-  for (const status of statuses) {
-    const key = translationCacheStatusKey(status.languageCode);
-    if (key) {
-      output[key] = status;
-    }
-  }
-
-  return output;
-};
-
-/** A language whose translations the server is still fetching for the first time, so its counts are not final. */
-const isTranslationStatusPending = (status: AdminLanguageTranslationCacheStatus | undefined): boolean =>
-  Boolean(status && !status.sourceLanguage && (status.loading || status.pendingPages > 0));
-
-/** Progress of that first fetch: its blob downloads, or null while only commit dates are being looked up. */
-const getTranslationStatusProgressPercent = (status: AdminLanguageTranslationCacheStatus): number | null =>
-  status.loading && status.loading.total > 0 ? progressPercent(status.loading.downloaded, status.loading.total) : null;
-
 const getTranslationCacheStatusTone = (
   status: AdminLanguageTranslationCacheStatus | undefined,
 ): TranslationCacheStatusTone => {
@@ -1335,31 +263,70 @@ const getTranslationCacheStatusTooltip = (status: AdminLanguageTranslationCacheS
   return `${status.currentPages}/${status.totalPages} current, ${status.missingPages} missing, ${status.outdatedPages} outdated`;
 };
 
-/** What the localization overview depends on: the localization directory and the language codes. */
-const translationOverviewSignature = (settings: AdminSettings): string =>
-  JSON.stringify([normalizeLocalizationPath(settings.autoTranslateLocalizationPath), settings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code))]);
-
 export function AdminSettingsPanel() {
-  const router = useRouter();
-  const { setThemeSettings } = useTheme();
-  const lifetimeSignal = usePanelLifetimeSignal();
-  const runPerformanceStatsRequest = useNewestRequest(lifetimeSignal);
-  const runVisitorStatsRequest = useNewestRequest(lifetimeSignal);
-  const runMarkdownCacheStatusRequest = useNewestRequest(lifetimeSignal);
-  const runTranslationOverviewRequest = useNewestRequest(lifetimeSignal);
+  return (
+    <AdminPanelProvider>
+      <AdminSettingsContent />
+    </AdminPanelProvider>
+  );
+}
 
-  const [settings, setSettings] = useState<AdminSettings>(INITIAL_SETTINGS);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
+function AdminSettingsContent() {
+  const { loadError, loading } = usePanelLoad();
 
-  const [settingsSaving, setSettingsSaving] = useState(false);
-  const [clearingSecret, setClearingSecret] = useState<ClearSecretTarget | null>(null);
-  const [domainFieldErrors, setDomainFieldErrors] = useState<DomainFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.domain);
-  const [aiChatFieldErrors, setAiChatFieldErrors] = useState<AiChatFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.aiChat);
-  const [openRouterFieldErrors, setOpenRouterFieldErrors] = useState<OpenRouterFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.openRouter);
-  const [autoTranslateFieldErrors, setAutoTranslateFieldErrors] =
-    useState<AutoTranslateFieldErrors>(EMPTY_SETTINGS_FIELD_ERRORS.autoTranslate);
+  if (loading) {
+    return <LoadingState label="Loading admin settings..." />;
+  }
+
+  if (loadError) {
+    return (
+      <ErrorState
+        title="Unable to load admin settings"
+        message={loadError}
+        actionLabel="Retry"
+        onAction={() => window.location.reload()}
+      />
+    );
+  }
+
+  return <AdminSettingsCards />;
+}
+
+const selectSettingsState = (state: SettingsState): SettingsState => state;
+
+function AdminSettingsCards() {
+  const { initialModerators } = usePanelLoad();
+  const services = useAdminPanel();
+  const { clearSavedSecret, lifetimeSignal, persistLatestSettings, refreshRequestedMarkdownCacheStatus, refreshTranslationOverview, settingsStore } = services;
+  const { clearingSecret, draft: settings, errors, saveError, saving: settingsSaving } = useSettingsSelector(selectSettingsState);
+  const setSettings = settingsStore.updateDraft;
+  const domainFieldErrors = errors.domain;
+  const aiChatFieldErrors = errors.aiChat;
+  const openRouterFieldErrors = errors.openRouter;
+  const autoTranslateFieldErrors = errors.autoTranslate;
+  const setDomainFieldErrors = (update: (prev: DomainFieldErrors) => DomainFieldErrors) => settingsStore.patchErrors("domain", update(settingsStore.getState().errors.domain));
+  const setAiChatFieldErrors = (update: (prev: AiChatFieldErrors) => AiChatFieldErrors) => settingsStore.patchErrors("aiChat", update(settingsStore.getState().errors.aiChat));
+  const setOpenRouterFieldErrors = (update: (prev: OpenRouterFieldErrors) => OpenRouterFieldErrors) =>
+    settingsStore.patchErrors("openRouter", update(settingsStore.getState().errors.openRouter));
+  const setAutoTranslateFieldErrors = (update: (prev: AutoTranslateFieldErrors) => AutoTranslateFieldErrors) =>
+    settingsStore.patchErrors("autoTranslate", update(settingsStore.getState().errors.autoTranslate));
+  const { error: sslStatusError, loading: sslStatusLoading, status: sslStatus } = useSslStatusContext();
+  const localization = useLocalizationContext();
+  const {
+    job: translationJob,
+    requestStatus: translationRequestStatus,
+    statusError: translationCacheStatusError,
+    statusLoading: translationCacheStatusLoading,
+    statuses: translationCacheStatuses,
+    statusesLocalizationPath: translationStatusesLocalizationPath,
+  } = localization;
+  const {
+    bulkAction: translationBulkAction,
+    recordSourceVersions: recordSourceVersionsOf,
+    requestBulkTranslations,
+    requestLanguageTranslations,
+    requestedLanguageCodes: requestedTranslationLanguageCodes,
+  } = useLocalizationRequests(services, localization);
 
   const [testingConnection, setTestingConnection] = useState(false);
   const [connectionMessage, setConnectionMessage] = useState<string | null>(null);
@@ -1367,44 +334,8 @@ export function AdminSettingsPanel() {
   const [refreshingDocs, setRefreshingDocs] = useState(false);
   const [docsRefreshMessage, setDocsRefreshMessage] = useState<string | null>(null);
   const [docsRefreshError, setDocsRefreshError] = useState<string | null>(null);
-  const [requestedTranslationLanguageCodes, setRequestedTranslationLanguageCodes] = useState<Set<string>>(
-    () => new Set(),
-  );
-  const [translationBulkAction, setTranslationBulkAction] = useState<AdminTranslationJobSnapshot["mode"] | null>(null);
-  const [translationRequestStatus, setTranslationRequestStatus] = useState<TranslationRequestStatus | null>(null);
-  const [translationJob, setTranslationJob] = useState<AdminTranslationJobSnapshot | null>(null);
-  const [translationCacheStatuses, setTranslationCacheStatuses] = useState<
-    Record<string, AdminLanguageTranslationCacheStatus>
-  >({});
-  /** Localization directory the shown statuses belong to; they are hidden while the panel shows another one. */
-  const [translationStatusesLocalizationPath, setTranslationStatusesLocalizationPath] = useState<string | null>(null);
-  const [translationCacheStatusLoading, setTranslationCacheStatusLoading] = useState(false);
-  const [translationCacheStatusError, setTranslationCacheStatusError] = useState<string | null>(null);
 
-  const [markdownCacheStatus, setMarkdownCacheStatus] = useState<AdminMarkdownCacheStatus | null>(null);
-  const [markdownCacheStatusLoading, setMarkdownCacheStatusLoading] = useState(false);
-  const [markdownCacheStatusError, setMarkdownCacheStatusError] = useState<string | null>(null);
-  const [markdownCacheActionMessage, setMarkdownCacheActionMessage] = useState<MarkdownCacheActionMessage | null>(null);
-  const [markdownCacheWarmJob, setMarkdownCacheWarmJob] = useState<AdminMarkdownCacheWarmJob | null>(null);
-  const [startingMarkdownCacheWarm, setStartingMarkdownCacheWarm] = useState(false);
-  const [clearingMarkdownCacheAll, setClearingMarkdownCacheAll] = useState(false);
-  const [clearingMarkdownCacheSlug, setClearingMarkdownCacheSlug] = useState<string | null>(null);
-
-  const [sslStatus, setSslStatus] = useState<DomainSslRuntimeStatus | null>(null);
-  const [sslStatusLoading, setSslStatusLoading] = useState(true);
-  const [sslStatusError, setSslStatusError] = useState<string | null>(null);
-
-  const [performanceStats, setPerformanceStats] = useState<PerformanceStatsSnapshot | null>(null);
-  const [performanceStatsLoading, setPerformanceStatsLoading] = useState(true);
-  const [performanceStatsError, setPerformanceStatsError] = useState<string | null>(null);
-
-  const [visitorStats, setVisitorStats] = useState<VisitorStatsSummary | null>(null);
-  const [visitorStatsStatus, setVisitorStatsStatus] = useState<VisitorAnalyticsStatus | null>(null);
-  const [visitorStatsLoading, setVisitorStatsLoading] = useState(true);
-  const [visitorStatsError, setVisitorStatsError] = useState<string | null>(null);
-  const [visitorStatsScope, setVisitorStatsScope] = useState<VisitorStatsScope>("allTime");
-
-  const [moderators, setModerators] = useState<ModeratorAccount[]>([]);
+  const [moderators, setModerators] = useState<ModeratorAccount[]>(initialModerators);
   const [moderatorUsername, setModeratorUsername] = useState("");
   const [moderatorPassword, setModeratorPassword] = useState("");
   const [showModeratorPassword, setShowModeratorPassword] = useState(false);
@@ -1415,27 +346,7 @@ export function AdminSettingsPanel() {
   const [editingModeratorUsername, setEditingModeratorUsername] = useState("");
   const [editingModeratorPassword, setEditingModeratorPassword] = useState("");
   const [showEditingModeratorPassword, setShowEditingModeratorPassword] = useState(false);
-
-  const autoSaveReadyRef = useRef(false);
-  const autoSaveInFlightRef = useRef(false);
-  const autoSaveQueuedRef = useRef(false);
-  const latestSettingsRef = useRef<AdminSettings>(INITIAL_SETTINGS);
-  const lastSavedSnapshotRef = useRef<string | null>(null);
-  const translationJobStatusInFlightRef = useRef(false);
-  /** Translation settings of the latest overview request, to fetch it again after a save changes them. */
-  const translationOverviewSignatureRef = useRef<string | null>(null);
-  const translationStatusesPendingRef = useRef(false);
-  const translationJobRef = useRef<AdminTranslationJobSnapshot | null>(null);
   const translationLogRef = useRef<HTMLDivElement | null>(null);
-  const lastTranslationJobStatusRef = useRef<AdminTranslationJobSnapshot["status"] | null>(null);
-  /** Set once the admin asks for the Markdown cache status; it is never loaded before that. */
-  const markdownCacheStatusRequestedRef = useRef(false);
-  const markdownCacheWarmJobRef = useRef<AdminMarkdownCacheWarmJob | null>(null);
-  const lastMarkdownCacheWarmJobStatusRef = useRef<AdminMarkdownCacheWarmJob["status"] | null>(null);
-  const lastSavedDomainRef = useRef({
-    customDomain: INITIAL_SETTINGS.customDomain,
-    letsEncryptEmail: INITIAL_SETTINGS.letsEncryptEmail,
-  });
 
   const themeCustomization = useMemo(() => themeCustomizationFromSettings(settings), [settings]);
   const lightPreviewStyle = useMemo(
@@ -1448,8 +359,6 @@ export function AdminSettingsPanel() {
   );
   const activeTranslationMode = translationJob?.status === "running" ? translationJob.mode : translationBulkAction;
   const translationLogEntries = translationJob?.logs ?? [];
-  /** Whether a language's translations are still being fetched for the first time; the overview is polled meanwhile. */
-  const translationStatusesPending = useMemo(() => Object.values(translationCacheStatuses).some(isTranslationStatusPending), [translationCacheStatuses]);
   /** Current translations that do not record their source version yet, as the overview or a running job reports them. */
   const unrecordedTranslationCount = useMemo(
     () =>
@@ -1460,77 +369,7 @@ export function AdminSettingsPanel() {
       ),
     [settings.autoTranslateLanguages, translationCacheStatuses],
   );
-
-  useEffect(() => {
-    translationStatusesPendingRef.current = translationStatusesPending;
-  }, [translationStatusesPending]);
-
-  const trackTranslationJob = useCallback((job: AdminTranslationJobSnapshot | null): void => {
-    translationJobRef.current = job;
-    setTranslationJob(job);
-  }, []);
-
-  const refreshSslStatus = useCallback(async () => {
-    const signal = lifetimeSignal();
-    setSslStatusLoading(true);
-    setSslStatusError(null);
-
-    try {
-      const status = await fetchAdminDomainSslStatus({ signal });
-      if (!signal.aborted) {
-        setSslStatus(status);
-      }
-    } catch (error) {
-      if (!signal.aborted) {
-        setSslStatus(null);
-        setSslStatusError(formatApiError(error));
-      }
-    } finally {
-      if (!signal.aborted) {
-        setSslStatusLoading(false);
-      }
-    }
-  }, [lifetimeSignal]);
-
-  const refreshPerformanceStats = useCallback(async () => {
-    setPerformanceStatsLoading(true);
-    setPerformanceStatsError(null);
-
-    const result = await runPerformanceStatsRequest((signal) => fetchAdminPerformanceStats({ signal }));
-    if (!result) {
-      return;
-    }
-
-    setPerformanceStats(result.value);
-    setPerformanceStatsError(result.error);
-    setPerformanceStatsLoading(false);
-  }, [runPerformanceStatsRequest]);
-
-  /**
-   * Loads the analytics numbers. Only the newest request may update the card, so a slow older
-   * response never replaces newer numbers. Background polls (`silent`) leave the refresh button
-   * alone, and numbers already shown stay until newer ones arrive.
-   */
-  const refreshVisitorStats = useCallback(async ({ refresh = false, silent = false }: { refresh?: boolean; silent?: boolean } = {}) => {
-    if (!silent) {
-      setVisitorStatsLoading(true);
-      setVisitorStatsError(null);
-    }
-
-    const result = await runVisitorStatsRequest((signal) => fetchAdminVisitorStats({ refresh, signal }));
-    if (!result) {
-      return;
-    }
-
-    if (result.value) {
-      if (result.value.stats) {
-        setVisitorStats(result.value.stats);
-      }
-      setVisitorStatsStatus(result.value.status);
-    }
-    setVisitorStatsError(result.error);
-    setVisitorStatsLoading(false);
-  }, [runVisitorStatsRequest]);
+  const recordSourceVersions = () => recordSourceVersionsOf(unrecordedTranslationCount);
 
   const resetModeratorEditor = useCallback(() => {
     setEditingModeratorId(null);
@@ -1645,447 +484,6 @@ export function AdminSettingsPanel() {
     [editingModeratorId, lifetimeSignal, resetModeratorEditor],
   );
 
-  const createSaveSnapshot = useCallback(
-    (draft: AdminSettings): string =>
-      JSON.stringify({
-        settings: draft,
-      }),
-    [],
-  );
-
-  const getLatestSaveSnapshot = useCallback((): string => createSaveSnapshot(latestSettingsRef.current), [createSaveSnapshot]);
-
-  const showFieldErrors = useCallback((errors: SettingsFieldErrors): void => {
-    setDomainFieldErrors(errors.domain);
-    setAiChatFieldErrors(errors.aiChat);
-    setOpenRouterFieldErrors(errors.openRouter);
-    setAutoTranslateFieldErrors(errors.autoTranslate);
-  }, []);
-
-  /** Shows statuses computed for the localization directory the panel has saved; `merge` keeps the other languages. */
-  const applyTranslationStatuses = useCallback((statuses: AdminLanguageTranslationCacheStatus[], localizationPath: string, merge: boolean) => {
-    const currentSettings = latestSettingsRef.current;
-    const path = normalizeLocalizationPath(localizationPath);
-    if (path !== normalizeLocalizationPath(currentSettings.autoTranslateLocalizationPath)) {
-      return;
-    }
-
-    const currentLanguageCodes = new Set(currentSettings.autoTranslateLanguages.map((language) => translationCacheStatusKey(language.code)));
-    const applicable = createTranslationCacheStatusMap(statuses.filter((status) => currentLanguageCodes.has(translationCacheStatusKey(status.languageCode))));
-    setTranslationCacheStatuses((current) => (merge ? { ...current, ...applicable } : applicable));
-    setTranslationStatusesLocalizationPath(path);
-  }, []);
-
-  /**
-   * Loads the status of every saved language without a job, from the server's repository index
-   * and stored summaries. Only the newest request may update the card, and a running job keeps
-   * the floor: it reports its languages live and the overview is loaded again once it finished.
-   */
-  const refreshTranslationOverview = useCallback(async () => {
-    translationOverviewSignatureRef.current = translationOverviewSignature(latestSettingsRef.current);
-    setTranslationCacheStatusLoading(true);
-    setTranslationCacheStatusError(null);
-
-    const result = await runTranslationOverviewRequest((signal) => fetchAdminLanguageTranslationOverview({ signal }));
-    if (!result) {
-      return;
-    }
-
-    if (result.value) {
-      if (translationJobRef.current?.status !== "running") {
-        applyTranslationStatuses(result.value.statuses, result.value.localizationPath, false);
-      }
-    } else {
-      setTranslationCacheStatusError(result.error);
-    }
-    setTranslationCacheStatusLoading(false);
-  }, [applyTranslationStatuses, runTranslationOverviewRequest]);
-
-  /** Reads the latest translation job of the server; while it runs, its statuses follow its uploads. */
-  const refreshTranslationJobStatus = useCallback(async () => {
-    if (translationJobStatusInFlightRef.current) {
-      return;
-    }
-
-    const signal = lifetimeSignal();
-    translationJobStatusInFlightRef.current = true;
-    try {
-      const runtimeStatus = await fetchAdminLanguageTranslationStatus(translationJobRef.current?.id, { signal });
-      if (signal.aborted) {
-        return;
-      }
-
-      if (runtimeStatus.job?.status === "running") {
-        applyTranslationStatuses(runtimeStatus.statuses, runtimeStatus.job.localizationPath, true);
-      }
-      if (runtimeStatus.jobState === "unknown") {
-        trackTranslationJob(null);
-        setTranslationRequestStatus({ tone: "warning", message: "Translation job status is no longer available. The server may have restarted or replaced its in-process job snapshot." });
-      } else {
-        trackTranslationJob(runtimeStatus.job);
-      }
-    } catch {
-      // The next poll asks again; without a running job nothing waits for this answer.
-    } finally {
-      translationJobStatusInFlightRef.current = false;
-    }
-  }, [applyTranslationStatuses, lifetimeSignal, trackTranslationJob]);
-
-  const persistLatestSettings = useCallback(async () => {
-    if (!autoSaveReadyRef.current) {
-      return;
-    }
-
-    if (autoSaveInFlightRef.current) {
-      autoSaveQueuedRef.current = true;
-      return;
-    }
-
-    const draft = latestSettingsRef.current;
-    const snapshot = createSaveSnapshot(draft);
-
-    if (snapshot === lastSavedSnapshotRef.current) {
-      return;
-    }
-
-    const fieldErrors = validateSettingsFields(draft);
-    showFieldErrors(fieldErrors);
-
-    if (hasSettingsFieldErrors(fieldErrors)) {
-      setSaveError(null);
-      return;
-    }
-
-    const signal = lifetimeSignal();
-    autoSaveInFlightRef.current = true;
-    setSettingsSaving(true);
-    setSaveError(null);
-
-    try {
-      const shouldRefreshSslStatus =
-        draft.customDomain !== lastSavedDomainRef.current.customDomain ||
-        draft.letsEncryptEmail !== lastSavedDomainRef.current.letsEncryptEmail;
-      const saved = await saveAdminSettings(normalizeSettingsForSave(draft));
-      if (signal.aborted) {
-        return;
-      }
-      const persistedSettings: AdminSettings = {
-        ...saved,
-        githubToken: "",
-        openRouterApiKey: "",
-      };
-      const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
-
-      lastSavedSnapshotRef.current = createSaveSnapshot(persistedSettings);
-      lastSavedDomainRef.current = {
-        customDomain: persistedSettings.customDomain,
-        letsEncryptEmail: persistedSettings.letsEncryptEmail,
-      };
-
-      if (hasNewerLocalChanges) {
-        const latestSettings = latestSettingsRef.current;
-        const nextSettings: AdminSettings = {
-          ...latestSettings,
-          openRouterApiKey:
-            draft.openRouterApiKey.trim() && latestSettings.openRouterApiKey === draft.openRouterApiKey
-              ? ""
-              : latestSettings.openRouterApiKey,
-          openRouterApiKeyConfigured: persistedSettings.openRouterApiKeyConfigured,
-          githubToken:
-            draft.githubToken.trim() && latestSettings.githubToken === draft.githubToken
-              ? ""
-              : latestSettings.githubToken,
-          tokenConfigured: persistedSettings.tokenConfigured,
-        };
-        latestSettingsRef.current = nextSettings;
-        setSettings(nextSettings);
-      } else {
-        latestSettingsRef.current = persistedSettings;
-        setSettings(persistedSettings);
-        setThemeSettings(themeCustomizationFromSettings(persistedSettings));
-        showFieldErrors(validateSettingsFields(persistedSettings));
-      }
-
-      // The overview reads the saved languages and directory, so it is loaded again once they changed.
-      if (translationOverviewSignatureRef.current !== null && translationOverviewSignature(persistedSettings) !== translationOverviewSignatureRef.current) {
-        void refreshTranslationOverview();
-      }
-      if (shouldRefreshSslStatus) {
-        await refreshSslStatus();
-      }
-    } catch (error) {
-      if (!signal.aborted) {
-        setSaveError(formatApiError(error));
-      }
-    } finally {
-      autoSaveInFlightRef.current = false;
-      if (!signal.aborted) {
-        setSettingsSaving(false);
-      }
-
-      if (autoSaveQueuedRef.current) {
-        autoSaveQueuedRef.current = false;
-        void persistLatestSettings();
-      }
-    }
-  }, [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, refreshSslStatus, refreshTranslationOverview, setThemeSettings, showFieldErrors]);
-
-  const clearSavedSecret = useCallback(
-    async (target: ClearSecretTarget) => {
-      if (!autoSaveReadyRef.current || autoSaveInFlightRef.current) {
-        return;
-      }
-
-      const currentSettings = latestSettingsRef.current;
-      const hasSecret =
-        target === "githubToken"
-          ? Boolean(currentSettings.githubToken.trim() || currentSettings.tokenConfigured)
-          : Boolean(currentSettings.openRouterApiKey.trim() || currentSettings.openRouterApiKeyConfigured);
-
-      if (!hasSecret) {
-        return;
-      }
-
-      const signal = lifetimeSignal();
-      const snapshot = getLatestSaveSnapshot();
-      autoSaveInFlightRef.current = true;
-      setSettingsSaving(true);
-      setClearingSecret(target);
-      setSaveError(null);
-
-      try {
-        const saved =
-          target === "githubToken" ? await clearAdminGitHubToken() : await clearAdminOpenRouterApiKey();
-        if (signal.aborted) {
-          return;
-        }
-        const hasNewerLocalChanges = getLatestSaveSnapshot() !== snapshot;
-        const latestSettings = latestSettingsRef.current;
-        const nextSettings: AdminSettings = hasNewerLocalChanges
-          ? {
-              ...latestSettings,
-              githubToken: target === "githubToken" ? "" : latestSettings.githubToken,
-              tokenConfigured: target === "githubToken" ? saved.tokenConfigured : latestSettings.tokenConfigured,
-              openRouterApiKey: target === "openRouterApiKey" ? "" : latestSettings.openRouterApiKey,
-              aiChatEnabled: target === "openRouterApiKey" ? saved.aiChatEnabled : latestSettings.aiChatEnabled,
-              autoTranslateEnabled:
-                target === "openRouterApiKey" ? saved.autoTranslateEnabled : latestSettings.autoTranslateEnabled,
-              openRouterApiKeyConfigured:
-                target === "openRouterApiKey" ? saved.openRouterApiKeyConfigured : latestSettings.openRouterApiKeyConfigured,
-            }
-          : {
-              ...saved,
-              githubToken: target === "githubToken" ? "" : latestSettings.githubToken,
-              openRouterApiKey: target === "openRouterApiKey" ? "" : latestSettings.openRouterApiKey,
-            };
-
-        latestSettingsRef.current = nextSettings;
-        setSettings(nextSettings);
-
-        if (!hasNewerLocalChanges) {
-          lastSavedSnapshotRef.current = createSaveSnapshot(nextSettings);
-          lastSavedDomainRef.current = {
-            customDomain: nextSettings.customDomain,
-            letsEncryptEmail: nextSettings.letsEncryptEmail,
-          };
-          setThemeSettings(themeCustomizationFromSettings(nextSettings));
-          showFieldErrors(validateSettingsFields(nextSettings));
-        }
-      } catch (error) {
-        if (!signal.aborted) {
-          setSaveError(formatApiError(error));
-        }
-      } finally {
-        autoSaveInFlightRef.current = false;
-        if (!signal.aborted) {
-          setSettingsSaving(false);
-          setClearingSecret(null);
-        }
-
-        if (autoSaveQueuedRef.current) {
-          autoSaveQueuedRef.current = false;
-          void persistLatestSettings();
-        }
-      }
-    },
-    [createSaveSnapshot, getLatestSaveSnapshot, lifetimeSignal, persistLatestSettings, setThemeSettings, showFieldErrors],
-  );
-
-  const refreshMarkdownCacheStatus = useCallback(async () => {
-    markdownCacheStatusRequestedRef.current = true;
-    setMarkdownCacheStatusLoading(true);
-    setMarkdownCacheStatusError(null);
-
-    const result = await runMarkdownCacheStatusRequest((signal) => fetchAdminMarkdownCacheStatus({ signal }));
-    if (!result) {
-      return;
-    }
-
-    // A failed refresh keeps the last status on screen next to the error.
-    setMarkdownCacheStatus((current) => result.value ?? current);
-    setMarkdownCacheStatusError(result.error);
-    setMarkdownCacheStatusLoading(false);
-  }, [runMarkdownCacheStatusRequest]);
-
-  /** Keeps a Markdown cache status the admin has opened up to date after changes that affect it. */
-  const refreshRequestedMarkdownCacheStatus = useCallback(() => {
-    if (markdownCacheStatusRequestedRef.current) {
-      void refreshMarkdownCacheStatus();
-    }
-  }, [refreshMarkdownCacheStatus]);
-
-  useEffect(() => {
-    const nextStatus = translationJob?.status ?? null;
-    const previousStatus = lastTranslationJobStatusRef.current;
-    lastTranslationJobStatusRef.current = nextStatus;
-
-    if (previousStatus === "running" && nextStatus && nextStatus !== "running") {
-      refreshRequestedMarkdownCacheStatus();
-      void refreshTranslationOverview();
-    }
-  }, [refreshRequestedMarkdownCacheStatus, refreshTranslationOverview, translationJob?.status]);
-
-  useEffect(() => {
-    const logElement = translationLogRef.current;
-    if (!logElement) {
-      return;
-    }
-
-    logElement.scrollTop = logElement.scrollHeight;
-  }, [translationLogEntries.length, translationJob?.id]);
-
-  const trackMarkdownCacheWarmJob = useCallback((job: AdminMarkdownCacheWarmJob | null): void => {
-    markdownCacheWarmJobRef.current = job;
-    setMarkdownCacheWarmJob(job);
-  }, []);
-
-  /** Reads the latest warm job; the server answers from memory, so the card can poll it while it runs. */
-  const refreshMarkdownCacheWarmJob = useCallback(async () => {
-    const signal = lifetimeSignal();
-    try {
-      const job = await fetchAdminMarkdownCacheWarmJob({ signal });
-      if (!signal.aborted) {
-        trackMarkdownCacheWarmJob(job);
-      }
-    } catch {
-      // The next poll tries again; a job that is gone for good is no longer shown once polling stops.
-    }
-  }, [lifetimeSignal, trackMarkdownCacheWarmJob]);
-
-  const cacheMissingMarkdownHtml = useCallback(async () => {
-    const signal = lifetimeSignal();
-    setStartingMarkdownCacheWarm(true);
-    setMarkdownCacheActionMessage(null);
-    setMarkdownCacheStatusError(null);
-
-    try {
-      await persistLatestSettings();
-      const job = await startAdminMarkdownCacheWarmJob();
-      if (!signal.aborted) {
-        trackMarkdownCacheWarmJob(job);
-      }
-    } catch (error) {
-      if (!signal.aborted) {
-        setMarkdownCacheActionMessage({
-          tone: "error",
-          text: formatApiError(error),
-        });
-      }
-    } finally {
-      if (!signal.aborted) {
-        setStartingMarkdownCacheWarm(false);
-      }
-    }
-  }, [lifetimeSignal, persistLatestSettings, trackMarkdownCacheWarmJob]);
-
-  useEffect(() => {
-    const job = markdownCacheWarmJob;
-    const previousStatus = lastMarkdownCacheWarmJobStatusRef.current;
-    lastMarkdownCacheWarmJobStatusRef.current = job?.status ?? null;
-
-    if (previousStatus === "running" && job && job.status !== "running") {
-      setMarkdownCacheActionMessage(markdownCacheWarmOutcome(job));
-      refreshRequestedMarkdownCacheStatus();
-    }
-  }, [markdownCacheWarmJob, refreshRequestedMarkdownCacheStatus]);
-
-  const clearMarkdownCacheForAllPages = useCallback(async () => {
-    if (!window.confirm("Clear rendered Markdown HTML for all pages?")) {
-      return;
-    }
-
-    const signal = lifetimeSignal();
-    setClearingMarkdownCacheAll(true);
-    setMarkdownCacheActionMessage(null);
-    setMarkdownCacheStatusError(null);
-
-    try {
-      await persistLatestSettings();
-      const { result, status } = await clearAdminMarkdownCache();
-      if (signal.aborted) {
-        return;
-      }
-      setMarkdownCacheStatus(status);
-      setMarkdownCacheActionMessage({
-        tone: "success",
-        text: `Cleared ${formatCount(result.clearedEntries)} Markdown HTML cache entr${
-          result.clearedEntries === 1 ? "y" : "ies"
-        }.`,
-      });
-    } catch (error) {
-      if (!signal.aborted) {
-        setMarkdownCacheActionMessage({
-          tone: "error",
-          text: formatApiError(error),
-        });
-      }
-    } finally {
-      if (!signal.aborted) {
-        setClearingMarkdownCacheAll(false);
-      }
-    }
-  }, [lifetimeSignal, persistLatestSettings]);
-
-  const clearMarkdownCacheForPage = useCallback(
-    async (page: AdminMarkdownCachePageStatus) => {
-      if (!window.confirm(`Clear rendered Markdown HTML for "${page.title}"?`)) {
-        return;
-      }
-
-      const signal = lifetimeSignal();
-      setClearingMarkdownCacheSlug(page.slug);
-      setMarkdownCacheActionMessage(null);
-      setMarkdownCacheStatusError(null);
-
-      try {
-        await persistLatestSettings();
-        const { result, status } = await clearAdminMarkdownCache(page.slug);
-        if (signal.aborted) {
-          return;
-        }
-        setMarkdownCacheStatus(status);
-        setMarkdownCacheActionMessage({
-          tone: "success",
-          text: `Cleared ${formatCount(result.clearedEntries)} Markdown HTML cache entr${
-            result.clearedEntries === 1 ? "y" : "ies"
-          } for ${page.title}.`,
-        });
-      } catch (error) {
-        if (!signal.aborted) {
-          setMarkdownCacheActionMessage({
-            tone: "error",
-            text: formatApiError(error),
-          });
-        }
-      } finally {
-        if (!signal.aborted) {
-          setClearingMarkdownCacheSlug(null);
-        }
-      }
-    },
-    [lifetimeSignal, persistLatestSettings],
-  );
-
   const refreshDocsCache = useCallback(async () => {
     const signal = lifetimeSignal();
     setRefreshingDocs(true);
@@ -2114,357 +512,14 @@ export function AdminSettingsPanel() {
     }
   }, [lifetimeSignal, persistLatestSettings, refreshRequestedMarkdownCacheStatus, refreshTranslationOverview]);
 
-  const requestLanguageTranslations = useCallback(
-    async (language: AutoTranslateLanguage) => {
-      const code = normalizeAutoTranslateLanguageCode(language.code);
-      const name = language.name.trim();
-
-      if (!code || !name) {
-        setTranslationRequestStatus({
-          tone: "error",
-          message: "Enter a valid language name and code before requesting translations.",
-        });
-        return;
-      }
-
-      const confirmed = window.confirm(
-        `Request translations for all missing or outdated ${name} pages? Current localization files will be kept.`,
-      );
-
-      if (!confirmed) {
-        return;
-      }
-
-      const signal = lifetimeSignal();
-      setRequestedTranslationLanguageCodes((prev) => {
-        const next = new Set(prev);
-        next.add(code.toLowerCase());
-        return next;
-      });
-      setTranslationRequestStatus(null);
-
-      try {
-        await persistLatestSettings();
-        const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
-        const job = await requestAdminLanguageTranslations({
-          mode: "missing-and-outdated",
-          languages: [{ name, code, icon, enabled: language.enabled !== false }],
-          localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
-        });
-        if (signal.aborted) {
-          return;
-        }
-        trackTranslationJob(job);
-        lastTranslationJobStatusRef.current = job.status;
-        void refreshTranslationJobStatus();
-      } catch (error) {
-        if (!signal.aborted) {
-          setTranslationRequestStatus({
-            tone: "error",
-            message: formatApiError(error),
-          });
-        }
-      } finally {
-        if (!signal.aborted) {
-          setRequestedTranslationLanguageCodes((prev) => {
-            const next = new Set(prev);
-            next.delete(code.toLowerCase());
-            return next;
-          });
-        }
-      }
-    },
-    [lifetimeSignal, persistLatestSettings, refreshTranslationJobStatus, settings.autoTranslateLocalizationPath, trackTranslationJob],
-  );
-
-  const requestBulkTranslations = useCallback(
-    async (mode: "outdated" | "missing-and-outdated") => {
-      const targetLanguages = settings.autoTranslateLanguages.filter(
-        (language) => !isDefaultAutoTranslateLanguageCode(language.code),
-      );
-      if (targetLanguages.length === 0) {
-        setTranslationRequestStatus({
-          tone: "error",
-          message: "Add at least one target language first.",
-        });
-        return;
-      }
-
-      const label = mode === "outdated" ? "Update all outdated translations" : "Translate all missing and outdated pages";
-      if (!window.confirm(`${label}?`)) {
-        return;
-      }
-
-      const signal = lifetimeSignal();
-      setTranslationBulkAction(mode);
-      setTranslationRequestStatus(null);
-
-      try {
-        await persistLatestSettings();
-        const job = await requestAdminLanguageTranslations({
-          mode,
-          languages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
-          localizationPath: normalizeLocalizationPath(settings.autoTranslateLocalizationPath),
-        });
-        if (signal.aborted) {
-          return;
-        }
-        trackTranslationJob(job);
-        lastTranslationJobStatusRef.current = job.status;
-        void refreshTranslationJobStatus();
-      } catch (error) {
-        if (!signal.aborted) {
-          setTranslationRequestStatus({
-            tone: "error",
-            message: formatApiError(error),
-          });
-        }
-      } finally {
-        if (!signal.aborted) {
-          setTranslationBulkAction(null);
-        }
-      }
-    },
-    [
-      lifetimeSignal,
-      persistLatestSettings,
-      refreshTranslationJobStatus,
-      settings.autoTranslateLanguages,
-      settings.autoTranslateLocalizationPath,
-      trackTranslationJob,
-    ],
-  );
-
-  const recordSourceVersions = useCallback(async () => {
-    const count = unrecordedTranslationCount;
-    if (count === 0) {
+  useEffect(() => {
+    const logElement = translationLogRef.current;
+    if (!logElement) {
       return;
     }
 
-    const files = `${formatCount(count)} translation${count === 1 ? "" : "s"}`;
-    const repository = `${settings.githubOwner.trim()}/${settings.githubRepo.trim()} (${settings.githubBranch.trim() || "main"})`;
-    if (
-      !window.confirm(
-        `Record the source version in ${files}?\n\nThis commits ${count === 1 ? "1 file" : `${formatCount(count)} files`} to ${repository} in a single commit. Only the front matter changes, so the pages stay exactly as they are. Outdated translations are left alone.`,
-      )
-    ) {
-      return;
-    }
-
-    const signal = lifetimeSignal();
-    setTranslationBulkAction("source-versions");
-    setTranslationRequestStatus(null);
-
-    try {
-      await persistLatestSettings();
-      const job = await requestAdminSourceVersionRecording(count);
-      if (signal.aborted) {
-        return;
-      }
-      trackTranslationJob(job);
-      lastTranslationJobStatusRef.current = job.status;
-      void refreshTranslationJobStatus();
-    } catch (error) {
-      if (!signal.aborted) {
-        setTranslationRequestStatus({
-          tone: "error",
-          message: formatApiError(error),
-        });
-      }
-    } finally {
-      if (!signal.aborted) {
-        setTranslationBulkAction(null);
-      }
-    }
-  }, [
-    lifetimeSignal,
-    persistLatestSettings,
-    refreshTranslationJobStatus,
-    settings.githubBranch,
-    settings.githubOwner,
-    settings.githubRepo,
-    trackTranslationJob,
-    unrecordedTranslationCount,
-  ]);
-
-  useEffect(() => {
-    latestSettingsRef.current = settings;
-  }, [settings]);
-
-  useEffect(() => {
-    if (loading || loadError || !autoSaveReadyRef.current) {
-      return;
-    }
-
-    let requested = false;
-    const refreshOnceVisible = () => {
-      if (requested || document.visibilityState === "hidden") {
-        return;
-      }
-
-      requested = true;
-      void refreshTranslationJobStatus();
-      void refreshTranslationOverview();
-    };
-
-    const timeoutId = window.setTimeout(refreshOnceVisible, TRANSLATION_CACHE_STATUS_INITIAL_DELAY_MS);
-    document.addEventListener("visibilitychange", refreshOnceVisible);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-      document.removeEventListener("visibilitychange", refreshOnceVisible);
-    };
-  }, [loadError, loading, refreshTranslationJobStatus, refreshTranslationOverview]);
-
-  useEffect(() => {
-    if (loading || loadError || translationJob?.status !== "running") {
-      return;
-    }
-
-    return startJobStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_CACHE_STATUS_POLL_MS, isJobRunning: () => translationJobRef.current?.status === "running", onPoll: refreshTranslationJobStatus, windowTarget: window });
-  }, [loadError, loading, refreshTranslationJobStatus, translationJob?.id, translationJob?.status]);
-
-  useEffect(() => {
-    if (loading || loadError || !translationStatusesPending) {
-      return;
-    }
-
-    return startJobStatusPolling({ documentTarget: document, intervalMs: TRANSLATION_OVERVIEW_POLL_MS, isJobRunning: () => translationStatusesPendingRef.current, onPoll: refreshTranslationOverview, windowTarget: window });
-  }, [loadError, loading, refreshTranslationOverview, translationStatusesPending]);
-
-  useEffect(() => {
-    if (loading || loadError || markdownCacheWarmJob?.status !== "running") {
-      return;
-    }
-
-    return startJobStatusPolling({ documentTarget: document, intervalMs: MARKDOWN_CACHE_WARM_JOB_POLL_MS, isJobRunning: () => markdownCacheWarmJobRef.current?.status === "running", onPoll: refreshMarkdownCacheWarmJob, windowTarget: window });
-  }, [loadError, loading, markdownCacheWarmJob?.id, markdownCacheWarmJob?.status, refreshMarkdownCacheWarmJob]);
-
-  useEffect(() => {
-    if (loading || loadError) {
-      return;
-    }
-
-    const intervalId = window.setInterval(() => {
-      void refreshPerformanceStats();
-    }, PERFORMANCE_REFRESH_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(intervalId);
-    };
-  }, [loadError, loading, refreshPerformanceStats]);
-
-  useEffect(() => {
-    const catchingUp = Boolean(visitorStatsStatus?.catchingUp);
-    if (!catchingUp && !visitorStatsStatus?.refreshing) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      void refreshVisitorStats({ silent: true });
-    }, catchingUp ? VISITOR_STATS_CATCH_UP_POLL_MS : VISITOR_STATS_PENDING_POLL_MS);
-
-    return () => {
-      window.clearTimeout(timer);
-    };
-  }, [refreshVisitorStats, visitorStatsStatus]);
-
-  useEffect(() => {
-    if (!autoSaveReadyRef.current) {
-      return;
-    }
-
-    void persistLatestSettings();
-  }, [persistLatestSettings, settings]);
-
-  useEffect(() => {
-    let isActive = true;
-    const signal = lifetimeSignal();
-    const isCurrent = (): boolean => isActive && !signal.aborted;
-
-    const run = async () => {
-      setLoading(true);
-      setLoadError(null);
-      setPerformanceStatsLoading(true);
-      setPerformanceStatsError(null);
-      setVisitorStatsLoading(true);
-      setVisitorStatsError(null);
-
-      try {
-        const currentUser = await getCurrentUser({ signal });
-        if (!isCurrent()) {
-          return;
-        }
-        if (!currentUser) {
-          router.replace("/admin/login");
-          return;
-        }
-
-        if (currentUser.role !== "admin") {
-          router.replace("/editor");
-          return;
-        }
-
-        const [loadedSettings, loadedModerators] = await Promise.all([
-          fetchAdminSettings({ signal }),
-          fetchAdminModerators({ signal }),
-        ]);
-        if (!isCurrent()) {
-          return;
-        }
-
-        latestSettingsRef.current = loadedSettings;
-        lastSavedSnapshotRef.current = createSaveSnapshot(loadedSettings);
-        lastSavedDomainRef.current = {
-          customDomain: loadedSettings.customDomain,
-          letsEncryptEmail: loadedSettings.letsEncryptEmail,
-        };
-
-        setSettings(loadedSettings);
-        setModerators(loadedModerators);
-        setThemeSettings(themeCustomizationFromSettings(loadedSettings));
-        showFieldErrors(validateSettingsFields(loadedSettings));
-        autoSaveReadyRef.current = true;
-        void refreshSslStatus();
-        void refreshPerformanceStats();
-        void refreshVisitorStats();
-        // A warm job keeps running while the admin is away; show its progress again.
-        void refreshMarkdownCacheWarmJob();
-      } catch (error) {
-        if (isCurrent()) {
-          setLoadError(formatApiError(error));
-          setPerformanceStatsLoading(false);
-          setVisitorStatsLoading(false);
-        }
-      } finally {
-        if (isCurrent()) {
-          setLoading(false);
-        }
-      }
-    };
-
-    void run();
-
-    return () => {
-      isActive = false;
-      autoSaveReadyRef.current = false;
-    };
-  }, [createSaveSnapshot, lifetimeSignal, refreshMarkdownCacheWarmJob, refreshPerformanceStats, refreshSslStatus, refreshVisitorStats, router, setThemeSettings, showFieldErrors]);
-
-  if (loading) {
-    return <LoadingState label="Loading admin settings..." />;
-  }
-
-  if (loadError) {
-    return (
-      <ErrorState
-        title="Unable to load admin settings"
-        message={loadError}
-        actionLabel="Retry"
-        onAction={() => window.location.reload()}
-      />
-    );
-  }
+    logElement.scrollTop = logElement.scrollHeight;
+  }, [translationLogEntries.length, translationJob?.id]);
 
   return (
     <section className="admin-page">
@@ -2472,14 +527,7 @@ export function AdminSettingsPanel() {
 
       <div className="panel-grid">
         <div className="panel-stack-left">
-          <PerformanceStatsCard
-            error={performanceStatsError}
-            loading={performanceStatsLoading}
-            stats={performanceStats}
-            onRefresh={() => {
-              void refreshPerformanceStats();
-            }}
-          />
+          <PerformanceStatsCard />
 
           <section className="panel-card panel-card-repo">
           <div className="panel-header">
@@ -2665,24 +713,7 @@ export function AdminSettingsPanel() {
           {docsRefreshError ? <p className="error-text">{docsRefreshError}</p> : null}
           </section>
 
-          <MarkdownCacheCard
-            actionMessage={markdownCacheActionMessage}
-            clearingAll={clearingMarkdownCacheAll}
-            clearingSlug={clearingMarkdownCacheSlug}
-            error={markdownCacheStatusError}
-            loading={markdownCacheStatusLoading}
-            status={markdownCacheStatus}
-            warmJob={markdownCacheWarmJob}
-            warmStarting={startingMarkdownCacheWarm}
-            onClearAll={clearMarkdownCacheForAllPages}
-            onClearPage={clearMarkdownCacheForPage}
-            onRefresh={() => {
-              void refreshMarkdownCacheStatus();
-            }}
-            onWarmAll={() => {
-              void cacheMissingMarkdownHtml();
-            }}
-          />
+          <MarkdownCacheCard />
 
           <section className="panel-card panel-card-moderators">
             <div className="panel-header">
@@ -3334,17 +1365,7 @@ export function AdminSettingsPanel() {
         </div>
 
         <div className="panel-stack-right">
-          <VisitorStatsCard
-            activeScope={visitorStatsScope}
-            error={visitorStatsError}
-            loading={visitorStatsLoading}
-            stats={visitorStats}
-            status={visitorStatsStatus}
-            onRefresh={() => {
-              void refreshVisitorStats({ refresh: true });
-            }}
-            onScopeChange={setVisitorStatsScope}
-          />
+          <VisitorStatsCard />
 
           <section className="panel-card panel-card-theme">
             <div className="panel-header">
