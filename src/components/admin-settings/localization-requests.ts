@@ -3,13 +3,13 @@ import { useCallback, useState } from "react";
 import { formatCount } from "@/components/admin-settings/format";
 import type { AdminPanelServices } from "@/components/admin-settings/panel-context";
 import type { LocalizationStatus } from "@/components/admin-settings/localization-status";
-import { normalizeAutoTranslateLanguagesForSave } from "@/components/admin-settings/settings-validation";
 import { formatApiError, requestAdminLanguageTranslations, requestAdminSourceVersionRecording } from "@/components/api";
 import type { AdminTranslationJobSnapshot, AutoTranslateLanguage } from "@/components/types";
 import {
   getDefaultAutoTranslateLanguageIcon,
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguageCode,
+  normalizeAutoTranslateLanguages,
   normalizeLocalizationPath,
 } from "@/lib/auto-translate";
 import { normalizeCircleFlagIconId } from "@/lib/circle-flags";
@@ -126,7 +126,7 @@ export function useLocalizationRequests(
         () =>
           requestAdminLanguageTranslations({
             mode,
-            languages: normalizeAutoTranslateLanguagesForSave(autoTranslateLanguages),
+            languages: normalizeAutoTranslateLanguages(autoTranslateLanguages),
             localizationPath: normalizeLocalizationPath(autoTranslateLocalizationPath),
           }),
         () => setBulkAction(null),

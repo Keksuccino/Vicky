@@ -1,15 +1,14 @@
 import { AI_CHAT_DOCS_PLACEHOLDER } from "@/lib/ai-chat";
 import {
-  DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
   DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
   MIN_AUTO_TRANSLATE_REQUEST_TIMEOUT_MS,
-  getDefaultAutoTranslateLanguageIcon,
   isDefaultAutoTranslateLanguageCode,
   normalizeAutoTranslateLanguageCode,
+  normalizeAutoTranslateLanguages,
   normalizeAutoTranslateRequestTimeoutMs,
   normalizeLocalizationPath,
 } from "@/lib/auto-translate";
-import { isCircleFlagIconId, normalizeCircleFlagIconId } from "@/lib/circle-flags";
+import { isCircleFlagIconId } from "@/lib/circle-flags";
 import { normalizeCustomDomain, normalizeLetsEncryptEmail } from "@/lib/domain-settings";
 import type { AdminSettings, AutoTranslateLanguage } from "@/components/types";
 
@@ -176,40 +175,7 @@ export const validateSettingsFields = (settings: AdminSettings): SettingsFieldEr
 export const hasSettingsFieldErrors = (errors: SettingsFieldErrors): boolean =>
   Object.values(errors).some((groupErrors: Record<string, string | null>) => Object.values(groupErrors).some(Boolean));
 
-/** The language list as the server stores it: the source language first, then unique, complete languages. */
-export const normalizeAutoTranslateLanguagesForSave = (languages: AutoTranslateLanguage[]): AutoTranslateLanguage[] => {
-  const output: AutoTranslateLanguage[] = [
-    {
-      name: DEFAULT_AUTO_TRANSLATE_LANGUAGE_NAME,
-      code: DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE,
-      icon: getDefaultAutoTranslateLanguageIcon(DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE),
-      enabled: true,
-    },
-  ];
-  const seenCodes = new Set([DEFAULT_AUTO_TRANSLATE_LANGUAGE_CODE.toLowerCase()]);
-
-  for (const language of languages) {
-    const code = normalizeAutoTranslateLanguageCode(language.code);
-    const name = language.name.trim().replace(/\s+/g, " ");
-    const icon = normalizeCircleFlagIconId(language.icon) || getDefaultAutoTranslateLanguageIcon(code);
-
-    if (!code || !name || isDefaultAutoTranslateLanguageCode(code)) {
-      continue;
-    }
-
-    const codeKey = code.toLowerCase();
-    if (seenCodes.has(codeKey)) {
-      continue;
-    }
-
-    seenCodes.add(codeKey);
-    output.push({ name, code, icon, enabled: language.enabled !== false });
-  }
-
-  return output;
-};
-
-/** The draft with every field normalized as the server expects it. */
+/** The draft with every field normalized as the server expects it; languages as the server stores them. */
 export const normalizeSettingsForSave = (settings: AdminSettings): AdminSettings => ({
   ...settings,
   customDomain: normalizeCustomDomain(settings.customDomain),
@@ -218,5 +184,5 @@ export const normalizeSettingsForSave = (settings: AdminSettings): AdminSettings
   autoTranslateRequestTimeoutSeconds: normalizeAutoTranslateRequestTimeoutSeconds(
     settings.autoTranslateRequestTimeoutSeconds,
   ),
-  autoTranslateLanguages: normalizeAutoTranslateLanguagesForSave(settings.autoTranslateLanguages),
+  autoTranslateLanguages: normalizeAutoTranslateLanguages(settings.autoTranslateLanguages),
 });
